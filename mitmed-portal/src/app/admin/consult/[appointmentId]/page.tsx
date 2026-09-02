@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { getAppointmentForConsult } from "@/actions/appointments";
+import { getAppointmentForConsult, listAppointmentsInRange } from "@/actions/appointments";
 import { ConsultForm } from "./ConsultForm";
 import { IconClose } from "@/components/icons";
 
@@ -15,6 +15,20 @@ export default async function ConsultPage({ params }: { params: Promise<{ appoin
   if (!data) notFound();
 
   const { appointment, client, recent_records, consents, active_package } = data;
+
+  // Programările neefectuate ale zilei, în ordine — permite trecerea la
+  // "următorul pacient" din interiorul consultului, fără a reveni la bord.
+  const dayStart = new Date(appointment.starts_at);
+  dayStart.setHours(0, 0, 0, 0);
+  const dayEnd = new Date(dayStart);
+  dayEnd.setDate(dayEnd.getDate() + 1);
+  const dayAppointments = (await listAppointmentsInRange(dayStart, dayEnd))
+    .filter((a) => a.status === "PROGRAMATA" || a.status === "CONFIRMATA")
+    .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
+  const currentIdx = dayAppointments.findIndex((a) => a.id === appointment.id);
+  const prevAppointmentId = currentIdx > 0 ? dayAppointments[currentIdx - 1].id : null;
+  const nextAppointmentId =
+    currentIdx >= 0 && currentIdx < dayAppointments.length - 1 ? dayAppointments[currentIdx + 1].id : null;
   const age = client.birth_date
     ? Math.floor(
         (new Date(appointment.starts_at).getTime() - new Date(client.birth_date).getTime()) /
@@ -26,20 +40,45 @@ export default async function ConsultPage({ params }: { params: Promise<{ appoin
     <div className="-m-4 flex h-[calc(100vh-3.5rem)] flex-col sm:-m-6 sm:h-screen">
       {/* Header fix — informația de context nu ar trebui să ceară niciun scroll. */}
       <header className="flex shrink-0 items-center justify-between border-b border-zinc-200/70 bg-white px-4 py-3 sm:px-6">
-        <div>
-          <h1 className="text-base font-semibold text-zinc-900">
-            {client.full_name} {age !== null && <span className="font-normal text-zinc-400">· {age} ani</span>}
-          </h1>
-          <p className="text-sm text-zinc-500">
-            {appointment.therapy.name} · {new Date(appointment.starts_at).toLocaleString("ro-RO")}
-          </p>
+        <div className="flex items-center gap-3">
+          {dayAppointments.length > 1 && (
+            <span className="mm-numeric shrink-0 text-xs text-zinc-400">
+              {currentIdx + 1}/{dayAppointments.length} azi
+            </span>
+          )}
+          <div>
+            <h1 className="text-base font-semibold text-zinc-900">
+              {client.full_name} {age !== null && <span className="font-normal text-zinc-400">· {age} ani</span>}
+            </h1>
+            <p className="text-sm text-zinc-500">
+              {appointment.therapy.name} · {new Date(appointment.starts_at).toLocaleString("ro-RO")}
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
-          <Link
-            href={`/admin/clienti/${client.id}`}
-            className="mm-btn"
-            data-variant="secondary"
-          >
+          {prevAppointmentId && (
+            <Link
+              href={`/admin/consult/${prevAppointmentId}`}
+              aria-label="Pacientul anterior"
+              title="Pacientul anterior ([)"
+              className="mm-btn"
+              data-variant="ghost"
+            >
+              ← Anterior
+            </Link>
+          )}
+          {nextAppointmentId && (
+            <Link
+              href={`/admin/consult/${nextAppointmentId}`}
+              aria-label="Pacientul următor"
+              title="Pacientul următor (])"
+              className="mm-btn"
+              data-variant="ghost"
+            >
+              Următor →
+            </Link>
+          )}
+          <Link href={`/admin/clienti/${client.id}`} className="mm-btn" data-variant="secondary">
             Fișă completă
           </Link>
           <Link href="/admin" aria-label="Ieși din consult" className="mm-btn" data-variant="ghost">
@@ -135,6 +174,8 @@ export default async function ConsultPage({ params }: { params: Promise<{ appoin
           clientId={client.id}
           appointmentId={appointment.id}
           therapyId={appointment.therapy.id}
+          prevAppointmentId={prevAppointmentId}
+          nextAppointmentId={nextAppointmentId}
         />
       </div>
     </div>

@@ -11,10 +11,14 @@ export function ConsultForm({
   clientId,
   appointmentId,
   therapyId,
+  prevAppointmentId,
+  nextAppointmentId,
 }: {
   clientId: string;
   appointmentId: string;
   therapyId: string;
+  prevAppointmentId: string | null;
+  nextAppointmentId: string | null;
 }) {
   const [state, action, pending] = useActionState(createMedicalRecord, undefined);
   const [bodyMap, setBodyMap] = useState<BodyMapPoint[]>([]);
@@ -27,17 +31,23 @@ export function ConsultForm({
     notesRef.current?.focus();
   }, []);
 
-  // Esc = ieșire rapidă din consult, fără a salva — utilă când s-a intrat din
-  // greșeală sau consultul s-a mutat pe altă programare.
+  // Esc = ieșire rapidă din consult, fără a salva. [ / ] = pacientul
+  // anterior/următor din ziua curentă, fără a reveni la bord. Ignorate cât
+  // timp se scrie într-un câmp, ca să nu interfereze cu textul notițelor.
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape" && document.activeElement?.tagName !== "TEXTAREA" && document.activeElement?.tagName !== "INPUT") {
+      const typing = document.activeElement?.tagName === "TEXTAREA" || document.activeElement?.tagName === "INPUT";
+      if (e.key === "Escape" && !typing) {
         router.push("/admin");
+      } else if (e.key === "[" && !typing && prevAppointmentId) {
+        router.push(`/admin/consult/${prevAppointmentId}`);
+      } else if (e.key === "]" && !typing && nextAppointmentId) {
+        router.push(`/admin/consult/${nextAppointmentId}`);
       }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [router]);
+  }, [router, prevAppointmentId, nextAppointmentId]);
 
   return (
     <form action={action} className="flex flex-col gap-4 sm:overflow-y-auto sm:pb-2 sm:pr-1">
@@ -80,7 +90,7 @@ export function ConsultForm({
         <Button type="submit" disabled={pending}>
           {pending ? "Se salvează…" : "Salvează și finalizează ședința"}
         </Button>
-        <span className="text-xs text-zinc-400">Esc pentru ieșire fără salvare</span>
+        <span className="text-xs text-zinc-400">Esc ieșire · [ ] pacient anterior/următor</span>
       </div>
     </form>
   );

@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { logout } from "@/actions/auth";
 import { AdminSidebar } from "@/components/AdminSidebar";
+import { CommandPalette } from "@/components/CommandPalette";
+import type { ClientSummary } from "@/actions/clients";
 
 function IconMenu({ className }: { className?: string }) {
   return (
@@ -24,11 +26,15 @@ export function AdminShell({
   email,
   roleLabel,
   isAdmin,
+  clients,
+  todayAppointmentByClient,
   children,
 }: {
   email: string;
   roleLabel: string;
   isAdmin: boolean;
+  clients: ClientSummary[];
+  todayAppointmentByClient: Record<string, string>;
   children: React.ReactNode;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -49,6 +55,7 @@ export function AdminShell({
           </span>
         </div>
         <div className="flex items-center gap-3">
+          <CommandPalette clients={clients} todayAppointmentByClient={todayAppointmentByClient} />
           <span className="hidden items-center gap-2 rounded-full bg-white/10 py-1 pl-1 pr-3 text-xs font-medium text-[var(--mitmed-mist)] sm:flex">
             <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--mitmed-sky)] text-[10px] font-bold text-[var(--mitmed-teal-deep)]">
               {email.charAt(0).toUpperCase()}
