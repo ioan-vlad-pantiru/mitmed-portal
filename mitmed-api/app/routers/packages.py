@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session as DBSession, joinedload
 from app.audit import log_audit
 from app.database import get_db
 from app.deps import require_roles
-from app.models import PackageItem, Role, Therapy, TherapyPackage, User
+from app.models import PackageItem, Payment, Role, Therapy, TherapyPackage, User
 
 router = APIRouter(prefix="/packages", tags=["packages"])
 
@@ -133,4 +133,28 @@ def toggle_package_active(
         target_type="TherapyPackage",
         target_id=package_id,
     )
+    return {"ok": True}
+
+
+@router.delete("/{package_id}")
+def delete_package(
+    package_id: str,
+    db: DBSession = Depends(get_db),
+    actor: User = Depends(require_roles(Role.ADMIN)),
+) -> dict:
+    """Ștergere reală — permisă doar dacă pachetul n-a fost vândut
+    niciodată. Altfel, dezactivarea e calea corectă — șterge-l ar strica
+    achizițiile deja înregistrate ale clienților."""
+    package = db.get(TherapyPackage, package_id)
+    if not package:
+        raise HTTPException(status_code=404, detail="Pachet inexistent.")
+
+    if db.query(Payment).filter(Payment.package_id == package_id).first():
+        raise HTTPException(
+            status_code=409, detail="Pachetul a fost deja vândut — dezactivează-l în loc să-l ștergi."
+        )
+
+    db.delete(package)  # PackageItem-urile lui se șterg automat (cascade).
+    db.commit()
+    log_audit(db, actor_id=actor.id, action="package.delete", target_type="TherapyPackage", target_id=package_id)
     return {"ok": True}

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { apiGet, apiPost, apiPut, ApiError } from "@/lib/apiClient";
+import { apiDelete, apiGet, apiPost, apiPut, ApiError } from "@/lib/apiClient";
 import { requireRole } from "@/lib/authSession";
 import { Role } from "@/lib/enums";
 
@@ -65,4 +65,21 @@ export async function toggleTherapyActive(therapyId: string, active: boolean) {
   await requireRole(Role.ADMIN);
   await apiPost(`/therapies/${therapyId}/toggle?active=${active}`);
   revalidatePath("/admin/terapii");
+}
+
+export type DeleteResult = { ok: true } | { ok: false; message: string };
+
+/** Ștergere reală — backend-ul refuză (409) dacă terapia a fost deja
+ * folosită; returnăm mesajul lui, nu unul generic, ca admin să știe să
+ * dezactiveze în loc să șteargă. */
+export async function deleteTherapy(therapyId: string): Promise<DeleteResult> {
+  await requireRole(Role.ADMIN);
+  try {
+    await apiDelete(`/therapies/${therapyId}`);
+  } catch (err) {
+    if (err instanceof ApiError) return { ok: false, message: err.message };
+    throw err;
+  }
+  revalidatePath("/admin/terapii");
+  return { ok: true };
 }

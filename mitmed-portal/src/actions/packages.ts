@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { apiGet, apiPost, apiPut, ApiError } from "@/lib/apiClient";
+import { apiDelete, apiGet, apiPost, apiPut, ApiError } from "@/lib/apiClient";
 import { requireRole } from "@/lib/authSession";
 import { Role } from "@/lib/enums";
 
@@ -81,4 +81,20 @@ export async function togglePackageActive(packageId: string, active: boolean) {
   await requireRole(Role.ADMIN);
   await apiPost(`/packages/${packageId}/toggle?active=${active}`);
   revalidatePath("/admin/pachete");
+}
+
+export type DeleteResult = { ok: true } | { ok: false; message: string };
+
+/** Ștergere reală — backend-ul refuză (409) dacă pachetul a fost deja
+ * vândut; returnăm mesajul lui, nu unul generic. */
+export async function deletePackage(packageId: string): Promise<DeleteResult> {
+  await requireRole(Role.ADMIN);
+  try {
+    await apiDelete(`/packages/${packageId}`);
+  } catch (err) {
+    if (err instanceof ApiError) return { ok: false, message: err.message };
+    throw err;
+  }
+  revalidatePath("/admin/pachete");
+  return { ok: true };
 }

@@ -1,11 +1,13 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
-import { toggleCouponActive, updateCoupon } from "@/actions/coupons";
+import { deleteCoupon, toggleCouponActive, updateCoupon } from "@/actions/coupons";
 import { CouponFields } from "./CouponFields";
 import { useToast } from "@/components/Toast";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { IconButton } from "@/components/ui/IconButton";
+import { IconEdit, IconPower, IconTrash, IconClose } from "@/components/icons";
 
 type Therapy = { id: string; name: string };
 
@@ -54,26 +56,47 @@ export function CouponRow({ coupon, allTherapies }: { coupon: Coupon; allTherapi
         <td className="px-4 py-2">
           <Badge variant={coupon.active ? "success" : "neutral"}>{coupon.active ? "Da" : "Nu"}</Badge>
         </td>
-        <td className="px-4 py-2 text-right whitespace-nowrap">
-          <button onClick={() => setEditing((v) => !v)} className="mr-3 text-sm text-sky-600 hover:underline">
-            {editing ? "Renunță" : "Editează"}
-          </button>
-          <button
-            disabled={pending}
-            onClick={() =>
-              startTransition(async () => {
-                try {
-                  await toggleCouponActive(coupon.id, !coupon.active);
-                  toast.success(coupon.active ? "Cupon dezactivat." : "Cupon activat.");
-                } catch {
-                  toast.error("Nu am putut schimba statusul. Încearcă din nou.");
-                }
-              })
-            }
-            className="text-sm text-sky-600 hover:underline disabled:opacity-60"
-          >
-            {coupon.active ? "Dezactivează" : "Activează"}
-          </button>
+        <td className="px-4 py-2">
+          <div className="flex items-center justify-end gap-1">
+            <IconButton
+              icon={editing ? IconClose : IconEdit}
+              label={editing ? "Renunță" : "Editează"}
+              onClick={() => setEditing((v) => !v)}
+            />
+            <IconButton
+              icon={IconPower}
+              label={coupon.active ? "Dezactivează" : "Activează"}
+              variant={coupon.active ? "warning" : "primary"}
+              disabled={pending}
+              onClick={() =>
+                startTransition(async () => {
+                  try {
+                    await toggleCouponActive(coupon.id, !coupon.active);
+                    toast.success(coupon.active ? "Cupon dezactivat." : "Cupon activat.");
+                  } catch {
+                    toast.error("Nu am putut schimba statusul. Încearcă din nou.");
+                  }
+                })
+              }
+            />
+            <IconButton
+              icon={IconTrash}
+              label="Șterge"
+              variant="danger"
+              disabled={pending}
+              onClick={() => {
+                if (!window.confirm(`Ștergi definitiv cuponul „${coupon.code}"? Nu poate fi anulat.`)) return;
+                startTransition(async () => {
+                  const result = await deleteCoupon(coupon.id);
+                  if (result.ok) {
+                    toast.success("Cupon șters.");
+                  } else {
+                    toast.error(result.message);
+                  }
+                });
+              }}
+            />
+          </div>
         </td>
       </tr>
       {editing && (

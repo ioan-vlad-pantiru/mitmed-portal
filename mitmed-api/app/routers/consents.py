@@ -186,6 +186,30 @@ def toggle_consent_template(
     return {"ok": True}
 
 
+@router.delete("/templates/{consent_type}")
+def delete_consent_template(
+    consent_type: str, db: DBSession = Depends(get_db), actor: User = Depends(require_roles(Role.ADMIN))
+) -> dict:
+    """Ștergere reală — permisă doar dacă niciun client n-a semnat vreodată
+    acest tip de document. Altfel, dezactivarea e calea corectă: declarația
+    semnată își păstrează propriul text (version_text), dar eticheta ei nu
+    s-ar mai putea afișa dacă tipul dispare complet."""
+    template = db.get(ConsentTemplate, consent_type)
+    if not template:
+        raise HTTPException(status_code=404, detail="Tip de document inexistent.")
+
+    if db.query(Consent).filter(Consent.type == consent_type).first():
+        raise HTTPException(
+            status_code=409,
+            detail="Cel puțin un client a semnat deja acest document — dezactivează-l în loc să-l ștergi.",
+        )
+
+    db.delete(template)
+    db.commit()
+    log_audit(db, actor_id=actor.id, action="consent_template.delete", target_type="ConsentTemplate", target_id=consent_type)
+    return {"ok": True}
+
+
 @router.get("/current-text")
 def get_current_consent_text(type: str, db: DBSession = Depends(get_db), _user: User = Depends(require_user)) -> dict:
     _ensure_default_templates(db)

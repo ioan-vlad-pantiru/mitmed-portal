@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session as DBSession
 from app.audit import log_audit
 from app.database import get_db
 from app.deps import require_roles
-from app.models import Role, Therapy, User
+from app.models import Appointment, MedicalRecord, PackageItem, Payment, Role, Therapy, User
 
 router = APIRouter(prefix="/therapies", tags=["therapies"])
 
@@ -100,4 +100,36 @@ def toggle_therapy_active(
         target_type="Therapy",
         target_id=therapy_id,
     )
+    return {"ok": True}
+
+
+@router.delete("/{therapy_id}")
+def delete_therapy(
+    therapy_id: str,
+    db: DBSession = Depends(get_db),
+    actor: User = Depends(require_roles(Role.ADMIN)),
+) -> dict:
+    """Ștergere reală — permisă doar dacă terapia n-a fost folosită
+    niciodată (nicio programare, plată, fișă medicală sau pachet care o
+    include). Altfel, dezactivarea (toggle) e calea corectă — șterge istoric
+    real ar strica programări/plăți/fișe deja existente."""
+    therapy = db.get(Therapy, therapy_id)
+    if not therapy:
+        raise HTTPException(status_code=404, detail="Terapie inexistentă.")
+
+    in_use = (
+        db.query(Appointment).filter(Appointment.therapy_id == therapy_id).first()
+        or db.query(Payment).filter(Payment.therapy_id == therapy_id).first()
+        or db.query(MedicalRecord).filter(MedicalRecord.therapy_id == therapy_id).first()
+        or db.query(PackageItem).filter(PackageItem.therapy_id == therapy_id).first()
+    )
+    if in_use:
+        raise HTTPException(
+            status_code=409,
+            detail="Terapia este deja folosită (programări, plăți, fișe sau pachete) — dezactiveaz-o în loc s-o ștergi.",
+        )
+
+    db.delete(therapy)
+    db.commit()
+    log_audit(db, actor_id=actor.id, action="therapy.delete", target_type="Therapy", target_id=therapy_id)
     return {"ok": True}

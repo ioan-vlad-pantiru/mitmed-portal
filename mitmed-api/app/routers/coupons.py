@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session as DBSession, joinedload
 from app.audit import log_audit
 from app.database import get_db
 from app.deps import require_roles
-from app.models import Coupon, CouponType, Role, Therapy, User
+from app.models import Coupon, CouponType, Payment, Role, Therapy, User
 
 router = APIRouter(prefix="/coupons", tags=["coupons"])
 
@@ -135,4 +135,25 @@ def toggle_coupon_active(
         target_type="Coupon",
         target_id=coupon_id,
     )
+    return {"ok": True}
+
+
+@router.delete("/{coupon_id}")
+def delete_coupon(
+    coupon_id: str, db: DBSession = Depends(get_db), actor: User = Depends(require_roles(Role.ADMIN))
+) -> dict:
+    """Ștergere reală — permisă doar dacă cuponul n-a fost aplicat
+    niciodată la o plată. Altfel, dezactivarea e calea corectă."""
+    coupon = db.get(Coupon, coupon_id)
+    if not coupon:
+        raise HTTPException(status_code=404, detail="Cupon inexistent.")
+
+    if db.query(Payment).filter(Payment.coupon_id == coupon_id).first():
+        raise HTTPException(
+            status_code=409, detail="Cuponul a fost deja folosit la o plată — dezactivează-l în loc să-l ștergi."
+        )
+
+    db.delete(coupon)  # coupon_therapies (m2m) se golește automat (cascade pe therapy_id).
+    db.commit()
+    log_audit(db, actor_id=actor.id, action="coupon.delete", target_type="Coupon", target_id=coupon_id)
     return {"ok": True}

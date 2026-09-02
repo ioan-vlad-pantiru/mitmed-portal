@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { apiGet, apiPost, apiPut, ApiError } from "@/lib/apiClient";
+import { apiDelete, apiGet, apiPost, apiPut, ApiError } from "@/lib/apiClient";
 import { requireRole } from "@/lib/authSession";
 import { Role } from "@/lib/enums";
 
@@ -76,4 +76,20 @@ export async function toggleCouponActive(couponId: string, active: boolean) {
   await requireRole(Role.ADMIN);
   await apiPost(`/coupons/${couponId}/toggle?active=${active}`);
   revalidatePath("/admin/cupoane");
+}
+
+export type DeleteResult = { ok: true } | { ok: false; message: string };
+
+/** Ștergere reală — backend-ul refuză (409) dacă cuponul a fost deja
+ * folosit; returnăm mesajul lui, nu unul generic. */
+export async function deleteCoupon(couponId: string): Promise<DeleteResult> {
+  await requireRole(Role.ADMIN);
+  try {
+    await apiDelete(`/coupons/${couponId}`);
+  } catch (err) {
+    if (err instanceof ApiError) return { ok: false, message: err.message };
+    throw err;
+  }
+  revalidatePath("/admin/cupoane");
+  return { ok: true };
 }

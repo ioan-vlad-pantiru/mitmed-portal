@@ -1,11 +1,13 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
-import { togglePackageActive, updatePackage, type TherapyPackage } from "@/actions/packages";
+import { deletePackage, togglePackageActive, updatePackage, type TherapyPackage } from "@/actions/packages";
 import { PackageFields } from "./PackageFields";
 import { useToast } from "@/components/Toast";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { IconButton } from "@/components/ui/IconButton";
+import { IconEdit, IconPower, IconTrash, IconClose } from "@/components/icons";
 
 type Therapy = { id: string; name: string };
 
@@ -33,26 +35,47 @@ export function PackageRow({ pkg, therapies }: { pkg: TherapyPackage; therapies:
         <td className="px-4 py-2">
           <Badge variant={pkg.active ? "success" : "neutral"}>{pkg.active ? "Da" : "Nu"}</Badge>
         </td>
-        <td className="px-4 py-2 text-right whitespace-nowrap">
-          <button onClick={() => setEditing((v) => !v)} className="mr-3 text-sm text-sky-600 hover:underline">
-            {editing ? "Renunță" : "Editează"}
-          </button>
-          <button
-            disabled={pending}
-            onClick={() =>
-              startTransition(async () => {
-                try {
-                  await togglePackageActive(pkg.id, !pkg.active);
-                  toast.success(pkg.active ? "Pachet dezactivat." : "Pachet activat.");
-                } catch {
-                  toast.error("Nu am putut schimba statusul. Încearcă din nou.");
-                }
-              })
-            }
-            className="text-sm text-sky-600 hover:underline disabled:opacity-60"
-          >
-            {pkg.active ? "Dezactivează" : "Activează"}
-          </button>
+        <td className="px-4 py-2">
+          <div className="flex items-center justify-end gap-1">
+            <IconButton
+              icon={editing ? IconClose : IconEdit}
+              label={editing ? "Renunță" : "Editează"}
+              onClick={() => setEditing((v) => !v)}
+            />
+            <IconButton
+              icon={IconPower}
+              label={pkg.active ? "Dezactivează" : "Activează"}
+              variant={pkg.active ? "warning" : "primary"}
+              disabled={pending}
+              onClick={() =>
+                startTransition(async () => {
+                  try {
+                    await togglePackageActive(pkg.id, !pkg.active);
+                    toast.success(pkg.active ? "Pachet dezactivat." : "Pachet activat.");
+                  } catch {
+                    toast.error("Nu am putut schimba statusul. Încearcă din nou.");
+                  }
+                })
+              }
+            />
+            <IconButton
+              icon={IconTrash}
+              label="Șterge"
+              variant="danger"
+              disabled={pending}
+              onClick={() => {
+                if (!window.confirm(`Ștergi definitiv pachetul „${pkg.name}"? Nu poate fi anulat.`)) return;
+                startTransition(async () => {
+                  const result = await deletePackage(pkg.id);
+                  if (result.ok) {
+                    toast.success("Pachet șters.");
+                  } else {
+                    toast.error(result.message);
+                  }
+                });
+              }}
+            />
+          </div>
         </td>
       </tr>
       {editing && (

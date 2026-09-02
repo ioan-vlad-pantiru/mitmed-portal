@@ -1,7 +1,12 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
-import { updateConsentTemplate, toggleConsentTemplateActive, type ConsentType } from "@/actions/consents";
+import {
+  updateConsentTemplate,
+  toggleConsentTemplateActive,
+  deleteConsentTemplate,
+  type ConsentType,
+} from "@/actions/consents";
 import { Input, Textarea } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -64,6 +69,24 @@ export function TemplateForm({
             }
           >
             {active ? "Dezactivează" : "Activează"}
+          </Button>
+          <Button
+            type="button"
+            variant="danger"
+            disabled={togglePending}
+            onClick={() => {
+              if (!window.confirm(`Ștergi definitiv documentul „${label}"? Nu poate fi anulat.`)) return;
+              startToggle(async () => {
+                const result = await deleteConsentTemplate(type);
+                if (result.ok) {
+                  toast.success("Document șters.");
+                } else {
+                  toast.error(result.message);
+                }
+              });
+            }}
+          >
+            Șterge
           </Button>
         </div>
         {!active && (

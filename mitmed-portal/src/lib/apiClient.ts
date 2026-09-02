@@ -76,6 +76,7 @@ export async function apiGetText(path: string, query?: Query): Promise<string> {
 export const apiPost = <T>(path: string, body?: unknown) => request<T>("POST", path, { body });
 export const apiPut = <T>(path: string, body?: unknown) => request<T>("PUT", path, { body });
 export const apiPatch = <T>(path: string, body?: unknown) => request<T>("PATCH", path, { body });
+export const apiDelete = <T>(path: string) => request<T>("DELETE", path, {});
 
 /**
  * Doar pentru login/register/logout — API-ul setează/șterge cookie-ul de

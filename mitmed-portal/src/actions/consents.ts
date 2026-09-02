@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { apiGet, apiPost, apiPut, ApiError } from "@/lib/apiClient";
+import { apiDelete, apiGet, apiPost, apiPut, ApiError } from "@/lib/apiClient";
 import { requireRole, verifySession } from "@/lib/authSession";
 import { Role } from "@/lib/enums";
 
@@ -122,4 +122,20 @@ export async function signConsent(
   }
   revalidatePath("/portal");
   return { success: true, message: "Declarație semnată." };
+}
+
+export type DeleteResult = { ok: true } | { ok: false; message: string };
+
+/** Ștergere reală — backend-ul refuză (409) dacă vreun client a semnat deja
+ * acest tip de document; returnăm mesajul lui, nu unul generic. */
+export async function deleteConsentTemplate(type: ConsentType): Promise<DeleteResult> {
+  await requireRole(Role.ADMIN);
+  try {
+    await apiDelete(`/consents/templates/${type}`);
+  } catch (err) {
+    if (err instanceof ApiError) return { ok: false, message: err.message };
+    throw err;
+  }
+  revalidatePath("/admin/documente");
+  return { ok: true };
 }
