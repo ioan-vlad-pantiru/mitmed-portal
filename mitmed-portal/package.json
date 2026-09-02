@@ -10,6 +10,8 @@
     "backend:up": "docker compose -f ../docker-compose.yml up -d"
   },
   "dependencies": {
+    "@radix-ui/react-dialog": "^1.1.23",
+    "cmdk": "^1.1.1",
     "next": "16.3.2",
     "react": "19.2.8",
     "react-dom": "19.2.8"

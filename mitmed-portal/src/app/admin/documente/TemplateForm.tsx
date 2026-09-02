@@ -2,6 +2,8 @@
 
 import { useActionState, useState } from "react";
 import { updateConsentTemplate, type ConsentType } from "@/actions/consents";
+import { Textarea } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
 
 export function TemplateForm({
   type,
@@ -20,24 +22,19 @@ export function TemplateForm({
   return (
     <div className="mt-3 grid gap-4 lg:grid-cols-2">
       <form action={action} className="space-y-3 mm-card p-4">
-        <textarea
+        <Textarea
           name="text"
           required
           rows={10}
           value={text}
           onChange={(e) => setText(e.target.value)}
-          className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
         />
         {state?.message && (
           <p className={`text-sm ${state.success ? "text-emerald-600" : "text-red-600"}`}>{state.message}</p>
         )}
-        <button
-          type="submit"
-          disabled={pending}
-          className="rounded-md bg-sky-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-60"
-        >
+        <Button type="submit" disabled={pending}>
           {pending ? "Se salvează…" : "Salvează"}
-        </button>
+        </Button>
       </form>
 
       {/* Preview live — exact cum va arăta documentul pe care îl semnează clientul
