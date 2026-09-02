@@ -1,3 +1,5 @@
+import { Logo } from "@/components/Logo";
+
 function RecoveryWave() {
   return (
     <svg
@@ -39,8 +41,9 @@ export function AuthShell({
         {/* Panou de brand */}
         <div className="relative flex shrink-0 flex-col justify-between overflow-hidden bg-gradient-to-br from-[var(--mitmed-teal)] to-[var(--mitmed-teal-deep)] px-8 py-8 sm:w-[42%] sm:px-10 sm:py-10">
           <div>
-            <span className="text-xl font-bold tracking-tight text-[var(--mitmed-mist)]">MitMed</span>
-            <p className="mt-3 font-[family-name:var(--font-editorial)] text-lg italic text-[var(--mitmed-sky)]">
+            <Logo size={40} />
+            <span className="mt-3 block text-xl font-bold tracking-tight text-[var(--mitmed-mist)]">MitMed</span>
+            <p className="mt-1 font-[family-name:var(--font-editorial)] text-lg italic text-[var(--mitmed-sky)]">
               Puterea vindecării
             </p>
           </div>

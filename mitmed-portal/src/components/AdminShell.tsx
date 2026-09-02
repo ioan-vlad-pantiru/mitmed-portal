@@ -4,6 +4,7 @@ import { useState } from "react";
 import { logout } from "@/actions/auth";
 import { AdminSidebar } from "@/components/AdminSidebar";
 import { CommandPalette } from "@/components/CommandPalette";
+import { Logo } from "@/components/Logo";
 import type { ClientSummary } from "@/actions/clients";
 
 function IconMenu({ className }: { className?: string }) {
@@ -50,6 +51,7 @@ export function AdminShell({
           >
             {mobileOpen ? <IconClose className="h-5 w-5" /> : <IconMenu className="h-5 w-5" />}
           </button>
+          <Logo size={28} />
           <span className="text-base font-bold tracking-tight text-[var(--mitmed-mist)]">
             MitMed <span className="font-normal text-[var(--mitmed-sky)]">portal</span>
           </span>
