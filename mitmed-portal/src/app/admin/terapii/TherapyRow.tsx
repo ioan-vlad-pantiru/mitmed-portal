@@ -13,7 +13,6 @@ type Therapy = {
   description: string | null;
   durationMinutes: number;
   price: string;
-  sessionsIncluded: number;
   active: boolean;
 };
 
@@ -33,13 +32,6 @@ export function TherapyRow({ therapy }: { therapy: Therapy }) {
         </td>
         <td className="px-4 py-2 text-zinc-600">{therapy.durationMinutes} min</td>
         <td className="px-4 py-2 text-zinc-600">{therapy.price} RON</td>
-        <td className="px-4 py-2 text-zinc-600">
-          {therapy.sessionsIncluded > 1 ? (
-            <Badge variant="info">Pachet {therapy.sessionsIncluded}×</Badge>
-          ) : (
-            "ședință unică"
-          )}
-        </td>
         <td className="px-4 py-2">
           <Badge variant={therapy.active ? "success" : "neutral"}>{therapy.active ? "Da" : "Nu"}</Badge>
         </td>
@@ -70,7 +62,7 @@ export function TherapyRow({ therapy }: { therapy: Therapy }) {
       </tr>
       {editing && (
         <tr>
-          <td colSpan={6} className="bg-zinc-50/60 px-4 py-4">
+          <td colSpan={5} className="bg-zinc-50/60 px-4 py-4">
             <form action={action} className="grid max-w-2xl grid-cols-2 gap-3">
               <TherapyFields defaults={therapy} />
               {state?.message && <p className="col-span-2 text-sm text-red-600">{state.message}</p>}

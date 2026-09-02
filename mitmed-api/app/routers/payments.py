@@ -134,6 +134,9 @@ def create_payment(
     except CouponError as err:
         raise HTTPException(status_code=422, detail=str(err)) from err
 
+    # O terapie cumpărată individual e mereu o ședință unică — package_total_sessions
+    # rămâne null. Orice "cumpăr N ședințe" trece prin /admin/pachete (vezi
+    # _create_package_payments mai sus), care setează explicit acest câmp.
     payment = Payment(
         client_id=payload.client_id,
         therapy_id=payload.therapy_id,
@@ -144,7 +147,6 @@ def create_payment(
         method=payload.method,
         status=PaymentStatus.PLATIT if payload.mark_paid else PaymentStatus.NEPLATIT,
         paid_at=datetime.now(timezone.utc) if payload.mark_paid else None,
-        package_total_sessions=therapy.sessions_included if therapy.sessions_included > 1 else None,
     )
     db.add(payment)
 

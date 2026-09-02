@@ -17,7 +17,6 @@ class TherapyOut(BaseModel):
     description: str | None
     duration_minutes: int
     price: str
-    sessions_included: int
     active: bool
 
     @classmethod
@@ -28,7 +27,6 @@ class TherapyOut(BaseModel):
             description=t.description,
             duration_minutes=t.duration_minutes,
             price=str(t.price),
-            sessions_included=t.sessions_included,
             active=t.active,
         )
 
@@ -38,10 +36,11 @@ class TherapyIn(BaseModel):
     description: str | None = None
     duration_minutes: int = Field(gt=0)
     price: float = Field(ge=0)
-    sessions_included: int = Field(ge=1, default=1)
 
 
 # Catalogul de terapii + prețurile — editabil DOAR de ADMIN (nu recepție).
+# O terapie e mereu o ședință unică; orice "cumpăr N ședințe" (dintr-o singură
+# terapie sau combinate) se face prin /admin/pachete, nu de-aici.
 
 
 @router.get("")

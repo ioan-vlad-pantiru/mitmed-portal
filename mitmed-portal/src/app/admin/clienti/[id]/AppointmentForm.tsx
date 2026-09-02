@@ -5,7 +5,7 @@ import { createAppointmentForClient } from "@/actions/appointments";
 import { Input, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 
-type Therapy = { id: string; name: string; sessionsIncluded?: number };
+type Therapy = { id: string; name: string };
 
 export function AppointmentForm({ clientId, therapies }: { clientId: string; therapies: Therapy[] }) {
   const action = createAppointmentForClient.bind(null, clientId);
@@ -19,7 +19,6 @@ export function AppointmentForm({ clientId, therapies }: { clientId: string; the
           {therapies.map((t) => (
             <option key={t.id} value={t.id}>
               {t.name}
-              {t.sessionsIncluded && t.sessionsIncluded > 1 ? ` (pachet ${t.sessionsIncluded}×)` : ""}
             </option>
           ))}
         </Select>

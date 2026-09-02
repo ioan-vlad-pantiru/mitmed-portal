@@ -5,7 +5,7 @@ import { createPayment, previewPrice } from "@/actions/payments";
 import { Input, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 
-type Therapy = { id: string; name: string; price: string | number; sessionsIncluded?: number };
+type Therapy = { id: string; name: string; price: string | number };
 
 type Coupon = {
   id: string;
@@ -189,8 +189,7 @@ export function PaymentForm({
               >
                 {therapies.map((t) => (
                   <option key={t.id} value={t.id}>
-                    {t.name}
-                    {t.sessionsIncluded && t.sessionsIncluded > 1 ? ` (pachet ${t.sessionsIncluded}×)` : ""} — {t.price} RON
+                    {t.name} — {t.price} RON
                   </option>
                 ))}
               </Select>

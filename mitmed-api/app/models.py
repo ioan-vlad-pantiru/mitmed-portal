@@ -133,7 +133,6 @@ class Therapy(Base):
     description: Mapped[str | None] = mapped_column(String)
     duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
     price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
-    sessions_included: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
@@ -236,7 +235,9 @@ class Payment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     appointment_id: Mapped[str | None] = mapped_column(String, ForeignKey("appointments.id"), unique=True)
-    # Instantaneu al therapy.sessions_included la cumpărare — null = ședință unică.
+    # Setat doar când plata provine dintr-un pachet (vezi PackageItem.sessions_included
+    # la momentul cumpărării) — o terapie cumpărată individual e mereu ședință unică,
+    # orice "cumpăr N ședințe" trece obligatoriu prin /admin/pachete.
     package_total_sessions: Mapped[int | None] = mapped_column(Integer)
     sessions_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 

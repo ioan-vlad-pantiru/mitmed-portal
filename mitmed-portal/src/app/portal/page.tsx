@@ -42,7 +42,6 @@ export default async function PortalPage() {
       name: t.name,
       price: t.price,
       durationMinutes: t.duration_minutes,
-      sessionsIncluded: t.sessions_included,
     }));
 
   const hasHadSession = client.medical_records.length > 0;

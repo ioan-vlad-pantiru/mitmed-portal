@@ -8,7 +8,6 @@ export function TherapyFields({
     description?: string | null;
     durationMinutes?: number;
     price?: string | number;
-    sessionsIncluded?: number;
   };
 }) {
   return (
@@ -29,7 +28,7 @@ export function TherapyFields({
         />
       </div>
       <div className="col-span-2 sm:col-span-1">
-        <label className="block text-xs font-medium text-zinc-700">Preț total (RON)</label>
+        <label className="block text-xs font-medium text-zinc-700">Preț (RON)</label>
         <Input
           name="price"
           type="number"
@@ -39,19 +38,13 @@ export function TherapyFields({
           defaultValue={defaults?.price}
           className="mt-1"
         />
-        <p className="mt-1 text-xs text-zinc-400">Dacă e pachet, prețul e al pachetului întreg.</p>
-      </div>
-      <div className="col-span-2 sm:col-span-1">
-        <label className="block text-xs font-medium text-zinc-700">Ședințe incluse</label>
-        <Input
-          name="sessionsIncluded"
-          type="number"
-          min={1}
-          required
-          defaultValue={defaults?.sessionsIncluded ?? 1}
-          className="mt-1"
-        />
-        <p className="mt-1 text-xs text-zinc-400">1 = ședință unică · &gt;1 = pachet de mai multe ședințe.</p>
+        <p className="mt-1 text-xs text-zinc-400">
+          Preț pentru o ședință unică. Pentru pachete cu mai multe ședințe, vezi{" "}
+          <a href="/admin/pachete" className="text-sky-600 hover:underline">
+            Pachete
+          </a>
+          .
+        </p>
       </div>
       <div className="col-span-2">
         <label className="block text-xs font-medium text-zinc-700">Descriere (opțional)</label>

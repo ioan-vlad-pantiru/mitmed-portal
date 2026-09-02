@@ -3,7 +3,7 @@
 import { useActionState } from "react";
 import { createOwnAppointment } from "@/actions/appointments";
 
-type Therapy = { id: string; name: string; price: string; durationMinutes: number; sessionsIncluded?: number };
+type Therapy = { id: string; name: string; price: string; durationMinutes: number };
 
 export function BookingForm({ therapies }: { therapies: Therapy[] }) {
   const [state, action, pending] = useActionState(createOwnAppointment, undefined);
@@ -15,9 +15,7 @@ export function BookingForm({ therapies }: { therapies: Therapy[] }) {
         <select name="therapyId" className="mt-1 w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm">
           {therapies.map((t) => (
             <option key={t.id} value={t.id}>
-              {t.name}
-              {t.sessionsIncluded && t.sessionsIncluded > 1 ? ` (pachet ${t.sessionsIncluded}×)` : ""} —{" "}
-              {t.durationMinutes} min — {t.price} RON
+              {t.name} — {t.durationMinutes} min — {t.price} RON
             </option>
           ))}
         </select>

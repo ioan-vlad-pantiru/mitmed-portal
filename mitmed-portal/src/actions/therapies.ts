@@ -11,7 +11,6 @@ export type Therapy = {
   description: string | null;
   duration_minutes: number;
   price: string;
-  sessions_included: number;
   active: boolean;
 };
 
@@ -28,7 +27,6 @@ function parseTherapyForm(formData: FormData) {
     description: String(formData.get("description") ?? "") || null,
     duration_minutes: Number(formData.get("durationMinutes")),
     price: Number(formData.get("price")),
-    sessions_included: Number(formData.get("sessionsIncluded") || 1),
   };
 }
 

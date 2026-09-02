@@ -80,7 +80,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
 
   const therapies = therapiesRaw
     .filter((t) => t.active)
-    .map((t) => ({ id: t.id, name: t.name, price: t.price, sessionsIncluded: t.sessions_included }));
+    .map((t) => ({ id: t.id, name: t.name, price: t.price }));
   const activePackages = packagesRaw.filter((p) => p.active);
 
   // Plățile provenite dintr-un pachet multi-terapie (același package_purchase_id)

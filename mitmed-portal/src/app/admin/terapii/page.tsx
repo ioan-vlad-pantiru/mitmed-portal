@@ -10,7 +10,17 @@ export default async function TherapiesPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-lg font-semibold text-zinc-900">Catalog terapii</h1>
+      <div>
+        <h1 className="text-lg font-semibold text-zinc-900">Catalog terapii</h1>
+        <p className="text-sm text-zinc-500">
+          Fiecare terapie e o ședință unică. Pentru pachete cu mai multe ședințe (dintr-o singură terapie sau
+          combinate), vezi{" "}
+          <a href="/admin/pachete" className="text-sky-600 hover:underline">
+            Pachete
+          </a>
+          .
+        </p>
+      </div>
 
       <div className="overflow-hidden mm-card">
         <table className="w-full text-sm">
@@ -19,7 +29,6 @@ export default async function TherapiesPage() {
               <th className="px-4 py-2.5">Nume</th>
               <th className="px-4 py-2.5">Durată</th>
               <th className="px-4 py-2.5">Preț</th>
-              <th className="px-4 py-2.5">Ședințe</th>
               <th className="px-4 py-2.5">Activă</th>
               <th className="px-4 py-2" />
             </tr>
@@ -34,7 +43,6 @@ export default async function TherapiesPage() {
                   description: t.description,
                   durationMinutes: t.duration_minutes,
                   price: t.price,
-                  sessionsIncluded: t.sessions_included,
                   active: t.active,
                 }}
               />
