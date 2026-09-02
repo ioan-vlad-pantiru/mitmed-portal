@@ -47,7 +47,16 @@ export function getWeekRange(weekParam: string | undefined) {
 }
 
 function toDateParam(d: Date) {
-  return d.toISOString().slice(0, 10);
+  // NU d.toISOString() — aia convertește la UTC, iar pe un fus orar înaintea
+  // UTC (ex. România, EEST = UTC+3), miezul nopții local devine ziua
+  // anterioară în UTC. Rezultatul: click pe "săptămâna viitoare" trimitea
+  // uneori o dată de duminică din săptămâna curentă, pe care mondayOf() o
+  // interpreta ca aparținând tot săptămânii afișate — butonul de dreapta
+  // părea că nu face nimic. Construim string-ul din componentele LOCALE.
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 export function WeekCalendar({
