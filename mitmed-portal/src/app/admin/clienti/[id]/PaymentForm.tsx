@@ -1,0 +1,207 @@
+"use client";
+
+import { useActionState, useMemo, useState, useTransition } from "react";
+import { createPayment, previewPrice } from "@/actions/payments";
+
+type Therapy = { id: string; name: string; price: string | number; sessionsIncluded?: number };
+
+type Coupon = {
+  id: string;
+  code: string;
+  type: string;
+  value: string;
+  active: boolean;
+  valid_from: string | null;
+  valid_until: string | null;
+  max_uses: number | null;
+  uses_count: number;
+  therapies: { id: string; name: string }[];
+};
+
+const MANUAL_OPTION = "__manual__";
+const NONE_OPTION = "";
+
+export function PaymentForm({
+  clientId,
+  therapies,
+  coupons,
+}: {
+  clientId: string;
+  therapies: Therapy[];
+  coupons: Coupon[];
+}) {
+  const [state, action, pending] = useActionState(createPayment, undefined);
+  const [therapyId, setTherapyId] = useState(therapies[0]?.id ?? "");
+  const [couponCode, setCouponCode] = useState("");
+  const [couponMode, setCouponMode] = useState<string>(NONE_OPTION); // coupon id, MANUAL_OPTION, or NONE_OPTION
+  const [preview, setPreview] = useState<{ base_price: string; discount_amount: string; final_price: string } | null>(
+    null
+  );
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [isPreviewing, startPreview] = useTransition();
+
+  const now = useMemo(() => Date.now(), []);
+
+  const couponAppliesTo = (c: Coupon, tId: string) =>
+    c.therapies.length === 0 || c.therapies.some((t) => t.id === tId);
+
+  // Cupoane active, valabile acum, neepuizate și aplicabile terapiei alese
+  // (sau fără restricție de terapie) — ce apare în listă de selectat rapid.
+  const availableCoupons = useMemo(
+    () =>
+      coupons.filter((c) => {
+        if (!c.active) return false;
+        if (c.valid_from && new Date(c.valid_from).getTime() > now) return false;
+        if (c.valid_until && new Date(c.valid_until).getTime() < now) return false;
+        if (c.max_uses !== null && c.uses_count >= c.max_uses) return false;
+        if (!couponAppliesTo(c, therapyId)) return false;
+        return true;
+      }),
+    [coupons, therapyId, now]
+  );
+
+  function refreshPreview(nextTherapyId: string, nextCoupon: string) {
+    if (!nextTherapyId) return;
+    startPreview(async () => {
+      const result = await previewPrice(nextTherapyId, nextCoupon || undefined);
+      if (result.error || !result.base_price || !result.discount_amount || !result.final_price) {
+        setPreviewError(result.error ?? null);
+        setPreview(null);
+      } else {
+        setPreviewError(null);
+        setPreview({
+          base_price: result.base_price,
+          discount_amount: result.discount_amount,
+          final_price: result.final_price,
+        });
+      }
+    });
+  }
+
+  function handleCouponModeChange(value: string) {
+    setCouponMode(value);
+    if (value === NONE_OPTION) {
+      setCouponCode("");
+      refreshPreview(therapyId, "");
+    } else if (value === MANUAL_OPTION) {
+      setCouponCode("");
+    } else {
+      const picked = coupons.find((c) => c.id === value);
+      const code = picked?.code ?? "";
+      setCouponCode(code);
+      refreshPreview(therapyId, code);
+    }
+  }
+
+  return (
+    <form action={action} className="mt-3 space-y-3 mm-card p-4">
+      <input type="hidden" name="clientId" value={clientId} />
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs font-medium text-zinc-700">Terapie</label>
+          <select
+            name="therapyId"
+            value={therapyId}
+            onChange={(e) => {
+              const nextTherapyId = e.target.value;
+              setTherapyId(nextTherapyId);
+
+              // Dacă cuponul ales din listă nu se mai aplică terapiei noi,
+              // resetează selecția în loc să trimită un cod care nu se mai potrivește.
+              const stillApplies =
+                couponMode === NONE_OPTION ||
+                couponMode === MANUAL_OPTION ||
+                coupons.some((c) => c.id === couponMode && couponAppliesTo(c, nextTherapyId));
+
+              if (!stillApplies) {
+                setCouponMode(NONE_OPTION);
+                setCouponCode("");
+                refreshPreview(nextTherapyId, "");
+              } else {
+                refreshPreview(nextTherapyId, couponCode);
+              }
+            }}
+            className="mt-1 w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+          >
+            {therapies.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+                {t.sessionsIncluded && t.sessionsIncluded > 1 ? ` (pachet ${t.sessionsIncluded}×)` : ""} — {t.price} RON
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-zinc-700">Cupon</label>
+          <select
+            value={couponMode}
+            onChange={(e) => handleCouponModeChange(e.target.value)}
+            className="mt-1 w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+          >
+            <option value={NONE_OPTION}>Fără cupon</option>
+            {availableCoupons.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.code} — {c.value}
+                {c.type === "PROCENT" ? "%" : " RON"}
+              </option>
+            ))}
+            <option value={MANUAL_OPTION}>Alt cod (introdu manual)…</option>
+          </select>
+        </div>
+      </div>
+
+      {couponMode === MANUAL_OPTION && (
+        <div>
+          <label className="block text-xs font-medium text-zinc-700">Cod cupon</label>
+          <input
+            name="couponCode"
+            value={couponCode}
+            onChange={(e) => {
+              setCouponCode(e.target.value);
+              refreshPreview(therapyId, e.target.value);
+            }}
+            className="mt-1 w-full max-w-xs rounded-md border border-zinc-300 px-2 py-1.5 text-sm uppercase"
+          />
+        </div>
+      )}
+      {couponMode !== MANUAL_OPTION && (
+        <input type="hidden" name="couponCode" value={couponCode} />
+      )}
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs font-medium text-zinc-700">Metodă</label>
+          <select name="method" className="mt-1 w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm">
+            <option value="numerar">Numerar</option>
+            <option value="card">Card</option>
+            <option value="transfer">Transfer</option>
+          </select>
+        </div>
+        <label className="mt-6 flex items-center gap-2 text-sm text-zinc-700">
+          <input type="checkbox" name="markPaid" value="1" />
+          Marchează ca plătită acum
+        </label>
+      </div>
+
+      {isPreviewing && <p className="text-sm text-zinc-400">Se calculează…</p>}
+      {previewError && <p className="text-sm text-red-600">{previewError}</p>}
+      {preview && !previewError && (
+        <p className="text-sm text-zinc-700">
+          Preț bază: {preview.base_price} RON · Reducere: {preview.discount_amount} RON ·{" "}
+          <strong>Total: {preview.final_price} RON</strong>
+        </p>
+      )}
+
+      {state?.message && <p className="text-sm text-red-600">{state.message}</p>}
+
+      <button
+        type="submit"
+        disabled={pending}
+        className="rounded-md bg-sky-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-60"
+      >
+        {pending ? "Se salvează…" : "Înregistrează plată"}
+      </button>
+    </form>
+  );
+}

@@ -1,0 +1,60 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { IconCalendar, IconUsers, IconTherapy, IconTag, IconChart, IconInbox } from "@/components/icons";
+
+type NavItem = { href: string; label: string; icon: React.ComponentType<{ className?: string }> };
+
+export function AdminSidebar({ isAdmin, onNavigate }: { isAdmin: boolean; onNavigate?: () => void }) {
+  const pathname = usePathname();
+
+  const items: NavItem[] = [
+    { href: "/admin", label: "Bord", icon: IconCalendar },
+    { href: "/admin/clienti", label: "Clienți", icon: IconUsers },
+    { href: "/admin/cereri", label: "Cereri", icon: IconInbox },
+    { href: "/admin/insights", label: "Insights", icon: IconChart },
+    ...(isAdmin
+      ? [
+          { href: "/admin/terapii", label: "Terapii", icon: IconTherapy },
+          { href: "/admin/cupoane", label: "Cupoane", icon: IconTag },
+        ]
+      : []),
+  ];
+
+  return (
+    <nav className="flex h-[calc(100vh-3.5rem)] w-56 shrink-0 flex-col border-r border-zinc-200/70 bg-white px-2.5 py-5 shadow-xl sm:h-full sm:shadow-none">
+      <div className="flex flex-col gap-0.5">
+        {items.map((item) => {
+          const active = item.href === "/admin" ? pathname === "/admin" : pathname.startsWith(item.href);
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              onClick={onNavigate}
+              className={`group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                active ? "bg-[var(--mitmed-sky)]/12 text-[var(--mitmed-teal-deep)]" : "text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900"
+              }`}
+            >
+              {active && (
+                <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-[var(--mitmed-teal)]" />
+              )}
+              <Icon
+                className={`h-[18px] w-[18px] transition-colors ${
+                  active ? "text-[var(--mitmed-teal)]" : "text-zinc-400 group-hover:text-zinc-600"
+                }`}
+              />
+              {item.label}
+            </Link>
+          );
+        })}
+      </div>
+
+      <div className="mt-auto flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-zinc-400">
+        <span className="h-1.5 w-1.5 rounded-full bg-[var(--mitmed-orange)]" />
+        Puterea vindecării
+      </div>
+    </nav>
+  );
+}

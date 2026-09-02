@@ -1,0 +1,35 @@
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mitmed
+      POSTGRES_PASSWORD: mitmed_dev_password
+      POSTGRES_DB: mitmed_portal
+    ports:
+      - "5433:5432"
+    volumes:
+      - mitmed_portal_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mitmed"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: ./mitmed-api
+    restart: unless-stopped
+    env_file:
+      - ./mitmed-api/.env
+    environment:
+      DATABASE_URL: "postgresql+psycopg://mitmed:mitmed_dev_password@db:5432/mitmed_portal"
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./mitmed-api:/app
+
+volumes:
+  mitmed_portal_db:

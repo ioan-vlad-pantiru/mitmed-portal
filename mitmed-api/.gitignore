@@ -1,0 +1,19 @@
+# virtualenv
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# env files (opt-in for committing if needed)
+.env
+.env.*
+!.env.example
+
+# logs
+*.log
