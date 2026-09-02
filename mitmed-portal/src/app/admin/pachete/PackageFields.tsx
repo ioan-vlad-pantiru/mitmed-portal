@@ -57,7 +57,7 @@ export function PackageFields({
               <Select
                 value={line.therapyId}
                 onChange={(e) => updateLine(idx, { therapyId: e.target.value })}
-                className="flex-1"
+                className="min-w-0 flex-1"
               >
                 {therapies.map((t) => (
                   <option key={t.id} value={t.id}>
@@ -70,7 +70,7 @@ export function PackageFields({
                 min={1}
                 value={line.sessions}
                 onChange={(e) => updateLine(idx, { sessions: Number(e.target.value) })}
-                className="w-24"
+                className="w-24 shrink-0"
                 aria-label="Ședințe"
               />
               <span className="shrink-0 text-xs text-zinc-400">ședințe</span>

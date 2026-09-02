@@ -72,8 +72,17 @@ body {
 
 /* --- Primitive de bază, folosite de componentele din src/components/ui --- */
 
-.mm-input {
+/* :where() ține specificitatea la zero — altfel `width: 100%` de aici are
+   aceeași specificitate ca utilitarele Tailwind (w-24, flex-1 etc.), iar
+   cine câștigă depinde de ordinea din foaia de stil finală, NU de ordinea
+   claselor din JSX. Fără :where(), un `className="w-24"` pierde uneori în
+   fața acestei reguli, inputul se întinde la 100% și strivește vecinii din
+   același flex row (exact ce s-a întâmplat cu selectul de terapie din
+   pachete — vezi PackageFields.tsx). */
+:where(.mm-input) {
   width: 100%;
+}
+.mm-input {
   border-radius: var(--mm-radius-sm);
   border: 1px solid rgb(212 212 216); /* zinc-300 */
   padding: 0.375rem 0.625rem;
