@@ -121,6 +121,16 @@ export function IconSearch({ className }: IconProps) {
   );
 }
 
+export function IconPackage({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M12 3 3 7.5 12 12l9-4.5L12 3Z" />
+      <path d="M3 7.5v9L12 21l9-4.5v-9" />
+      <path d="M12 12v9" />
+    </svg>
+  );
+}
+
 export function IconChevronLeft({ className }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>

@@ -186,6 +186,7 @@ def get_client_detail(
             joinedload(ClientProfile.medical_records).joinedload(MedicalRecord.author),
             joinedload(ClientProfile.payments).joinedload(Payment.therapy),
             joinedload(ClientProfile.payments).joinedload(Payment.coupon),
+            joinedload(ClientProfile.payments).joinedload(Payment.package),
             joinedload(ClientProfile.appointments).joinedload(Appointment.therapy),
         )
         .filter(ClientProfile.id == client_id)
@@ -281,6 +282,8 @@ def _serialize_client_detail(client: ClientProfile) -> dict:
                 "coupon": {"code": p.coupon.code} if p.coupon else None,
                 "package_total_sessions": p.package_total_sessions,
                 "sessions_used": p.sessions_used,
+                "package_name": p.package.name if p.package else None,
+                "package_purchase_id": p.package_purchase_id,
             }
             for p in sorted(client.payments, key=lambda p: p.created_at, reverse=True)
         ],

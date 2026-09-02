@@ -14,6 +14,7 @@ from app.routers import (
     coupons,
     insights,
     medical_records,
+    packages,
     payments,
     public,
     therapies,
@@ -40,6 +41,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(clients.router)
 app.include_router(therapies.router)
+app.include_router(packages.router)
 app.include_router(coupons.router)
 app.include_router(medical_records.router)
 app.include_router(payments.router)

@@ -14,19 +14,28 @@ export async function createPayment(
   await requireRole(Role.ADMIN, Role.RECEPTIE);
 
   const clientId = String(formData.get("clientId") ?? "");
-  const therapyId = String(formData.get("therapyId") ?? "");
-  const couponCode = String(formData.get("couponCode") ?? "") || null;
+  const mode = String(formData.get("saleMode") ?? "therapy");
   const method = String(formData.get("method") ?? "") || null;
   const markPaid = Boolean(formData.get("markPaid"));
 
+  const payload =
+    mode === "package"
+      ? {
+          client_id: clientId,
+          package_id: String(formData.get("packageId") ?? ""),
+          method,
+          mark_paid: markPaid,
+        }
+      : {
+          client_id: clientId,
+          therapy_id: String(formData.get("therapyId") ?? ""),
+          coupon_code: String(formData.get("couponCode") ?? "") || null,
+          method,
+          mark_paid: markPaid,
+        };
+
   try {
-    await apiPost("/payments", {
-      client_id: clientId,
-      therapy_id: therapyId,
-      coupon_code: couponCode,
-      method,
-      mark_paid: markPaid,
-    });
+    await apiPost("/payments", payload);
   } catch (err) {
     if (err instanceof ApiError) return { message: err.message };
     throw err;

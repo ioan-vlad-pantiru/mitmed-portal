@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getClientDetail } from "@/actions/clients";
 import { listTherapies } from "@/actions/therapies";
 import { listCoupons } from "@/actions/coupons";
+import { listPackages } from "@/actions/packages";
 import { getClientConsents, type ConsentType } from "@/actions/consents";
 import Link from "next/link";
 import { MedicalRecordForm } from "./MedicalRecordForm";
@@ -48,6 +49,8 @@ type ClientDetail = {
     coupon: { code: string } | null;
     package_total_sessions: number | null;
     sessions_used: number;
+    package_name: string | null;
+    package_purchase_id: string | null;
   }[];
   appointments: {
     id: string;
@@ -60,10 +63,11 @@ type ClientDetail = {
 
 export default async function ClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [clientRaw, therapiesRaw, coupons] = await Promise.all([
+  const [clientRaw, therapiesRaw, coupons, packagesRaw] = await Promise.all([
     getClientDetail(id),
     listTherapies(),
     listCoupons(),
+    listPackages(),
   ]);
 
   if (!clientRaw) notFound();
@@ -81,6 +85,35 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
   const therapies = therapiesRaw
     .filter((t) => t.active)
     .map((t) => ({ id: t.id, name: t.name, price: t.price, sessionsIncluded: t.sessions_included }));
+  const activePackages = packagesRaw.filter((p) => p.active);
+
+  // Plățile provenite dintr-un pachet multi-terapie (același package_purchase_id)
+  // se afișează grupate ca "o singură achiziție" cu sub-rânduri per terapie,
+  // nu ca intrări separate fără legătură vizuală între ele.
+  const singlePayments = client.payments.filter((p) => !p.package_purchase_id);
+  const packageGroups = Object.values(
+    client.payments
+      .filter((p) => p.package_purchase_id)
+      .reduce<Record<string, { purchaseId: string; packageName: string; createdAt: string; status: string; total: number; items: typeof client.payments }>>(
+        (acc, p) => {
+          const key = p.package_purchase_id as string;
+          if (!acc[key]) {
+            acc[key] = {
+              purchaseId: key,
+              packageName: p.package_name ?? "Pachet",
+              createdAt: p.created_at,
+              status: p.status,
+              total: 0,
+              items: [],
+            };
+          }
+          acc[key].total += Number(p.final_price);
+          acc[key].items.push(p);
+          return acc;
+        },
+        {}
+      )
+  );
 
   return (
     <div className="space-y-8">
@@ -207,6 +240,34 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
 
       <section>
         <h2 className="text-base font-semibold text-zinc-900">Plăți</h2>
+
+        {packageGroups.length > 0 && (
+          <div className="mt-3 space-y-2">
+            {packageGroups.map((g) => (
+              <div key={g.purchaseId} className="mm-card p-4">
+                <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+                  <span className="font-medium text-zinc-900">
+                    Pachet: {g.packageName} <span className="font-normal text-zinc-400">({g.status})</span>
+                  </span>
+                  <span className="text-zinc-500">
+                    {new Date(g.createdAt).toLocaleDateString("ro-RO")} · <strong>{g.total.toFixed(2)} RON</strong>
+                  </span>
+                </div>
+                <ul className="mt-2 divide-y divide-zinc-100 text-sm text-zinc-600">
+                  {g.items.map((i) => (
+                    <li key={i.id} className="flex items-center justify-between py-1.5">
+                      <span>{i.therapy.name}</span>
+                      <span className="mm-numeric">
+                        {i.sessions_used}/{i.package_total_sessions} folosite
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="mt-3 overflow-hidden mm-card">
           <table className="w-full text-sm">
             <thead className="border-b border-zinc-100 bg-zinc-50/60 text-left text-xs font-medium uppercase tracking-wide text-zinc-400">
@@ -221,7 +282,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
-              {client.payments.map((p) => (
+              {singlePayments.map((p) => (
                 <tr key={p.id} className="transition-colors hover:bg-zinc-50/70">
                   <td className="px-4 py-2 text-zinc-600">{new Date(p.created_at).toLocaleDateString("ro-RO")}</td>
                   <td className="px-4 py-2">{p.therapy.name}</td>
@@ -239,17 +300,17 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
                   <td className="px-4 py-2">{p.status}</td>
                 </tr>
               ))}
-              {client.payments.length === 0 && (
+              {singlePayments.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-4 py-6 text-center text-zinc-400">
-                    Nicio plată încă.
+                    Nicio plată individuală încă.
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
-        <PaymentForm clientId={client.id} therapies={therapies} coupons={coupons} />
+        <PaymentForm clientId={client.id} therapies={therapies} coupons={coupons} packages={activePackages} />
       </section>
 
       <section>

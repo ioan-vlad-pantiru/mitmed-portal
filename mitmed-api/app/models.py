@@ -189,6 +189,40 @@ class MedicalRecord(Base):
     therapy: Mapped[Therapy | None] = relationship()
 
 
+class TherapyPackage(Base):
+    """Pachet cu preț fix, definit de admin, care poate combina ședințe din
+    mai multe terapii diferite (ex. "Pachet Recuperare" = 3× Kinetoterapie +
+    2× Masaj). Vânzarea unui pachet generează câte un Payment per terapie
+    inclusă (vezi routers/payments.py) — nu o entitate de plată separată —
+    ca să reutilizeze neschimbat tot codul existent de urmărire a ședințelor
+    (services/packages.py) și atribuirea veniturilor pe terapie (insights)."""
+
+    __tablename__ = "therapy_packages"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_id)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    items: Mapped[list["PackageItem"]] = relationship(back_populates="package", cascade="all, delete-orphan")
+
+
+class PackageItem(Base):
+    """O linie din "rețeta" unui pachet: X ședințe dintr-o anumită terapie."""
+
+    __tablename__ = "package_items"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_id)
+    package_id: Mapped[str] = mapped_column(String, ForeignKey("therapy_packages.id", ondelete="CASCADE"), index=True)
+    therapy_id: Mapped[str] = mapped_column(String, ForeignKey("therapies.id"))
+    sessions_included: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+    package: Mapped[TherapyPackage] = relationship(back_populates="items")
+    therapy: Mapped[Therapy] = relationship()
+
+
 class Payment(Base):
     __tablename__ = "payments"
 
@@ -211,9 +245,19 @@ class Payment(Base):
     package_total_sessions: Mapped[int | None] = mapped_column(Integer)
     sessions_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
+    # Setate doar când acest rând provine dintr-un pachet multi-terapie (nu la
+    # o ședință unică/pachet mono-terapie clasic, unde rămân null). Un singur
+    # pachet cumpărat generează CÂTE UN Payment per terapie inclusă — toate
+    # cu același package_purchase_id — ca să poată fi grupate în UI ca "o
+    # singură achiziție", deși consumul de ședințe (package_total_sessions/
+    # sessions_used de mai sus) funcționează identic ca la o terapie simplă.
+    package_id: Mapped[str | None] = mapped_column(String, ForeignKey("therapy_packages.id"), index=True)
+    package_purchase_id: Mapped[str | None] = mapped_column(String, index=True)
+
     client: Mapped[ClientProfile] = relationship(back_populates="payments")
     therapy: Mapped[Therapy] = relationship()
     coupon: Mapped[Coupon | None] = relationship()
+    package: Mapped[TherapyPackage | None] = relationship()
 
 
 class Appointment(Base):
