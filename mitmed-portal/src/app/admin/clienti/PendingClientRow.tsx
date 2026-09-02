@@ -3,6 +3,7 @@
 import { useTransition } from "react";
 import { approveClient, suspendClient } from "@/actions/clients";
 import { useToast } from "@/components/Toast";
+import { Button } from "@/components/ui/Button";
 
 export function PendingClientRow({
   userId,
@@ -45,20 +46,12 @@ export function PendingClientRow({
         <span className="text-zinc-500">{email}</span>
       </span>
       <span className="flex gap-2">
-        <button
-          disabled={pending}
-          onClick={handleApprove}
-          className="rounded-md bg-emerald-600 px-3 py-1 text-white hover:bg-emerald-700 disabled:opacity-60"
-        >
+        <Button variant="success" disabled={pending} onClick={handleApprove}>
           Aprobă
-        </button>
-        <button
-          disabled={pending}
-          onClick={handleReject}
-          className="rounded-md border border-zinc-300 px-3 py-1 text-zinc-600 hover:bg-zinc-50 disabled:opacity-60"
-        >
+        </Button>
+        <Button variant="secondary" disabled={pending} onClick={handleReject}>
           Respinge
-        </button>
+        </Button>
       </span>
     </li>
   );

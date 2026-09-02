@@ -2,6 +2,8 @@
 
 import { useActionState, useMemo, useState, useTransition } from "react";
 import { createPayment, previewPrice } from "@/actions/payments";
+import { Input, Select } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
 
 type Therapy = { id: string; name: string; price: string | number; sessionsIncluded?: number };
 
@@ -100,9 +102,10 @@ export function PaymentForm({
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-xs font-medium text-zinc-700">Terapie</label>
-          <select
+          <Select
             name="therapyId"
             value={therapyId}
+            className="mt-1"
             onChange={(e) => {
               const nextTherapyId = e.target.value;
               setTherapyId(nextTherapyId);
@@ -122,7 +125,6 @@ export function PaymentForm({
                 refreshPreview(nextTherapyId, couponCode);
               }
             }}
-            className="mt-1 w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
           >
             {therapies.map((t) => (
               <option key={t.id} value={t.id}>
@@ -130,15 +132,11 @@ export function PaymentForm({
                 {t.sessionsIncluded && t.sessionsIncluded > 1 ? ` (pachet ${t.sessionsIncluded}×)` : ""} — {t.price} RON
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <div>
           <label className="block text-xs font-medium text-zinc-700">Cupon</label>
-          <select
-            value={couponMode}
-            onChange={(e) => handleCouponModeChange(e.target.value)}
-            className="mt-1 w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
-          >
+          <Select value={couponMode} onChange={(e) => handleCouponModeChange(e.target.value)} className="mt-1">
             <option value={NONE_OPTION}>Fără cupon</option>
             {availableCoupons.map((c) => (
               <option key={c.id} value={c.id}>
@@ -147,21 +145,21 @@ export function PaymentForm({
               </option>
             ))}
             <option value={MANUAL_OPTION}>Alt cod (introdu manual)…</option>
-          </select>
+          </Select>
         </div>
       </div>
 
       {couponMode === MANUAL_OPTION && (
         <div>
           <label className="block text-xs font-medium text-zinc-700">Cod cupon</label>
-          <input
+          <Input
             name="couponCode"
             value={couponCode}
             onChange={(e) => {
               setCouponCode(e.target.value);
               refreshPreview(therapyId, e.target.value);
             }}
-            className="mt-1 w-full max-w-xs rounded-md border border-zinc-300 px-2 py-1.5 text-sm uppercase"
+            className="mt-1 max-w-xs uppercase"
           />
         </div>
       )}
@@ -172,11 +170,11 @@ export function PaymentForm({
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-xs font-medium text-zinc-700">Metodă</label>
-          <select name="method" className="mt-1 w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm">
+          <Select name="method" className="mt-1">
             <option value="numerar">Numerar</option>
             <option value="card">Card</option>
             <option value="transfer">Transfer</option>
-          </select>
+          </Select>
         </div>
         <label className="mt-6 flex items-center gap-2 text-sm text-zinc-700">
           <input type="checkbox" name="markPaid" value="1" />
@@ -195,13 +193,9 @@ export function PaymentForm({
 
       {state?.message && <p className="text-sm text-red-600">{state.message}</p>}
 
-      <button
-        type="submit"
-        disabled={pending}
-        className="rounded-md bg-sky-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-60"
-      >
+      <Button type="submit" disabled={pending}>
         {pending ? "Se salvează…" : "Înregistrează plată"}
-      </button>
+      </Button>
     </form>
   );
 }

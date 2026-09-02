@@ -4,6 +4,8 @@ import { useTransition } from "react";
 import Link from "next/link";
 import { markBookingRequestConfirmed, rejectBookingRequest, type BookingRequest } from "@/actions/publicBookings";
 import { useToast } from "@/components/Toast";
+import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
 
 export function BookingRequestRow({ request, readonly }: { request: BookingRequest; readonly?: boolean }) {
   const [pending, startTransition] = useTransition();
@@ -24,19 +26,18 @@ export function BookingRequestRow({ request, readonly }: { request: BookingReque
               Preferă: {new Date(request.preferred_starts_at).toLocaleString("ro-RO")}
             </p>
           )}
-          {request.message && <p className="mt-1 whitespace-pre-wrap text-zinc-500">„{request.message}"</p>}
+          {request.message && <p className="mt-1 whitespace-pre-wrap text-zinc-500">„{request.message}”</p>}
           <p className="mt-1 text-xs text-zinc-400">{new Date(request.created_at).toLocaleString("ro-RO")}</p>
         </div>
 
         {!readonly && (
           <div className="flex shrink-0 gap-2">
-            <Link
-              href="/admin/clienti"
-              className="rounded-md bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-700"
-            >
+            <Link href="/admin/clienti" className="mm-btn text-xs" data-variant="primary">
               Creează cont + confirmă
             </Link>
-            <button
+            <Button
+              variant="secondary"
+              className="text-xs"
               disabled={pending}
               onClick={() =>
                 startTransition(async () => {
@@ -48,11 +49,12 @@ export function BookingRequestRow({ request, readonly }: { request: BookingReque
                   }
                 })
               }
-              className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-50 disabled:opacity-60"
             >
               Marchează rezolvată
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="secondary"
+              className="text-xs"
               disabled={pending}
               onClick={() =>
                 startTransition(async () => {
@@ -64,15 +66,12 @@ export function BookingRequestRow({ request, readonly }: { request: BookingReque
                   }
                 })
               }
-              className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-50 disabled:opacity-60"
             >
               Respinge
-            </button>
+            </Button>
           </div>
         )}
-        {readonly && (
-          <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-500">{request.status}</span>
-        )}
+        {readonly && <Badge variant="neutral">{request.status}</Badge>}
       </div>
     </div>
   );

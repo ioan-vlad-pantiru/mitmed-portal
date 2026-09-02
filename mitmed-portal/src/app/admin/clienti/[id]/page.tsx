@@ -10,6 +10,7 @@ import { AppointmentForm } from "./AppointmentForm";
 import { CancelAppointmentButton } from "./CancelAppointmentButton";
 import { ResetPasswordButton } from "./ResetPasswordButton";
 import { BodyMapView } from "@/components/BodyMap";
+import { Badge } from "@/components/ui/Badge";
 
 type ClientDetail = {
   id: string;
@@ -160,14 +161,9 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
           {(Object.keys(CONSENT_LABELS) as ConsentType[]).map((type) => {
             const signed = signedTypes.has(type);
             return (
-              <span
-                key={type}
-                className={`rounded-full px-3 py-1 text-xs font-medium ${
-                  signed ? "bg-emerald-100 text-emerald-700" : "bg-zinc-100 text-zinc-500"
-                }`}
-              >
+              <Badge key={type} variant={signed ? "success" : "neutral"}>
                 {signed ? "✓" : "—"} {CONSENT_LABELS[type]}
-              </span>
+              </Badge>
             );
           })}
         </div>

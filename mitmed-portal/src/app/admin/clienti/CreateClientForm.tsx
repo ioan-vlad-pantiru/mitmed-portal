@@ -2,6 +2,8 @@
 
 import { useActionState, useEffect, useState } from "react";
 import { createClientAccount } from "@/actions/clients";
+import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
 
 export function CreateClientForm() {
   const [state, action, pending] = useActionState(createClientAccount, undefined);
@@ -38,46 +40,40 @@ export function CreateClientForm() {
     >
       <div className="col-span-2 sm:col-span-1">
         <label className="block text-xs font-medium text-zinc-700">Nume complet</label>
-        <input
+        <Input
           name="fullName"
           required
           autoComplete="off"
           value={fullName}
           onChange={(e) => setFullName(e.target.value)}
-          className="mt-1 w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+          className="mt-1"
         />
       </div>
       <div className="col-span-2 sm:col-span-1">
         <label className="block text-xs font-medium text-zinc-700">Email</label>
-        <input
+        <Input
           name="email"
           type="email"
           required
           autoComplete="off"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="mt-1 w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+          className="mt-1"
         />
       </div>
       <div className="col-span-2 sm:col-span-1">
         <label className="block text-xs font-medium text-zinc-700">Telefon</label>
-        <input
+        <Input
           name="phone"
           autoComplete="off"
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
-          className="mt-1 w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+          className="mt-1"
         />
       </div>
       <div className="col-span-2 sm:col-span-1">
         <label className="block text-xs font-medium text-zinc-700">Parolă inițială</label>
-        <input
-          name="password"
-          type="password"
-          required
-          autoComplete="new-password"
-          className="mt-1 w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
-        />
+        <Input name="password" type="password" required autoComplete="new-password" className="mt-1" />
       </div>
 
       {state?.message && (
@@ -87,13 +83,9 @@ export function CreateClientForm() {
       )}
 
       <div className="col-span-2">
-        <button
-          type="submit"
-          disabled={pending}
-          className="rounded-md bg-sky-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-60"
-        >
+        <Button type="submit" disabled={pending}>
           {pending ? "Se creează…" : "Creează cont"}
-        </button>
+        </Button>
       </div>
     </form>
   );

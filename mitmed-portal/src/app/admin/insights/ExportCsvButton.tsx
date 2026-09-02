@@ -2,6 +2,7 @@
 
 import { useTransition } from "react";
 import { exportPaymentsCsv } from "@/actions/payments";
+import { Button } from "@/components/ui/Button";
 
 export function ExportCsvButton() {
   const [pending, startTransition] = useTransition();
@@ -20,12 +21,8 @@ export function ExportCsvButton() {
   }
 
   return (
-    <button
-      onClick={handleExport}
-      disabled={pending}
-      className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-50 disabled:opacity-60"
-    >
+    <Button variant="secondary" onClick={handleExport} disabled={pending} className="text-xs">
       {pending ? "Se exportă…" : "Export CSV (contabilitate)"}
-    </button>
+    </Button>
   );
 }

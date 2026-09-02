@@ -146,6 +146,14 @@ body {
   background: #b91c1c;
 }
 
+.mm-btn[data-variant="success"] {
+  background: var(--mm-success);
+  color: #fff;
+}
+.mm-btn[data-variant="success"]:hover:not(:disabled) {
+  background: #047857;
+}
+
 .mm-badge {
   display: inline-flex;
   align-items: center;
@@ -167,6 +175,10 @@ body {
 .mm-badge[data-variant="danger"] {
   background: var(--mm-danger-bg);
   color: var(--mm-danger);
+}
+.mm-badge[data-variant="info"] {
+  background: var(--mm-info-bg);
+  color: var(--mm-info);
 }
 .mm-badge[data-variant="neutral"] {
   background: rgb(244 244 245); /* zinc-100 */

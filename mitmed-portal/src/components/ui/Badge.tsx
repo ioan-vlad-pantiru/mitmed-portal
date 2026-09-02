@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-type Variant = "success" | "warning" | "danger" | "neutral";
+type Variant = "success" | "warning" | "danger" | "info" | "neutral";
 
 export function Badge({ variant = "neutral", children }: { variant?: Variant; children: ReactNode }) {
   return (

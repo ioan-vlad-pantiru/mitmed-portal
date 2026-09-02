@@ -4,6 +4,8 @@ import { useActionState, useState, useTransition } from "react";
 import { toggleTherapyActive, updateTherapy } from "@/actions/therapies";
 import { TherapyFields } from "./TherapyFields";
 import { useToast } from "@/components/Toast";
+import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
 
 type Therapy = {
   id: string;
@@ -33,17 +35,13 @@ export function TherapyRow({ therapy }: { therapy: Therapy }) {
         <td className="px-4 py-2 text-zinc-600">{therapy.price} RON</td>
         <td className="px-4 py-2 text-zinc-600">
           {therapy.sessionsIncluded > 1 ? (
-            <span className="rounded-full bg-[var(--mitmed-sky)]/15 px-2 py-0.5 text-xs font-medium text-[var(--mitmed-teal)]">
-              Pachet {therapy.sessionsIncluded}×
-            </span>
+            <Badge variant="info">Pachet {therapy.sessionsIncluded}×</Badge>
           ) : (
             "ședință unică"
           )}
         </td>
         <td className="px-4 py-2">
-          <span className={therapy.active ? "text-emerald-600" : "text-zinc-400"}>
-            {therapy.active ? "Da" : "Nu"}
-          </span>
+          <Badge variant={therapy.active ? "success" : "neutral"}>{therapy.active ? "Da" : "Nu"}</Badge>
         </td>
         <td className="px-4 py-2 text-right whitespace-nowrap">
           <button
@@ -77,20 +75,12 @@ export function TherapyRow({ therapy }: { therapy: Therapy }) {
               <TherapyFields defaults={therapy} />
               {state?.message && <p className="col-span-2 text-sm text-red-600">{state.message}</p>}
               <div className="col-span-2 flex gap-2">
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="rounded-md bg-sky-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-60"
-                >
+                <Button type="submit" disabled={saving}>
                   {saving ? "Se salvează…" : "Salvează modificările"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setEditing(false)}
-                  className="rounded-md px-4 py-1.5 text-sm text-zinc-500 hover:bg-zinc-100"
-                >
+                </Button>
+                <Button type="button" variant="ghost" onClick={() => setEditing(false)}>
                   Anulează
-                </button>
+                </Button>
               </div>
             </form>
           </td>
