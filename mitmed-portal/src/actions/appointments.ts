@@ -101,7 +101,7 @@ export type ConsultData = {
     treatment_plan: string | null;
     therapy_name: string | null;
   }[];
-  consents: { type: "GDPR" | "RISC_PRET"; signed_at: string }[];
+  consents: { type: string; signed_at: string }[];
   active_package: { payment_id: string; sessions_used: number; package_total_sessions: number } | null;
 };
 

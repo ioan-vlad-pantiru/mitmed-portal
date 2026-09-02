@@ -1,17 +1,16 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getAppointmentForConsult, listAppointmentsInRange } from "@/actions/appointments";
+import { listActiveConsentTemplates } from "@/actions/consents";
 import { ConsultForm } from "./ConsultForm";
 import { IconClose } from "@/components/icons";
 
-const CONSENT_LABELS: Record<string, string> = {
-  GDPR: "Acord GDPR",
-  RISC_PRET: "Declarație riscuri + preț",
-};
-
 export default async function ConsultPage({ params }: { params: Promise<{ appointmentId: string }> }) {
   const { appointmentId } = await params;
-  const data = await getAppointmentForConsult(appointmentId);
+  const [data, consentTemplates] = await Promise.all([
+    getAppointmentForConsult(appointmentId),
+    listActiveConsentTemplates(),
+  ]);
   if (!data) notFound();
 
   const { appointment, client, recent_records, consents, active_package } = data;
@@ -127,11 +126,11 @@ export default async function ConsultPage({ params }: { params: Promise<{ appoin
           <section className="mm-card p-4">
             <h2 className="text-xs font-medium uppercase tracking-wide text-zinc-400">Declarații semnate</h2>
             <div className="mt-2 flex flex-wrap gap-1.5">
-              {(["GDPR", "RISC_PRET"] as const).map((type) => {
-                const signed = consents.some((c) => c.type === type);
+              {consentTemplates.map((t) => {
+                const signed = consents.some((c) => c.type === t.type);
                 return (
-                  <span key={type} data-variant={signed ? "success" : "neutral"} className="mm-badge">
-                    {signed ? "✓" : "—"} {CONSENT_LABELS[type]}
+                  <span key={t.type} data-variant={signed ? "success" : "neutral"} className="mm-badge">
+                    {signed ? "✓" : "—"} {t.label}
                   </span>
                 );
               })}

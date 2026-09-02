@@ -3,7 +3,7 @@ import { getClientDetail } from "@/actions/clients";
 import { listTherapies } from "@/actions/therapies";
 import { listCoupons } from "@/actions/coupons";
 import { listPackages } from "@/actions/packages";
-import { getClientConsents, type ConsentType } from "@/actions/consents";
+import { getClientConsents, listActiveConsentTemplates } from "@/actions/consents";
 import Link from "next/link";
 import { MedicalRecordForm } from "./MedicalRecordForm";
 import { PaymentForm } from "./PaymentForm";
@@ -63,21 +63,17 @@ type ClientDetail = {
 
 export default async function ClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [clientRaw, therapiesRaw, coupons, packagesRaw] = await Promise.all([
+  const [clientRaw, therapiesRaw, coupons, packagesRaw, consentTemplates] = await Promise.all([
     getClientDetail(id),
     listTherapies(),
     listCoupons(),
     listPackages(),
+    listActiveConsentTemplates(),
   ]);
 
   if (!clientRaw) notFound();
   const client = clientRaw as unknown as ClientDetail;
   const consents = await getClientConsents(client.id);
-
-  const CONSENT_LABELS: Record<ConsentType, string> = {
-    GDPR: "Acord GDPR",
-    RISC_PRET: "Declarație riscuri + preț",
-  };
   const signedTypes = new Set(consents.map((c) => c.type));
 
   const activeAppointmentsCount = client.appointments.filter((a) => a.status === "PROGRAMATA").length;
@@ -191,11 +187,11 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
       <section className="mm-card p-4">
         <h2 className="text-xs font-medium uppercase tracking-wide text-zinc-400">Declarații semnate</h2>
         <div className="mt-2 flex flex-wrap gap-2">
-          {(Object.keys(CONSENT_LABELS) as ConsentType[]).map((type) => {
-            const signed = signedTypes.has(type);
+          {consentTemplates.map((t) => {
+            const signed = signedTypes.has(t.type);
             return (
-              <Badge key={type} variant={signed ? "success" : "neutral"}>
-                {signed ? "✓" : "—"} {CONSENT_LABELS[type]}
+              <Badge key={t.type} variant={signed ? "success" : "neutral"}>
+                {signed ? "✓" : "—"} {t.label}
               </Badge>
             );
           })}

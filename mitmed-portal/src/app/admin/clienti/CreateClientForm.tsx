@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useState } from "react";
 import { createClientAccount } from "@/actions/clients";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -9,27 +9,27 @@ export function CreateClientForm() {
   const [state, action, pending] = useActionState(createClientAccount, undefined);
 
   // Câmpuri controlate — ca datele introduse să nu dispară dacă submisia
-  // eșuează (ex: parolă prea scurtă). Parola nu e niciodată restaurată.
+  // eșuează (ex: parolă prea scurtă). Nu mai e nevoie să le sincronizăm
+  // înapoi din `state.values` la eroare: acțiunea doar ecouă ce a trimis
+  // formularul, fără normalizare, iar input-urile controlate păstrează deja
+  // ce a tastat userul — un efect care le rescrie cu aceeași valoare era
+  // muncă degeaba (și interzisă de regula de puritate a randării).
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [resetKey, setResetKey] = useState(0);
 
-  useEffect(() => {
-    if (state?.values) {
-      setFullName(state.values.fullName ?? "");
-      setEmail(state.values.email ?? "");
-      setPhone(state.values.phone ?? "");
-    }
+  // Golește formularul o singură dată, la tranziția reală spre succes — nu
+  // într-un efect, ci comparând cu ultimul `state` deja procesat (pattern-ul
+  // recomandat de React pentru "reacționează la o schimbare de rezultat" fără
+  // efect). Remontarea (key nou) golește și câmpul de parolă, necontrolat.
+  const [handledState, setHandledState] = useState(state);
+  if (state !== handledState) {
+    setHandledState(state);
     if (state?.success) {
-      setFullName("");
-      setEmail("");
-      setPhone("");
-      // Forțează remount doar la succes, ca să golească și câmpul de
-      // parolă (necontrolat) — la eroare formularul NU se remontează.
       setResetKey((k) => k + 1);
     }
-  }, [state]);
+  }
 
   return (
     <form

@@ -1,40 +1,77 @@
 "use client";
 
-import { useActionState, useState } from "react";
-import { updateConsentTemplate, type ConsentType } from "@/actions/consents";
-import { Textarea } from "@/components/ui/Input";
+import { useActionState, useState, useTransition } from "react";
+import { updateConsentTemplate, toggleConsentTemplateActive, type ConsentType } from "@/actions/consents";
+import { Input, Textarea } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
+import { useToast } from "@/components/Toast";
 
 export function TemplateForm({
   type,
-  title,
+  initialLabel,
   initialText,
+  active,
 }: {
   type: ConsentType;
-  title: string;
+  initialLabel: string;
   initialText: string;
+  active: boolean;
 }) {
   const boundAction = updateConsentTemplate.bind(null, type);
   const [state, action, pending] = useActionState(boundAction, undefined);
+  const [label, setLabel] = useState(initialLabel);
   const [text, setText] = useState(initialText);
+  const [togglePending, startToggle] = useTransition();
+  const toast = useToast();
   const today = new Date().toLocaleDateString("ro-RO");
 
   return (
     <div className="mt-3 grid gap-4 lg:grid-cols-2">
       <form action={action} className="space-y-3 mm-card p-4">
-        <Textarea
-          name="text"
-          required
-          rows={10}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-        />
+        <div className="flex items-center justify-between gap-3">
+          <Input
+            name="label"
+            required
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            className="flex-1 font-medium"
+            placeholder="Nume document"
+          />
+          <Badge variant={active ? "success" : "neutral"}>{active ? "Activ" : "Dezactivat"}</Badge>
+        </div>
+        <Textarea name="text" required rows={9} value={text} onChange={(e) => setText(e.target.value)} />
         {state?.message && (
           <p className={`text-sm ${state.success ? "text-emerald-600" : "text-red-600"}`}>{state.message}</p>
         )}
-        <Button type="submit" disabled={pending}>
-          {pending ? "Se salvează…" : "Salvează"}
-        </Button>
+        <div className="flex gap-2">
+          <Button type="submit" disabled={pending}>
+            {pending ? "Se salvează…" : "Salvează"}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={togglePending}
+            onClick={() =>
+              startToggle(async () => {
+                try {
+                  await toggleConsentTemplateActive(type, !active);
+                  toast.success(active ? "Document dezactivat." : "Document activat.");
+                } catch {
+                  toast.error("Nu am putut schimba statusul. Încearcă din nou.");
+                }
+              })
+            }
+          >
+            {active ? "Dezactivează" : "Activează"}
+          </Button>
+        </div>
+        {!active && (
+          <p className="text-xs text-zinc-400">
+            Dezactivat — nu mai apare clienților în portal ca document de semnat, dar declarațiile deja semnate rămân
+            neschimbate în fișele lor.
+          </p>
+        )}
       </form>
 
       {/* Preview live — exact cum va arăta documentul pe care îl semnează clientul
@@ -47,7 +84,9 @@ export function TemplateForm({
             </span>
             <span className="text-xs text-zinc-400">{today}</span>
           </div>
-          <h2 className="mt-3 font-[family-name:var(--font-editorial)] text-xl italic text-zinc-900">{title}</h2>
+          <h2 className="mt-3 font-[family-name:var(--font-editorial)] text-xl italic text-zinc-900">
+            {label || <span className="text-zinc-300">Nume document…</span>}
+          </h2>
         </div>
         <div className="px-6 py-6">
           <p className="whitespace-pre-wrap font-[family-name:var(--font-editorial)] text-[15px] leading-relaxed text-zinc-700">

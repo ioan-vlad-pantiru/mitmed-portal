@@ -49,7 +49,11 @@ export function PaymentForm({
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [isPreviewing, startPreview] = useTransition();
 
-  const now = useMemo(() => Date.now(), []);
+  // Date.now() e impur — nu poate fi apelat direct în timpul randării (nici
+  // memoizat). Inițializatorul lazy al useState e excepția sancționată: rulează
+  // o singură dată, la montare, exact ce ne trebuie ca reper pentru filtrarea
+  // cupoanelor valabile "acum".
+  const [now] = useState(() => Date.now());
 
   const couponAppliesTo = (c: Coupon, tId: string) =>
     c.therapies.length === 0 || c.therapies.some((t) => t.id === tId);

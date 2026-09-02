@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { getOwnClientData } from "@/actions/clients";
 import { listTherapies } from "@/actions/therapies";
-import { getOwnConsents, getCurrentConsentText } from "@/actions/consents";
+import { getOwnConsents, listActiveConsentTemplates } from "@/actions/consents";
 import { getPublicConfig } from "@/actions/config";
 import { BookingForm } from "./BookingForm";
 import { MedicalHistoryForm } from "./MedicalHistoryForm";
@@ -21,23 +21,18 @@ type OwnClientData = {
   appointments: { id: string; starts_at: string; status: string; therapy: { name: string } }[];
 };
 
-const CONSENT_LABELS: { type: "GDPR" | "RISC_PRET"; title: string }[] = [
-  { type: "GDPR", title: "Acord GDPR — prelucrarea datelor medicale" },
-  { type: "RISC_PRET", title: "Declarație riscuri tratament și politică de preț" },
-];
-
 export default async function PortalPage() {
-  const [clientRaw, therapiesRaw, consents, publicConfig] = await Promise.all([
+  const [clientRaw, therapiesRaw, consents, templates, publicConfig] = await Promise.all([
     getOwnClientData(),
     listTherapies(),
     getOwnConsents(),
+    listActiveConsentTemplates(),
     getPublicConfig(),
   ]);
   if (!clientRaw) notFound();
 
   const signedTypes = new Set(consents.map((c) => c.type));
-  const unsigned = CONSENT_LABELS.filter((c) => !signedTypes.has(c.type));
-  const unsignedTexts = await Promise.all(unsigned.map((c) => getCurrentConsentText(c.type)));
+  const unsigned = templates.filter((t) => !signedTypes.has(t.type));
   const client = clientRaw as unknown as OwnClientData;
 
   const therapies = therapiesRaw
@@ -62,14 +57,8 @@ export default async function PortalPage() {
       {unsigned.length > 0 && (
         <section className="space-y-5">
           <h2 className="text-base font-semibold text-zinc-900">Declarații de semnat</h2>
-          {unsigned.map((c, i) => (
-            <ConsentForm
-              key={c.type}
-              type={c.type}
-              title={c.title}
-              consentText={unsignedTexts[i]}
-              clientName={client.full_name}
-            />
+          {unsigned.map((t) => (
+            <ConsentForm key={t.type} type={t.type} title={t.label} consentText={t.text} clientName={client.full_name} />
           ))}
         </section>
       )}
@@ -86,7 +75,7 @@ export default async function PortalPage() {
                 <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-600 text-[10px] text-white">
                   ✓
                 </span>
-                {CONSENT_LABELS.find((l) => l.type === c.type)?.title ?? c.type} — semnat pe{" "}
+                {templates.find((t) => t.type === c.type)?.label ?? c.type} — semnat pe{" "}
                 {new Date(c.signed_at).toLocaleDateString("ro-RO")}
               </span>
             ))}
