@@ -4,6 +4,8 @@ import { listTherapies } from "@/actions/therapies";
 import { getDashboardStats } from "@/actions/clients";
 import { listBookingRequests } from "@/actions/publicBookings";
 import { WeekCalendar, getWeekRange, type CalendarAppointment } from "@/components/WeekCalendar";
+import { TodayAppointments } from "./TodayAppointments";
+import { ConsultSavedToast } from "./ConsultSavedToast";
 import { IconUsers, IconCalendar, IconPending, IconInbox } from "@/components/icons";
 
 export default async function AdminBoardPage({
@@ -78,10 +80,14 @@ export default async function AdminBoardPage({
 
   return (
     <div className="space-y-7">
+      <ConsultSavedToast />
+
       <div>
         <h1 className="text-xl font-bold tracking-tight text-zinc-900">Bord</h1>
         <p className="text-sm text-zinc-500">Programările săptămânii, dintr-o privire.</p>
       </div>
+
+      <TodayAppointments appointments={appointments} />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {tiles.map((tile) => {

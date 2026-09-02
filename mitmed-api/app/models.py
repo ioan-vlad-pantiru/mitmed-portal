@@ -174,6 +174,10 @@ class MedicalRecord(Base):
     session_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     diagnosis: Mapped[str | None] = mapped_column(String)
     notes: Mapped[str] = mapped_column(String, nullable=False)
+    # Plan de tratament/exerciții recomandate — text liber în v1 (fără bibliotecă
+    # structurată de exerciții); separat semantic de `notes`, ca să poată fi
+    # afișat/interogat distinct în fișa clientului.
+    treatment_plan: Mapped[str | None] = mapped_column(String)
     # Diagramă corporală — listă de puncte marcate: [{"x": 0.4, "y": 0.6, "label": "..."}]
     # x/y sunt fracții (0-1) din dimensiunile siluetei, ca desenul să nu depindă de rezoluție.
     body_map: Mapped[list | None] = mapped_column(JSON)

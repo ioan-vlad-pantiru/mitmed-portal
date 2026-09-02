@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { apiPost, apiPut, ApiError } from "@/lib/apiClient";
 import { requireRole } from "@/lib/authSession";
 import { Role } from "@/lib/enums";
@@ -33,6 +34,7 @@ export async function createMedicalRecord(
       appointment_id: formData.get("appointmentId") || null,
       diagnosis: formData.get("diagnosis") || null,
       notes,
+      treatment_plan: formData.get("treatmentPlan") || null,
       session_date: formData.get("sessionDate") || null,
       body_map: bodyMap,
     });
@@ -42,6 +44,13 @@ export async function createMedicalRecord(
   }
 
   revalidatePath(`/admin/clienti/${clientId}`);
+
+  // Ecranul de Consult trimite un câmp ascuns "fromConsult" — la succes,
+  // fluxul e "următorul pacient": redirect spre bord (nu spre fișa clientului),
+  // cu un toast citit din query string (vezi ConsultSavedToast).
+  if (formData.get("fromConsult")) {
+    redirect("/admin?consultSaved=1");
+  }
   return undefined;
 }
 

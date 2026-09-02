@@ -7,7 +7,17 @@ from sqlalchemy.orm import Session as DBSession, joinedload
 from app.audit import log_audit
 from app.database import get_db
 from app.deps import require_roles, require_user
-from app.models import Appointment, AppointmentStatus, ClientProfile, Role, Therapy, User
+from app.models import (
+    Appointment,
+    AppointmentStatus,
+    ClientProfile,
+    Consent,
+    MedicalRecord,
+    Payment,
+    Role,
+    Therapy,
+    User,
+)
 from app.services.google_calendar import sync_appointment_cancelled, sync_appointment_created
 
 router = APIRouter(prefix="/appointments", tags=["appointments"])
@@ -143,3 +153,91 @@ def list_appointments_in_range(
         }
         for a in appointments
     ]
+
+
+@router.get("/{appointment_id}/consult")
+def get_appointment_for_consult(
+    appointment_id: str,
+    db: DBSession = Depends(get_db),
+    _actor: User = Depends(require_roles(Role.ADMIN, Role.RECEPTIE)),
+) -> dict:
+    """Tot ce trebuie ecranului de Consult, într-un singur apel — istoric
+    recent, chestionar, consimțăminte semnate, pachet activ — ca operatorul
+    să nu piardă timp cu roundtrip-uri multiple în timpul unei ședințe."""
+    appointment = (
+        db.query(Appointment)
+        .options(joinedload(Appointment.client), joinedload(Appointment.therapy))
+        .filter(Appointment.id == appointment_id)
+        .first()
+    )
+    if not appointment:
+        raise HTTPException(status_code=404, detail="Programare inexistentă.")
+
+    client = appointment.client
+
+    recent_records = (
+        db.query(MedicalRecord)
+        .options(joinedload(MedicalRecord.therapy))
+        .filter(MedicalRecord.client_id == client.id)
+        .order_by(MedicalRecord.session_date.desc())
+        .limit(3)
+        .all()
+    )
+
+    consents = (
+        db.query(Consent)
+        .filter(Consent.client_id == client.id)
+        .order_by(Consent.signed_at.desc())
+        .all()
+    )
+
+    # Pachet activ pentru terapia programată — cel mai vechi neepuizat, aceeași
+    # regulă FIFO ca la consumul efectiv (app/services/packages.py).
+    active_package = (
+        db.query(Payment)
+        .filter(
+            Payment.client_id == client.id,
+            Payment.therapy_id == appointment.therapy_id,
+            Payment.package_total_sessions.is_not(None),
+            Payment.sessions_used < Payment.package_total_sessions,
+        )
+        .order_by(Payment.created_at.asc())
+        .first()
+    )
+
+    return {
+        "appointment": {
+            "id": appointment.id,
+            "starts_at": appointment.starts_at,
+            "status": appointment.status,
+            "therapy": {"id": appointment.therapy_id, "name": appointment.therapy.name},
+        },
+        "client": {
+            "id": client.id,
+            "full_name": client.full_name,
+            "birth_date": client.birth_date,
+            "phone": client.phone,
+            "medical_history": client.medical_history,
+        },
+        "recent_records": [
+            {
+                "id": r.id,
+                "session_date": r.session_date,
+                "diagnosis": r.diagnosis,
+                "notes": r.notes,
+                "treatment_plan": r.treatment_plan,
+                "therapy_name": r.therapy.name if r.therapy else None,
+            }
+            for r in recent_records
+        ],
+        "consents": [{"type": c.type, "signed_at": c.signed_at} for c in consents],
+        "active_package": (
+            {
+                "payment_id": active_package.id,
+                "sessions_used": active_package.sessions_used,
+                "package_total_sessions": active_package.package_total_sessions,
+            }
+            if active_package
+            else None
+        ),
+    }

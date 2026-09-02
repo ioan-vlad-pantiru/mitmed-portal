@@ -170,17 +170,32 @@ export function WeekCalendar({
                   const height = Math.max(24, (a.durationMinutes / 60) * HOUR_PX - 3);
                   const color = colorForTherapy(a.therapyId);
                   const cancelled = a.status === "ANULATA";
+                  const finalized = a.status === "FINALIZATA";
+                  // Programările încă neefectuate duc direct la Consult — cel mai
+                  // rapid drum de la calendar la notițe, în timpul unei ședințe.
+                  // Cele deja finalizate/anulate duc la fișa completă, ca dosar.
+                  const href =
+                    !cancelled && !finalized ? `/admin/consult/${a.id}` : `/admin/clienti/${a.clientId}`;
 
                   return (
-                    <Link
+                    <div
                       key={a.id}
-                      href={`/admin/clienti/${a.clientId}`}
-                      className={`absolute left-1 right-1 overflow-hidden rounded-lg border-l-[3px] px-2 py-1 text-[11px] leading-tight shadow-sm transition-all hover:z-10 hover:shadow-md ${color.bg} ${color.border} ${color.text} ${cancelled ? "opacity-40 line-through" : ""}`}
+                      className={`group absolute left-1 right-1 overflow-hidden rounded-lg border-l-[3px] shadow-sm transition-all hover:z-10 hover:shadow-md ${color.bg} ${color.border} ${cancelled ? "opacity-40 line-through" : ""}`}
                       style={{ top, height }}
                     >
-                      <div className="truncate font-semibold">{a.clientName}</div>
-                      <div className="truncate opacity-80">{a.therapyName}</div>
-                    </Link>
+                      <Link href={href} className={`block h-full px-2 py-1 text-[11px] leading-tight ${color.text}`}>
+                        <div className="truncate font-semibold">{a.clientName}</div>
+                        <div className="truncate opacity-80">{a.therapyName}</div>
+                      </Link>
+                      {!cancelled && !finalized && (
+                        <Link
+                          href={`/admin/clienti/${a.clientId}`}
+                          className="absolute right-1 top-1 hidden rounded bg-white/70 px-1 text-[10px] font-medium text-zinc-600 opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 sm:block"
+                        >
+                          fișă
+                        </Link>
+                      )}
+                    </div>
                   );
                 })}
               </div>

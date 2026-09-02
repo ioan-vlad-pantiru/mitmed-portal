@@ -3,11 +3,11 @@ import { getClientDetail } from "@/actions/clients";
 import { listTherapies } from "@/actions/therapies";
 import { listCoupons } from "@/actions/coupons";
 import { getClientConsents, type ConsentType } from "@/actions/consents";
+import Link from "next/link";
 import { MedicalRecordForm } from "./MedicalRecordForm";
 import { PaymentForm } from "./PaymentForm";
 import { AppointmentForm } from "./AppointmentForm";
 import { CancelAppointmentButton } from "./CancelAppointmentButton";
-import { AppointmentNoteForm } from "./AppointmentNoteForm";
 import { ResetPasswordButton } from "./ResetPasswordButton";
 import { BodyMapView } from "@/components/BodyMap";
 
@@ -31,6 +31,7 @@ type ClientDetail = {
     session_date: string;
     diagnosis: string | null;
     notes: string;
+    treatment_plan: string | null;
     body_map: { x: number; y: number; label?: string }[] | null;
     therapy: { name: string } | null;
     author: { email: string } | null;
@@ -189,6 +190,11 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
                 </p>
               )}
               <p className="mt-1 whitespace-pre-wrap">{r.notes}</p>
+              {r.treatment_plan && (
+                <p className="mt-2 rounded-md bg-[var(--mm-info-bg)] px-2.5 py-1.5 text-[var(--mm-info)]">
+                  <strong>Plan de tratament:</strong> {r.treatment_plan}
+                </p>
+              )}
               {r.body_map && r.body_map.length > 0 && (
                 <div className="mt-2">
                   <BodyMapView points={r.body_map} />
@@ -265,17 +271,14 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
                   {new Date(a.starts_at).toLocaleString("ro-RO")} · {a.therapy.name} · {a.status}
                 </span>
                 {a.status === "PROGRAMATA" && (
-                  <CancelAppointmentButton appointmentId={a.id} clientId={client.id} />
+                  <span className="flex items-center gap-3">
+                    <Link href={`/admin/consult/${a.id}`} className="text-sm text-sky-600 hover:underline">
+                      Deschide consult
+                    </Link>
+                    <CancelAppointmentButton appointmentId={a.id} clientId={client.id} />
+                  </span>
                 )}
               </div>
-              {a.status === "PROGRAMATA" && (
-                <AppointmentNoteForm
-                  clientId={client.id}
-                  appointmentId={a.id}
-                  therapyId={a.therapy_id}
-                  therapyName={a.therapy.name}
-                />
-              )}
             </div>
           ))}
           {client.appointments.length === 0 && <p className="text-sm text-zinc-400">Nicio programare încă.</p>}

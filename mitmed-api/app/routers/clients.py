@@ -262,6 +262,7 @@ def _serialize_client_detail(client: ClientProfile) -> dict:
                 "session_date": r.session_date,
                 "diagnosis": r.diagnosis,
                 "notes": r.notes,
+                "treatment_plan": r.treatment_plan,
                 "body_map": r.body_map,
                 "therapy": {"name": r.therapy.name} if r.therapy else None,
                 "author": {"email": r.author.email} if r.author else None,

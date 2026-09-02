@@ -44,6 +44,15 @@ export function MedicalRecordForm({ clientId, therapies }: { clientId: string; t
       </div>
 
       <div>
+        <label className="block text-xs font-medium text-zinc-700">Plan de tratament (opțional)</label>
+        <textarea
+          name="treatmentPlan"
+          rows={2}
+          className="mt-1 w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+        />
+      </div>
+
+      <div>
         <label className="block text-xs font-medium text-zinc-700">Zonă tratată/dureroasă (opțional)</label>
         <div className="mt-1 rounded-md border border-zinc-200 p-3">
           <BodyMapPicker value={bodyMap} onChange={setBodyMap} />

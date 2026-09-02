@@ -25,6 +25,7 @@ class MedicalRecordIn(BaseModel):
     appointment_id: str | None = None
     diagnosis: str | None = None
     notes: str
+    treatment_plan: str | None = None
     session_date: datetime | None = None
     body_map: list[BodyMapPoint] | None = None
 
@@ -32,6 +33,7 @@ class MedicalRecordIn(BaseModel):
 class MedicalRecordUpdate(BaseModel):
     diagnosis: str | None = None
     notes: str
+    treatment_plan: str | None = None
     body_map: list[BodyMapPoint] | None = None
 
 
@@ -51,6 +53,7 @@ def create_medical_record(
         appointment_id=payload.appointment_id,
         diagnosis=payload.diagnosis,
         notes=payload.notes,
+        treatment_plan=payload.treatment_plan,
         session_date=payload.session_date or datetime.utcnow(),
         body_map=[p.model_dump() for p in payload.body_map] if payload.body_map else None,
     )
@@ -95,6 +98,7 @@ def update_medical_record(
 
     record.diagnosis = payload.diagnosis
     record.notes = payload.notes
+    record.treatment_plan = payload.treatment_plan
     if payload.body_map is not None:
         record.body_map = [p.model_dump() for p in payload.body_map]
     db.commit()
