@@ -31,6 +31,7 @@ export default async function CouponsPage() {
             {coupons.map((c) => (
               <CouponRow
                 key={c.id}
+                allTherapies={therapies}
                 coupon={{
                   id: c.id,
                   code: c.code,
@@ -41,7 +42,7 @@ export default async function CouponsPage() {
                   maxUses: c.max_uses,
                   usesCount: c.uses_count,
                   active: c.active,
-                  therapies: c.therapies.map((t) => t.name),
+                  therapies: c.therapies,
                 }}
               />
             ))}

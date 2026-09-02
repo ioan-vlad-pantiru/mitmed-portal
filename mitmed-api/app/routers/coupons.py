@@ -87,6 +87,38 @@ def create_coupon(
     return _serialize(coupon)
 
 
+@router.put("/{coupon_id}")
+def update_coupon(
+    coupon_id: str,
+    payload: CouponIn,
+    db: DBSession = Depends(get_db),
+    actor: User = Depends(require_roles(Role.ADMIN)),
+) -> CouponOut:
+    coupon = db.get(Coupon, coupon_id)
+    if not coupon:
+        raise HTTPException(status_code=404, detail="Cupon inexistent.")
+
+    code = payload.code.strip().upper()
+    existing = db.query(Coupon).filter(Coupon.code == code, Coupon.id != coupon_id).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Există deja un alt cupon cu acest cod.")
+
+    therapies = db.query(Therapy).filter(Therapy.id.in_(payload.therapy_ids)).all() if payload.therapy_ids else []
+
+    coupon.code = code
+    coupon.type = payload.type
+    coupon.value = payload.value
+    coupon.valid_from = payload.valid_from
+    coupon.valid_until = payload.valid_until
+    coupon.max_uses = payload.max_uses
+    coupon.therapies = therapies
+
+    db.commit()
+    db.refresh(coupon)
+    log_audit(db, actor_id=actor.id, action="coupon.update", target_type="Coupon", target_id=coupon_id)
+    return _serialize(coupon)
+
+
 @router.post("/{coupon_id}/toggle")
 def toggle_coupon_active(
     coupon_id: str, active: bool, db: DBSession = Depends(get_db), actor: User = Depends(require_roles(Role.ADMIN))

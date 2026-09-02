@@ -1,8 +1,13 @@
 "use client";
 
-import { useTransition } from "react";
-import { toggleCouponActive } from "@/actions/coupons";
+import { useActionState, useState, useTransition } from "react";
+import { toggleCouponActive, updateCoupon } from "@/actions/coupons";
+import { CouponFields } from "./CouponFields";
 import { useToast } from "@/components/Toast";
+import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
+
+type Therapy = { id: string; name: string };
 
 type Coupon = {
   id: string;
@@ -14,11 +19,14 @@ type Coupon = {
   maxUses: number | null;
   usesCount: number;
   active: boolean;
-  therapies: string[];
+  therapies: Therapy[];
 };
 
-export function CouponRow({ coupon }: { coupon: Coupon }) {
+export function CouponRow({ coupon, allTherapies }: { coupon: Coupon; allTherapies: Therapy[] }) {
   const [pending, startTransition] = useTransition();
+  const [editing, setEditing] = useState(false);
+  const updateAction = updateCoupon.bind(null, coupon.id);
+  const [state, action, saving] = useActionState(updateAction, undefined);
   const toast = useToast();
 
   const period = [
@@ -29,38 +37,74 @@ export function CouponRow({ coupon }: { coupon: Coupon }) {
     .join(" – ") || "oricând";
 
   return (
-    <tr className="transition-colors hover:bg-zinc-50/70">
-      <td className="px-4 py-2 font-mono text-zinc-900">{coupon.code}</td>
-      <td className="px-4 py-2 text-zinc-600">
-        {coupon.value} {coupon.type === "PROCENT" ? "%" : "RON"}
-      </td>
-      <td className="px-4 py-2 text-zinc-600">{period}</td>
-      <td className="px-4 py-2 text-zinc-600">
-        {coupon.usesCount}
-        {coupon.maxUses ? ` / ${coupon.maxUses}` : ""}
-      </td>
-      <td className="px-4 py-2 text-zinc-600">{coupon.therapies.length ? coupon.therapies.join(", ") : "toate"}</td>
-      <td className="px-4 py-2">
-        <span className={coupon.active ? "text-emerald-600" : "text-zinc-400"}>{coupon.active ? "Da" : "Nu"}</span>
-      </td>
-      <td className="px-4 py-2 text-right">
-        <button
-          disabled={pending}
-          onClick={() =>
-            startTransition(async () => {
-              try {
-                await toggleCouponActive(coupon.id, !coupon.active);
-                toast.success(coupon.active ? "Cupon dezactivat." : "Cupon activat.");
-              } catch {
-                toast.error("Nu am putut schimba statusul. Încearcă din nou.");
-              }
-            })
-          }
-          className="text-sm text-sky-600 hover:underline disabled:opacity-60"
-        >
-          {coupon.active ? "Dezactivează" : "Activează"}
-        </button>
-      </td>
-    </tr>
+    <>
+      <tr className="transition-colors hover:bg-zinc-50/70">
+        <td className="px-4 py-2 font-mono text-zinc-900">{coupon.code}</td>
+        <td className="px-4 py-2 text-zinc-600">
+          {coupon.value} {coupon.type === "PROCENT" ? "%" : "RON"}
+        </td>
+        <td className="px-4 py-2 text-zinc-600">{period}</td>
+        <td className="px-4 py-2 text-zinc-600">
+          {coupon.usesCount}
+          {coupon.maxUses ? ` / ${coupon.maxUses}` : ""}
+        </td>
+        <td className="px-4 py-2 text-zinc-600">
+          {coupon.therapies.length ? coupon.therapies.map((t) => t.name).join(", ") : "toate"}
+        </td>
+        <td className="px-4 py-2">
+          <Badge variant={coupon.active ? "success" : "neutral"}>{coupon.active ? "Da" : "Nu"}</Badge>
+        </td>
+        <td className="px-4 py-2 text-right whitespace-nowrap">
+          <button onClick={() => setEditing((v) => !v)} className="mr-3 text-sm text-sky-600 hover:underline">
+            {editing ? "Renunță" : "Editează"}
+          </button>
+          <button
+            disabled={pending}
+            onClick={() =>
+              startTransition(async () => {
+                try {
+                  await toggleCouponActive(coupon.id, !coupon.active);
+                  toast.success(coupon.active ? "Cupon dezactivat." : "Cupon activat.");
+                } catch {
+                  toast.error("Nu am putut schimba statusul. Încearcă din nou.");
+                }
+              })
+            }
+            className="text-sm text-sky-600 hover:underline disabled:opacity-60"
+          >
+            {coupon.active ? "Dezactivează" : "Activează"}
+          </button>
+        </td>
+      </tr>
+      {editing && (
+        <tr>
+          <td colSpan={7} className="bg-zinc-50/60 px-4 py-4">
+            <form action={action} className="grid max-w-3xl grid-cols-2 gap-3">
+              <CouponFields
+                therapies={allTherapies}
+                defaults={{
+                  code: coupon.code,
+                  type: coupon.type,
+                  value: coupon.value,
+                  validFrom: coupon.validFrom ? coupon.validFrom.slice(0, 10) : null,
+                  validUntil: coupon.validUntil ? coupon.validUntil.slice(0, 10) : null,
+                  maxUses: coupon.maxUses,
+                  selectedTherapyIds: coupon.therapies.map((t) => t.id),
+                }}
+              />
+              {state?.message && <p className="col-span-2 text-sm text-red-600">{state.message}</p>}
+              <div className="col-span-2 flex gap-2">
+                <Button type="submit" disabled={saving}>
+                  {saving ? "Se salvează…" : "Salvează modificările"}
+                </Button>
+                <Button type="button" variant="ghost" onClick={() => setEditing(false)}>
+                  Anulează
+                </Button>
+              </div>
+            </form>
+          </td>
+        </tr>
+      )}
+    </>
   );
 }

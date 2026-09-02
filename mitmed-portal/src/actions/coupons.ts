@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { apiGet, apiPost, ApiError } from "@/lib/apiClient";
+import { apiGet, apiPost, apiPut, ApiError } from "@/lib/apiClient";
 import { requireRole } from "@/lib/authSession";
 import { Role } from "@/lib/enums";
 
@@ -25,13 +25,8 @@ export async function listCoupons(): Promise<Coupon[]> {
   return apiGet<Coupon[]>("/coupons");
 }
 
-export async function createCoupon(
-  _state: CouponFormState,
-  formData: FormData
-): Promise<CouponFormState> {
-  await requireRole(Role.ADMIN);
-
-  const payload = {
+function couponPayloadFrom(formData: FormData) {
+  return {
     code: String(formData.get("code") ?? ""),
     type: String(formData.get("type") ?? "PROCENT"),
     value: Number(formData.get("value")),
@@ -40,9 +35,34 @@ export async function createCoupon(
     max_uses: formData.get("maxUses") ? Number(formData.get("maxUses")) : null,
     therapy_ids: formData.getAll("therapyIds").map(String).filter(Boolean),
   };
+}
+
+export async function createCoupon(
+  _state: CouponFormState,
+  formData: FormData
+): Promise<CouponFormState> {
+  await requireRole(Role.ADMIN);
 
   try {
-    await apiPost("/coupons", payload);
+    await apiPost("/coupons", couponPayloadFrom(formData));
+  } catch (err) {
+    if (err instanceof ApiError) return { message: err.message };
+    throw err;
+  }
+
+  revalidatePath("/admin/cupoane");
+  return undefined;
+}
+
+export async function updateCoupon(
+  couponId: string,
+  _state: CouponFormState,
+  formData: FormData
+): Promise<CouponFormState> {
+  await requireRole(Role.ADMIN);
+
+  try {
+    await apiPut(`/coupons/${couponId}`, couponPayloadFrom(formData));
   } catch (err) {
     if (err instanceof ApiError) return { message: err.message };
     throw err;
