@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { deleteTherapy, toggleTherapyActive, updateTherapy } from "@/actions/therapies";
 import { TherapyFields } from "./TherapyFields";
 import { useToast } from "@/components/Toast";
@@ -24,6 +25,7 @@ export function TherapyRow({ therapy }: { therapy: Therapy }) {
   const updateAction = updateTherapy.bind(null, therapy.id);
   const [state, action, saving] = useActionState(updateAction, undefined);
   const toast = useToast();
+  const router = useRouter();
 
   return (
     <>
@@ -54,6 +56,7 @@ export function TherapyRow({ therapy }: { therapy: Therapy }) {
                   try {
                     await toggleTherapyActive(therapy.id, !therapy.active);
                     toast.success(therapy.active ? "Terapie dezactivată." : "Terapie activată.");
+                    router.refresh();
                   } catch {
                     toast.error("Nu am putut schimba statusul. Încearcă din nou.");
                   }
@@ -71,6 +74,7 @@ export function TherapyRow({ therapy }: { therapy: Therapy }) {
                   const result = await deleteTherapy(therapy.id);
                   if (result.ok) {
                     toast.success("Terapie ștearsă.");
+                    router.refresh();
                   } else {
                     toast.error(result.message);
                   }

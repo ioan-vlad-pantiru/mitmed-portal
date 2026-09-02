@@ -328,7 +328,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
                     <Link href={`/admin/consult/${a.id}`} className="text-sm text-sky-600 hover:underline">
                       Deschide consult
                     </Link>
-                    <CancelAppointmentButton appointmentId={a.id} clientId={client.id} />
+                    <CancelAppointmentButton appointmentId={a.id} clientId={client.id} startsAt={a.starts_at} />
                   </span>
                 )}
               </div>

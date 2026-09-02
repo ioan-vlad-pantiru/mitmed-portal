@@ -2,50 +2,55 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { cancelAppointment } from "@/actions/appointments";
+import { cancelOwnAppointment } from "@/actions/appointments";
 import { useToast } from "@/components/Toast";
 
 const MIN_CANCEL_NOTICE_MS = 48 * 60 * 60 * 1000;
 
-export function CancelAppointmentButton({
+export function CancelOwnAppointmentButton({
   appointmentId,
-  clientId,
   startsAt,
+  variant = "light",
 }: {
   appointmentId: string;
-  clientId: string;
   startsAt: string;
+  /** "light" = pe fundal teal (hero), "default" = pe fundal alb (listă). */
+  variant?: "light" | "default";
 }) {
   const [pending, startTransition] = useTransition();
   const toast = useToast();
   const router = useRouter();
-  // Date.now() e impur — inițializatorul lazy al useState e excepția
-  // sancționată (rulează o singură dată, la montare).
   const [now] = useState(() => Date.now());
 
-  // Doar afișaj — regula reală e verificată pe backend la fiecare cerere,
-  // ca sursă de adevăr. Aici doar evităm un click care oricum ar eșua.
+  // Doar afișaj — regula reală e verificată pe backend la fiecare cerere.
   const tooLateToCancel = new Date(startsAt).getTime() - now < MIN_CANCEL_NOTICE_MS;
 
   if (tooLateToCancel) {
-    return <span className="text-xs text-zinc-400">Nu se mai poate anula (sub 48h)</span>;
+    return (
+      <span className={`text-xs ${variant === "light" ? "text-[var(--mitmed-mist)]/60" : "text-zinc-400"}`}>
+        Nu se mai poate anula (sub 48h)
+      </span>
+    );
   }
 
   return (
     <button
       disabled={pending}
-      onClick={() =>
+      onClick={() => {
+        if (!window.confirm("Sigur anulezi această programare?")) return;
         startTransition(async () => {
-          const result = await cancelAppointment(appointmentId, clientId);
+          const result = await cancelOwnAppointment(appointmentId);
           if (result.ok) {
             toast.success("Programare anulată.");
             router.refresh();
           } else {
             toast.error(result.message);
           }
-        })
-      }
-      className="text-sm text-red-600 hover:underline disabled:opacity-60"
+        });
+      }}
+      className={`text-xs font-medium underline-offset-2 hover:underline disabled:opacity-60 ${
+        variant === "light" ? "text-[var(--mitmed-mist)]/85" : "text-red-600"
+      }`}
     >
       Anulează
     </button>

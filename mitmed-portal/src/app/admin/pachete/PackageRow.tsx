@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { deletePackage, togglePackageActive, updatePackage, type TherapyPackage } from "@/actions/packages";
 import { PackageFields } from "./PackageFields";
 import { useToast } from "@/components/Toast";
@@ -17,6 +18,7 @@ export function PackageRow({ pkg, therapies }: { pkg: TherapyPackage; therapies:
   const updateAction = updatePackage.bind(null, pkg.id);
   const [state, action, saving] = useActionState(updateAction, undefined);
   const toast = useToast();
+  const router = useRouter();
 
   return (
     <>
@@ -52,6 +54,7 @@ export function PackageRow({ pkg, therapies }: { pkg: TherapyPackage; therapies:
                   try {
                     await togglePackageActive(pkg.id, !pkg.active);
                     toast.success(pkg.active ? "Pachet dezactivat." : "Pachet activat.");
+                    router.refresh();
                   } catch {
                     toast.error("Nu am putut schimba statusul. Încearcă din nou.");
                   }
@@ -69,6 +72,7 @@ export function PackageRow({ pkg, therapies }: { pkg: TherapyPackage; therapies:
                   const result = await deletePackage(pkg.id);
                   if (result.ok) {
                     toast.success("Pachet șters.");
+                    router.refresh();
                   } else {
                     toast.error(result.message);
                   }

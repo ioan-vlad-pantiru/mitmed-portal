@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import {
   updateConsentTemplate,
   toggleConsentTemplateActive,
@@ -29,6 +30,7 @@ export function TemplateForm({
   const [text, setText] = useState(initialText);
   const [togglePending, startToggle] = useTransition();
   const toast = useToast();
+  const router = useRouter();
   const today = new Date().toLocaleDateString("ro-RO");
 
   return (
@@ -62,6 +64,7 @@ export function TemplateForm({
                 try {
                   await toggleConsentTemplateActive(type, !active);
                   toast.success(active ? "Document dezactivat." : "Document activat.");
+                  router.refresh();
                 } catch {
                   toast.error("Nu am putut schimba statusul. Încearcă din nou.");
                 }
@@ -80,6 +83,7 @@ export function TemplateForm({
                 const result = await deleteConsentTemplate(type);
                 if (result.ok) {
                   toast.success("Document șters.");
+                  router.refresh();
                 } else {
                   toast.error(result.message);
                 }

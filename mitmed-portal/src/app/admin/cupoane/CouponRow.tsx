@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { deleteCoupon, toggleCouponActive, updateCoupon } from "@/actions/coupons";
 import { CouponFields } from "./CouponFields";
 import { useToast } from "@/components/Toast";
@@ -30,6 +31,7 @@ export function CouponRow({ coupon, allTherapies }: { coupon: Coupon; allTherapi
   const updateAction = updateCoupon.bind(null, coupon.id);
   const [state, action, saving] = useActionState(updateAction, undefined);
   const toast = useToast();
+  const router = useRouter();
 
   const period = [
     coupon.validFrom ? new Date(coupon.validFrom).toLocaleDateString("ro-RO") : null,
@@ -73,6 +75,7 @@ export function CouponRow({ coupon, allTherapies }: { coupon: Coupon; allTherapi
                   try {
                     await toggleCouponActive(coupon.id, !coupon.active);
                     toast.success(coupon.active ? "Cupon dezactivat." : "Cupon activat.");
+                    router.refresh();
                   } catch {
                     toast.error("Nu am putut schimba statusul. Încearcă din nou.");
                   }
@@ -90,6 +93,7 @@ export function CouponRow({ coupon, allTherapies }: { coupon: Coupon; allTherapi
                   const result = await deleteCoupon(coupon.id);
                   if (result.ok) {
                     toast.success("Cupon șters.");
+                    router.refresh();
                   } else {
                     toast.error(result.message);
                   }

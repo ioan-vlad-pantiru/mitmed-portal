@@ -1,6 +1,7 @@
 "use client";
 
 import { useTransition } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { markBookingRequestConfirmed, rejectBookingRequest, type BookingRequest } from "@/actions/publicBookings";
 import { useToast } from "@/components/Toast";
@@ -10,6 +11,7 @@ import { Badge } from "@/components/ui/Badge";
 export function BookingRequestRow({ request, readonly }: { request: BookingRequest; readonly?: boolean }) {
   const [pending, startTransition] = useTransition();
   const toast = useToast();
+  const router = useRouter();
 
   return (
     <div className="mm-card p-4 text-sm">
@@ -44,6 +46,7 @@ export function BookingRequestRow({ request, readonly }: { request: BookingReque
                   try {
                     await markBookingRequestConfirmed(request.id);
                     toast.success("Cerere marcată rezolvată.");
+                    router.refresh();
                   } catch {
                     toast.error("Nu am reușit. Încearcă din nou.");
                   }
@@ -61,6 +64,7 @@ export function BookingRequestRow({ request, readonly }: { request: BookingReque
                   try {
                     await rejectBookingRequest(request.id);
                     toast.success("Cerere respinsă.");
+                    router.refresh();
                   } catch {
                     toast.error("Nu am reușit. Încearcă din nou.");
                   }

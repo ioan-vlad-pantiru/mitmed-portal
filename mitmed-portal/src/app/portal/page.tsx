@@ -8,6 +8,7 @@ import { MedicalHistoryForm } from "./MedicalHistoryForm";
 import { ConsentForm } from "./ConsentForm";
 import { Logo } from "@/components/Logo";
 import { Badge } from "@/components/ui/Badge";
+import { CancelOwnAppointmentButton } from "./CancelOwnAppointmentButton";
 
 type OwnClientData = {
   full_name: string;
@@ -133,10 +134,13 @@ export default async function PortalPage() {
             <p className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">
               {daysUntilLabel(new Date(nextAppointment.starts_at))}
             </p>
-            <p className="mt-1 text-[var(--mitmed-mist)]/85">
-              {new Date(nextAppointment.starts_at).toLocaleTimeString("ro-RO", { hour: "2-digit", minute: "2-digit" })}{" "}
-              · {nextAppointment.therapy.name}
-            </p>
+            <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-[var(--mitmed-mist)]/85">
+                {new Date(nextAppointment.starts_at).toLocaleTimeString("ro-RO", { hour: "2-digit", minute: "2-digit" })}{" "}
+                · {nextAppointment.therapy.name}
+              </p>
+              <CancelOwnAppointmentButton appointmentId={nextAppointment.id} startsAt={nextAppointment.starts_at} />
+            </div>
           </div>
         ) : (
           <div className="mm-card p-6 text-center">
@@ -148,9 +152,11 @@ export default async function PortalPage() {
         {restUpcoming.length > 0 && (
           <ul className="mt-2 space-y-1.5">
             {restUpcoming.map((a) => (
-              <li key={a.id} className="mm-card flex justify-between px-4 py-2 text-sm text-zinc-600">
-                <span>{new Date(a.starts_at).toLocaleString("ro-RO")}</span>
-                <span>{a.therapy.name}</span>
+              <li key={a.id} className="mm-card flex items-center justify-between gap-2 px-4 py-2 text-sm text-zinc-600">
+                <span>
+                  {new Date(a.starts_at).toLocaleString("ro-RO")} · {a.therapy.name}
+                </span>
+                <CancelOwnAppointmentButton appointmentId={a.id} startsAt={a.starts_at} variant="default" />
               </li>
             ))}
           </ul>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { approveClient, suspendClient } from "@/actions/clients";
 import { useToast } from "@/components/Toast";
 import { Button } from "@/components/ui/Button";
@@ -16,12 +17,14 @@ export function PendingClientRow({
 }) {
   const [pending, startTransition] = useTransition();
   const toast = useToast();
+  const router = useRouter();
 
   function handleApprove() {
     startTransition(async () => {
       try {
         await approveClient(userId);
         toast.success(`Cont aprobat pentru ${fullName}.`);
+        router.refresh();
       } catch {
         toast.error("Nu am putut aproba contul. Încearcă din nou.");
       }
@@ -33,6 +36,7 @@ export function PendingClientRow({
       try {
         await suspendClient(userId);
         toast.success(`Cont respins pentru ${fullName}.`);
+        router.refresh();
       } catch {
         toast.error("Nu am putut respinge contul. Încearcă din nou.");
       }

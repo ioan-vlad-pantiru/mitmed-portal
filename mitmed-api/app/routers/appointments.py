@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -21,6 +21,22 @@ from app.models import (
 from app.services.google_calendar import sync_appointment_cancelled, sync_appointment_created
 
 router = APIRouter(prefix="/appointments", tags=["appointments"])
+
+MIN_CANCEL_NOTICE = timedelta(hours=48)
+
+
+def _ensure_cancellable(appointment: Appointment) -> None:
+    """Regulă unică de anulare — valabilă atât pentru client, cât și pentru
+    admin/recepție: cu minim 48h înainte de programare. Sub acest prag,
+    anularea se refuză (întâlnirea rămâne, trebuie gestionată manual —
+    telefon/reprogramare)."""
+    if appointment.status != AppointmentStatus.PROGRAMATA and appointment.status != AppointmentStatus.CONFIRMATA:
+        raise HTTPException(status_code=422, detail="Această programare nu mai poate fi anulată.")
+    if appointment.starts_at - datetime.now(timezone.utc) < MIN_CANCEL_NOTICE:
+        raise HTTPException(
+            status_code=422,
+            detail="Anularea este posibilă doar cu cel puțin 48 de ore înainte de programare.",
+        )
 
 
 class OwnAppointmentIn(BaseModel):
@@ -116,6 +132,7 @@ def cancel_appointment(
     appointment = db.get(Appointment, appointment_id)
     if not appointment:
         raise HTTPException(status_code=404, detail="Programare inexistentă.")
+    _ensure_cancellable(appointment)
 
     appointment.status = AppointmentStatus.ANULATA
     db.commit()
@@ -123,6 +140,30 @@ def cancel_appointment(
     sync_appointment_cancelled(appointment.google_calendar_event_id)
 
     log_audit(db, actor_id=actor.id, action="appointment.cancel", target_type="Appointment", target_id=appointment_id)
+    return {"ok": True}
+
+
+@router.post("/{appointment_id}/cancel/me")
+def cancel_own_appointment(
+    appointment_id: str, db: DBSession = Depends(get_db), user: User = Depends(require_user)
+) -> dict:
+    """Clientul își anulează propria programare — aceeași regulă de 48h ca
+    la anularea făcută de recepție, plus verificarea că programarea chiar
+    e a lui (nu poate anula pe cineva altcineva doar știindu-i id-ul)."""
+    if user.role != Role.CLIENT or not user.client_profile:
+        raise HTTPException(status_code=403, detail="Doar clienții își pot anula propriile programări.")
+
+    appointment = db.get(Appointment, appointment_id)
+    if not appointment or appointment.client_id != user.client_profile.id:
+        raise HTTPException(status_code=404, detail="Programare inexistentă.")
+    _ensure_cancellable(appointment)
+
+    appointment.status = AppointmentStatus.ANULATA
+    db.commit()
+
+    sync_appointment_cancelled(appointment.google_calendar_event_id)
+
+    log_audit(db, actor_id=user.id, action="appointment.cancel_own", target_type="Appointment", target_id=appointment_id)
     return {"ok": True}
 
 

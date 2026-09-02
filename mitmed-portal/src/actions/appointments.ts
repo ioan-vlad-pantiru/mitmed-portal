@@ -52,10 +52,33 @@ export async function createAppointmentForClient(
   return undefined;
 }
 
-export async function cancelAppointment(appointmentId: string, clientId: string) {
+export type CancelResult = { ok: true } | { ok: false; message: string };
+
+export async function cancelAppointment(appointmentId: string, clientId: string): Promise<CancelResult> {
   await requireRole(Role.ADMIN, Role.RECEPTIE);
-  await apiPost(`/appointments/${appointmentId}/cancel`);
+  try {
+    await apiPost(`/appointments/${appointmentId}/cancel`);
+  } catch (err) {
+    if (err instanceof ApiError) return { ok: false, message: err.message };
+    throw err;
+  }
   revalidatePath(`/admin/clienti/${clientId}`);
+  revalidatePath("/admin");
+  return { ok: true };
+}
+
+/** Clientul își anulează propria programare — aceeași regulă de 48h,
+ * verificată și pe backend (sursa de adevăr), nu doar aici. */
+export async function cancelOwnAppointment(appointmentId: string): Promise<CancelResult> {
+  await verifySession();
+  try {
+    await apiPost(`/appointments/${appointmentId}/cancel/me`);
+  } catch (err) {
+    if (err instanceof ApiError) return { ok: false, message: err.message };
+    throw err;
+  }
+  revalidatePath("/portal");
+  return { ok: true };
 }
 
 export type CalendarAppointmentApi = {
