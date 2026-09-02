@@ -1,6 +1,9 @@
 import { getTherapyInsights, getOverallInsights } from "@/actions/insights";
 import { IconCoin, IconAlert, IconSparkle } from "@/components/icons";
 import { ExportCsvButton } from "./ExportCsvButton";
+import { RevenueDonut, type DonutSlice } from "@/components/RevenueDonut";
+
+const RON = (v: number) => `${v.toLocaleString("ro-RO")} RON`;
 
 export default async function InsightsPage() {
   const [therapyInsights, overall] = await Promise.all([getTherapyInsights(), getOverallInsights()]);
@@ -9,6 +12,17 @@ export default async function InsightsPage() {
   const totalRevenue = therapyInsights.reduce((sum, t) => sum + Number(t.revenue), 0);
   const totalSessions = therapyInsights.reduce((sum, t) => sum + t.sessions_completed, 0);
   const topTherapy = therapyInsights[0];
+
+  // Donut-ul e "dintr-o privire" — max. 6 segmente (skill-ul dataviz: peste
+  // atât, categoriile alăturate devin ilizibile). Top 5 pe venit + restul
+  // agregat în "Altele", nu generăm nuanțe noi pentru o a 9-a terapie.
+  const byRevenue = [...therapyInsights].sort((a, b) => Number(b.revenue) - Number(a.revenue));
+  const top5 = byRevenue.slice(0, 5);
+  const restRevenue = byRevenue.slice(5).reduce((sum, t) => sum + Number(t.revenue), 0);
+  const donutSlices: DonutSlice[] = [
+    ...top5.map((t) => ({ label: t.name, value: Number(t.revenue) })),
+    ...(restRevenue > 0 ? [{ label: "Altele", value: restRevenue }] : []),
+  ];
 
   const kpis = [
     {
@@ -64,45 +78,54 @@ export default async function InsightsPage() {
         })}
       </div>
 
-      <div className="mm-card p-5">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="text-base font-semibold tracking-tight text-zinc-900">Venit pe terapie</h2>
-          <p className="text-sm text-zinc-500">
-            <span className="mm-numeric font-semibold text-zinc-800">{totalRevenue.toLocaleString("ro-RO")} RON</span>{" "}
-            încasați din <span className="mm-numeric font-semibold text-zinc-800">{totalSessions}</span> ședințe
-            {topTherapy && (
-              <>
-                {" "}
-                · cea mai profitabilă: <span className="font-medium text-zinc-800">{topTherapy.name}</span>
-              </>
-            )}
-          </p>
+      <p className="text-sm text-zinc-500">
+        <span className="mm-numeric font-semibold text-zinc-800">{totalRevenue.toLocaleString("ro-RO")} RON</span>{" "}
+        încasați din <span className="mm-numeric font-semibold text-zinc-800">{totalSessions}</span> ședințe
+        {topTherapy && (
+          <>
+            {" "}
+            · cea mai profitabilă: <span className="font-medium text-zinc-800">{topTherapy.name}</span>
+          </>
+        )}
+      </p>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="mm-card p-5">
+          <h2 className="text-base font-semibold tracking-tight text-zinc-900">Distribuția venitului</h2>
+          <p className="text-sm text-zinc-500">Ponderea fiecărei terapii în venitul total încasat.</p>
+          <div className="mt-4">
+            <RevenueDonut slices={donutSlices} total={totalRevenue} totalLabel="total încasat" formatValue={RON} />
+          </div>
         </div>
 
-        <div className="mt-5 space-y-4">
-          {therapyInsights.map((t) => (
-            <div key={t.id} className={t.active ? "" : "opacity-50"}>
-              <div className="flex items-baseline justify-between text-sm">
-                <span className="font-medium text-zinc-800">
-                  {t.name}
-                  {!t.active && <span className="ml-2 text-xs font-normal text-zinc-400">(inactivă)</span>}
-                </span>
-                <span className="mm-numeric font-semibold text-zinc-900">{t.revenue} RON</span>
+        <div className="mm-card p-5">
+          <h2 className="text-base font-semibold tracking-tight text-zinc-900">Venit pe terapie</h2>
+          <p className="text-sm text-zinc-500">Comparație directă — util când valorile sunt apropiate.</p>
+          <div className="mt-4 space-y-4">
+            {therapyInsights.map((t) => (
+              <div key={t.id} className={t.active ? "" : "opacity-50"}>
+                <div className="flex items-baseline justify-between text-sm">
+                  <span className="font-medium text-zinc-800">
+                    {t.name}
+                    {!t.active && <span className="ml-2 text-xs font-normal text-zinc-400">(inactivă)</span>}
+                  </span>
+                  <span className="mm-numeric font-semibold text-zinc-900">{t.revenue} RON</span>
+                </div>
+                <div className="mt-1.5 h-2.5 w-full overflow-hidden rounded-full bg-zinc-100">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-[var(--mitmed-sky)] to-[var(--mitmed-teal)] transition-all"
+                    style={{ width: `${Math.max(2, (Number(t.revenue) / maxRevenue) * 100)}%` }}
+                  />
+                </div>
+                <p className="mt-1 text-xs text-zinc-400">
+                  {t.sessions_completed} ședințe finalizate · {t.distinct_clients} clienți unici
+                </p>
               </div>
-              <div className="mt-1.5 h-2.5 w-full overflow-hidden rounded-full bg-zinc-100">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-[var(--mitmed-sky)] to-[var(--mitmed-teal)] transition-all"
-                  style={{ width: `${Math.max(2, (Number(t.revenue) / maxRevenue) * 100)}%` }}
-                />
-              </div>
-              <p className="mt-1 text-xs text-zinc-400">
-                {t.sessions_completed} ședințe finalizate · {t.distinct_clients} clienți unici
-              </p>
-            </div>
-          ))}
-          {therapyInsights.length === 0 && (
-            <p className="py-6 text-center text-sm text-zinc-400">Niciun cont de terapie încă.</p>
-          )}
+            ))}
+            {therapyInsights.length === 0 && (
+              <p className="py-6 text-center text-sm text-zinc-400">Niciun cont de terapie încă.</p>
+            )}
+          </div>
         </div>
       </div>
 
