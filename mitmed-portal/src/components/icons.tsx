@@ -95,6 +95,15 @@ export function IconChart({ className }: IconProps) {
   );
 }
 
+export function IconFileText({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M7 3h7l4 4v14H7z" />
+      <path d="M14 3v4h4M9 12h6M9 15.5h6M9 8.5h2" />
+    </svg>
+  );
+}
+
 export function IconChevronLeft({ className }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>

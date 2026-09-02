@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { IconCalendar, IconUsers, IconTherapy, IconTag, IconChart, IconInbox } from "@/components/icons";
+import { IconCalendar, IconUsers, IconTherapy, IconTag, IconChart, IconInbox, IconFileText } from "@/components/icons";
 
 type NavItem = { href: string; label: string; icon: React.ComponentType<{ className?: string }> };
 
@@ -18,6 +18,7 @@ export function AdminSidebar({ isAdmin, onNavigate }: { isAdmin: boolean; onNavi
       ? [
           { href: "/admin/terapii", label: "Terapii", icon: IconTherapy },
           { href: "/admin/cupoane", label: "Cupoane", icon: IconTag },
+          { href: "/admin/documente", label: "Documente", icon: IconFileText },
         ]
       : []),
   ];

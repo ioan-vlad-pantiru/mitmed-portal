@@ -64,6 +64,11 @@ class BookingRequestStatus(str, enum.Enum):
     RESPINS = "RESPINS"
 
 
+class ConsentType(str, enum.Enum):
+    GDPR = "GDPR"
+    RISC_PRET = "RISC_PRET"  # riscuri tratament + politică de preț/fără rambursare
+
+
 coupon_therapies = Table(
     "coupon_therapies",
     Base.metadata,
@@ -229,13 +234,28 @@ class Appointment(Base):
     therapy: Mapped[Therapy] = relationship()
 
 
+class ConsentTemplate(Base):
+    """Textul curent al fiecărui tip de declarație — editabil de ADMIN. Când un
+    client semnează, textul curent se copiază (snapshot) pe Consent.version_text,
+    ca o editare ulterioară a template-ului să nu schimbe retroactiv ce a semnat
+    cineva deja."""
+
+    __tablename__ = "consent_templates"
+
+    type: Mapped[ConsentType] = mapped_column(SAEnum(ConsentType, name="consent_type"), primary_key=True)
+    text: Mapped[str] = mapped_column(String, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
 class Consent(Base):
-    """Acord de tratament / GDPR semnat digital de client (semnătură pe canvas)."""
+    """Declarație semnată digital de client (semnătură pe canvas) — GDPR sau
+    riscuri de tratament + politică de preț."""
 
     __tablename__ = "consents"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_id)
     client_id: Mapped[str] = mapped_column(String, ForeignKey("client_profiles.id", ondelete="CASCADE"), index=True)
+    type: Mapped[ConsentType] = mapped_column(SAEnum(ConsentType, name="consent_type"), nullable=False)
     version_text: Mapped[str] = mapped_column(String, nullable=False)
     signature_data_url: Mapped[str] = mapped_column(String, nullable=False)  # PNG base64 din canvas
     signed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

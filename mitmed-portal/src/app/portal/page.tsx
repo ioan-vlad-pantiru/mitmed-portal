@@ -21,15 +21,23 @@ type OwnClientData = {
   appointments: { id: string; starts_at: string; status: string; therapy: { name: string } }[];
 };
 
+const CONSENT_LABELS: { type: "GDPR" | "RISC_PRET"; title: string }[] = [
+  { type: "GDPR", title: "Acord GDPR — prelucrarea datelor medicale" },
+  { type: "RISC_PRET", title: "Declarație riscuri tratament și politică de preț" },
+];
+
 export default async function PortalPage() {
-  const [clientRaw, therapiesRaw, consents, consentText, publicConfig] = await Promise.all([
+  const [clientRaw, therapiesRaw, consents, publicConfig] = await Promise.all([
     getOwnClientData(),
     listTherapies(),
     getOwnConsents(),
-    getCurrentConsentText(),
     getPublicConfig(),
   ]);
   if (!clientRaw) notFound();
+
+  const signedTypes = new Set(consents.map((c) => c.type));
+  const unsigned = CONSENT_LABELS.filter((c) => !signedTypes.has(c.type));
+  const unsignedTexts = await Promise.all(unsigned.map((c) => getCurrentConsentText(c.type)));
   const client = clientRaw as unknown as OwnClientData;
 
   const therapies = therapiesRaw
@@ -51,10 +59,38 @@ export default async function PortalPage() {
         <p className="text-sm text-zinc-500">Aici îți poți vedea fișa și programările.</p>
       </section>
 
-      {consents.length === 0 && (
+      {unsigned.length > 0 && (
+        <section className="space-y-5">
+          <h2 className="text-base font-semibold text-zinc-900">Declarații de semnat</h2>
+          {unsigned.map((c, i) => (
+            <ConsentForm
+              key={c.type}
+              type={c.type}
+              title={c.title}
+              consentText={unsignedTexts[i]}
+              clientName={client.full_name}
+            />
+          ))}
+        </section>
+      )}
+
+      {consents.length > 0 && (
         <section>
-          <h2 className="text-base font-semibold text-zinc-900">Acord de tratament</h2>
-          <ConsentForm consentText={consentText} />
+          <h2 className="text-base font-semibold text-zinc-900">Declarații semnate</h2>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {consents.map((c) => (
+              <span
+                key={c.id}
+                className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700"
+              >
+                <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-600 text-[10px] text-white">
+                  ✓
+                </span>
+                {CONSENT_LABELS.find((l) => l.type === c.type)?.title ?? c.type} — semnat pe{" "}
+                {new Date(c.signed_at).toLocaleDateString("ro-RO")}
+              </span>
+            ))}
+          </div>
         </section>
       )}
 

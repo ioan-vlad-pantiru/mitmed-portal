@@ -2,15 +2,23 @@
 
 import { useRef, useState } from "react";
 
-/** Semnătură simplă pe canvas — desen liber cu mouse/touch, exportat ca PNG base64. */
+/** Semnătură pe canvas, stilizată ca o linie de semnat pe un document real —
+ * desen liber cu mouse/touch, exportat ca PNG base64. */
 export function SignaturePad({ onChange }: { onChange: (dataUrl: string | null) => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
   const [hasDrawn, setHasDrawn] = useState(false);
 
+  // Canvas-ul e responsive (w-full), dar rezoluția lui internă de desen e
+  // fixă (500×130) — fără scalare, coordonatele mouse-ului (în pixeli CSS)
+  // nu se potrivesc cu pixelii de desen ori de câte ori dimensiunea afișată
+  // diferă de 500×130, ceea ce face linia să "alunece" față de mouse.
   function getPos(e: React.PointerEvent<HTMLCanvasElement>) {
-    const rect = e.currentTarget.getBoundingClientRect();
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    const canvas = e.currentTarget;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
   }
 
   function handlePointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
@@ -50,23 +58,30 @@ export function SignaturePad({ onChange }: { onChange: (dataUrl: string | null) 
   }
 
   return (
-    <div>
+    <div className="relative">
       <canvas
         ref={canvasRef}
-        width={400}
-        height={140}
+        width={500}
+        height={130}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={finishStroke}
         onPointerLeave={finishStroke}
-        className="w-full touch-none rounded-md border border-zinc-300 bg-white"
+        className="relative z-10 w-full touch-none"
       />
+      {/* Linia de semnat, ca pe un document tipărit */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-8 border-b border-dashed border-zinc-300" />
+      {!hasDrawn && (
+        <span className="pointer-events-none absolute bottom-9 left-0 text-xs italic text-zinc-300">
+          semnează aici ×
+        </span>
+      )}
       <button
         type="button"
         onClick={clear}
-        className="mt-1 text-xs text-zinc-500 hover:underline"
+        className="absolute bottom-0 right-0 z-20 text-xs text-zinc-400 hover:text-zinc-600 hover:underline"
       >
-        Șterge semnătura
+        Șterge
       </button>
     </div>
   );
