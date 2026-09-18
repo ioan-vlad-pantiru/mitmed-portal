@@ -115,6 +115,7 @@ export async function updateClientNotes(clientProfileId: string, notes: string) 
 }
 
 export type MedicalHistoryFormState = { message?: string; success?: boolean } | undefined;
+export type ProfileFormState = { message?: string; success?: boolean } | undefined;
 
 /** Chestionarul medical pre-consultație, completat chiar de client. */
 export async function updateOwnMedicalHistory(
@@ -135,6 +136,89 @@ export async function updateOwnMedicalHistory(
   }
   revalidatePath("/portal");
   return { success: true, message: "Chestionar salvat." };
+}
+
+const optionalValue = (formData: FormData, name: string) => String(formData.get(name) ?? "").trim() || null;
+
+/** Date de profil neclinice, pentru comunicare și rapoarte agregate. */
+export async function updateOwnProfileData(
+  _state: ProfileFormState,
+  formData: FormData
+): Promise<ProfileFormState> {
+  try {
+    await apiPatch("/clients/me/profile", {
+      birth_date: optionalValue(formData, "birthDate"),
+      gender: optionalValue(formData, "gender"),
+      city: optionalValue(formData, "city"),
+      county: optionalValue(formData, "county"),
+      address: optionalValue(formData, "address"),
+      occupation: optionalValue(formData, "occupation"),
+      occupation_category: optionalValue(formData, "occupationCategory"),
+      preferred_contact: optionalValue(formData, "preferredContact"),
+      preferred_language: optionalValue(formData, "preferredLanguage"),
+      referral_source: optionalValue(formData, "referralSource"),
+      referral_details: optionalValue(formData, "referralDetails"),
+      activity_level: optionalValue(formData, "activityLevel"),
+      primary_goal: optionalValue(formData, "primaryGoal"),
+      secondary_goal: optionalValue(formData, "secondaryGoal"),
+      communication_consent: formData.get("communicationConsent") === "on",
+    });
+  } catch (err) {
+    if (err instanceof ApiError) return { message: err.message };
+    throw err;
+  }
+  revalidatePath("/portal");
+  return { success: true, message: "Profil salvat." };
+}
+
+/** GDPR Art. 15 — export complet, imediat, al datelor proprii ale clientului. */
+export async function exportOwnData(): Promise<Record<string, unknown>> {
+  return apiGet<Record<string, unknown>>("/clients/me/export");
+}
+
+export type DataRequestResult = { ok: true; message: string } | { ok: false; message: string };
+
+/** GDPR Art. 17 — clientul solicită ștergerea/anonimizarea contului. Cererea
+ * e revizuită manual de admin (vezi listPendingDataSubjectRequests), nu se
+ * execută automat, fiindcă fișele medicale/financiare trebuie păstrate
+ * conform obligațiilor legale de arhivare. */
+export async function requestOwnDataErasure(): Promise<DataRequestResult> {
+  try {
+    const result = await apiPost<{ message: string }>("/clients/me/erasure-request");
+    return { ok: true, message: result.message };
+  } catch (err) {
+    if (err instanceof ApiError) return { ok: false, message: err.message };
+    throw err;
+  }
+}
+
+export type DataSubjectRequestSummary = {
+  id: string;
+  client_id: string;
+  client_name: string;
+  type: "EXPORT" | "ERASURE";
+  created_at: string;
+};
+
+/** Admin: coada de cereri GDPR nesoluționate (doar ștergerea ajunge aici —
+ * exportul e imediat/self-service). */
+export async function listPendingDataSubjectRequests(): Promise<DataSubjectRequestSummary[]> {
+  await requireRole(Role.ADMIN, Role.RECEPTIE);
+  return apiGet<DataSubjectRequestSummary[]>("/data-subject-requests");
+}
+
+/** Admin: anonimizează contul (păstrează fișele medicale/financiare, cum
+ * impune legea, dar le deconectează de la o identitate reperabilă). */
+export async function completeDataSubjectRequest(requestId: string) {
+  await requireRole(Role.ADMIN);
+  await apiPost(`/data-subject-requests/${requestId}/complete`);
+  revalidatePath("/admin/setari");
+}
+
+export async function rejectDataSubjectRequest(requestId: string, note: string) {
+  await requireRole(Role.ADMIN);
+  await apiPost(`/data-subject-requests/${requestId}/reject`, { notes: note });
+  revalidatePath("/admin/setari");
 }
 
 /** Statistici rapide pentru bordul admin. */

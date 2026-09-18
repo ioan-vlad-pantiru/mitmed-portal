@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Input, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { IconClose } from "@/components/icons";
 
-type Therapy = { id: string; name: string };
+type Therapy = { id: string; name: string; price: string };
 type Line = { therapyId: string; sessions: number };
 
 export function PackageFields({
@@ -13,13 +13,18 @@ export function PackageFields({
   defaults,
 }: {
   therapies: Therapy[];
-  defaults?: { name?: string; price?: string | number; items?: { therapy_id: string; sessions_included: number }[] };
+  defaults?: { name?: string; discountPercent?: string | number; items?: { therapy_id: string; sessions_included: number }[] };
 }) {
   const [lines, setLines] = useState<Line[]>(
     defaults?.items && defaults.items.length > 0
       ? defaults.items.map((i) => ({ therapyId: i.therapy_id, sessions: i.sessions_included }))
       : [{ therapyId: therapies[0]?.id ?? "", sessions: 1 }]
   );
+  const [discountPercent, setDiscountPercent] = useState<number>(Number(defaults?.discountPercent ?? 0));
+
+  const therapyById = useMemo(() => new Map(therapies.map((t) => [t.id, t])), [therapies]);
+  const listPrice = lines.reduce((sum, l) => sum + Number(therapyById.get(l.therapyId)?.price ?? 0) * l.sessions, 0);
+  const finalPrice = Math.round(listPrice * (1 - discountPercent / 100) * 100) / 100;
 
   function updateLine(idx: number, patch: Partial<Line>) {
     setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
@@ -40,13 +45,23 @@ export function PackageFields({
   return (
     <>
       <div className="col-span-2 sm:col-span-1">
-        <label className="block text-xs font-medium text-zinc-700">Nume pachet</label>
-        <Input name="name" required defaultValue={defaults?.name} className="mt-1" placeholder="ex. Pachet Recuperare" />
+        <label className="block text-xs font-medium text-zinc-700">Nume variantă pachet</label>
+        <Input name="name" required defaultValue={defaults?.name} className="mt-1" placeholder="ex. Pachet Standard" />
       </div>
       <div className="col-span-2 sm:col-span-1">
-        <label className="block text-xs font-medium text-zinc-700">Preț total pachet (RON)</label>
-        <Input name="price" type="number" step="0.01" min={0} required defaultValue={defaults?.price} className="mt-1" />
-        <p className="mt-1 text-xs text-zinc-400">De obicei mai mic decât suma terapiilor incluse, separat.</p>
+        <label className="block text-xs font-medium text-zinc-700">Reducere (%)</label>
+        <Input
+          name="discountPercent"
+          type="number"
+          step="0.01"
+          min={0}
+          max={100}
+          required
+          value={discountPercent}
+          onChange={(e) => setDiscountPercent(Number(e.target.value))}
+          className="mt-1"
+        />
+        <p className="mt-1 text-xs text-zinc-400">Se aplică peste suma prețurilor de listă ale terapiilor incluse.</p>
       </div>
 
       <div className="col-span-2">
@@ -92,6 +107,15 @@ export function PackageFields({
         <Button type="button" variant="secondary" className="mt-2 text-xs" onClick={addLine}>
           + Adaugă terapie
         </Button>
+      </div>
+
+      <div className="col-span-2 flex items-baseline justify-between rounded-md bg-zinc-50 px-3 py-2 text-sm">
+        <span className="text-zinc-500">
+          Preț de listă: <span className="mm-numeric text-zinc-700">{listPrice.toFixed(2)} RON</span>
+        </span>
+        <span className="font-semibold text-zinc-900">
+          Preț pachet: <span className="mm-numeric">{finalPrice.toFixed(2)} RON</span>
+        </span>
       </div>
     </>
   );

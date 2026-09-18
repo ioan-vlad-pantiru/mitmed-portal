@@ -2,15 +2,17 @@ import csv
 import io
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session as DBSession, joinedload
 
 from app.audit import log_audit
+from app.config import settings
 from app.database import get_db
-from app.deps import require_roles
+from app.deps import require_roles, require_user
 from app.models import ClientProfile, Coupon, PackageItem, PaymentStatus, Payment, Role, Therapy, TherapyPackage, User, gen_id
+from app.services import payu
 from app.services.pricing import CouponError, calculate_price
 
 router = APIRouter(prefix="/payments", tags=["payments"])
@@ -179,6 +181,86 @@ def mark_payment_paid(
     db.commit()
     log_audit(db, actor_id=actor.id, action="payment.mark_paid", target_type="Payment", target_id=payment_id)
     return {"ok": True}
+
+
+class PayuCheckoutOut(BaseModel):
+    redirect_url: str
+
+
+@router.post("/{payment_id}/payu-checkout")
+def create_payu_checkout(
+    payment_id: str,
+    request: Request,
+    db: DBSession = Depends(get_db),
+    actor: User = Depends(require_user),
+) -> PayuCheckoutOut:
+    """Inițiază o comandă PayU pentru o plată neîncasată — folosit atât din
+    portalul clientului (plată pe cont propriu), cât și din admin. Nu marchează
+    nimic ca plătit aici — asta se întâmplă doar din /webhooks/payu, la
+    confirmarea reală venită de la PayU."""
+    payment = (
+        db.query(Payment)
+        .options(joinedload(Payment.client).joinedload(ClientProfile.user), joinedload(Payment.therapy), joinedload(Payment.package))
+        .filter(Payment.id == payment_id)
+        .first()
+    )
+    if not payment:
+        raise HTTPException(status_code=404, detail="Plată inexistentă.")
+
+    if actor.role == Role.CLIENT:
+        if not actor.client_profile or payment.client_id != actor.client_profile.id:
+            raise HTTPException(status_code=403, detail="Nu ai acces la această plată.")
+    elif actor.role not in (Role.ADMIN, Role.RECEPTIE):
+        raise HTTPException(status_code=403, detail="Nu ai acces la această resursă.")
+
+    # O plată dintr-un pachet se achită integral, dintr-o singură comandă PayU
+    # care acoperă toate liniile neîncasate ale aceleiași achiziții — clientul
+    # nu plătește pachetul terapie cu terapie.
+    if payment.package_purchase_id:
+        group = db.query(Payment).options(joinedload(Payment.therapy)).filter(
+            Payment.package_purchase_id == payment.package_purchase_id
+        ).all()
+        ext_order_id = payment.package_purchase_id
+        description = f"Pachet {payment.package.name}" if payment.package else "Pachet terapii"
+    else:
+        group = [payment]
+        ext_order_id = payment.id
+        description = payment.therapy.name
+
+    outstanding = [p for p in group if p.status in (PaymentStatus.NEPLATIT, PaymentStatus.PARTIAL)]
+    if not outstanding:
+        raise HTTPException(status_code=422, detail="Această plată a fost deja achitată.")
+
+    total_amount_bani = sum(int(round(float(p.final_price) * 100)) for p in outstanding)
+    buyer_email = payment.client.user.email if payment.client and payment.client.user else None
+
+    try:
+        result = payu.create_order(
+            ext_order_id=ext_order_id,
+            total_amount_bani=total_amount_bani,
+            description=description,
+            customer_ip=request.client.host if request.client else "127.0.0.1",
+            buyer_email=buyer_email,
+            notify_url=f"{settings.public_api_base_url}/webhooks/payu",
+            continue_url=f"{settings.portal_base_url}/portal/plati?payu=success",
+        )
+    except payu.PayuError as err:
+        raise HTTPException(status_code=502, detail=str(err)) from err
+
+    for p in outstanding:
+        p.payu_order_id = result["order_id"]
+    db.commit()
+
+    log_audit(
+        db,
+        actor_id=actor.id,
+        action="payment.payu_checkout_created",
+        target_type="Payment",
+        target_id=ext_order_id,
+        metadata={"payu_order_id": result["order_id"], "amount_bani": total_amount_bani},
+    )
+
+    return PayuCheckoutOut(redirect_url=result["redirect_url"])
 
 
 @router.get("/preview")

@@ -7,7 +7,12 @@ from app.models import Payment
 def consume_package_session(db: DBSession, *, client_id: str, therapy_id: str) -> Payment | None:
     """Scade o ședință din cel mai vechi pachet neepuizat al clientului pentru
     acea terapie (FIFO). O ședință unică (fără pachet) nu are ce să scadă —
-    nu face nimic. Oglindește lib/packages.ts."""
+    nu face nimic. Oglindește lib/packages.ts.
+
+    Rândurile candidate sunt blocate (`FOR UPDATE`) până la commit, ca două
+    finalizări de consult concurente pentru același client+terapie să nu poată
+    citi amândouă `sessions_used` înainte ca vreuna să-l incrementeze —
+    altfel s-ar putea consuma aceeași ședință de două ori din pachet."""
     candidates = (
         db.execute(
             select(Payment)
@@ -17,6 +22,7 @@ def consume_package_session(db: DBSession, *, client_id: str, therapy_id: str) -
                 Payment.package_total_sessions.is_not(None),
             )
             .order_by(Payment.created_at.asc())
+            .with_for_update()
         )
         .scalars()
         .all()

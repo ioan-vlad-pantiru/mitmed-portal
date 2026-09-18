@@ -108,6 +108,25 @@ export function PaymentForm({
 
   const selectedPackage = packages.find((p) => p.id === packageId);
 
+  function handleTherapyChange(nextTherapyId: string) {
+    setTherapyId(nextTherapyId);
+
+    // Dacă cuponul ales din listă nu se mai aplică terapiei noi,
+    // resetează selecția în loc să trimită un cod care nu se mai potrivește.
+    const stillApplies =
+      couponMode === NONE_OPTION ||
+      couponMode === MANUAL_OPTION ||
+      coupons.some((c) => c.id === couponMode && couponAppliesTo(c, nextTherapyId));
+
+    if (!stillApplies) {
+      setCouponMode(NONE_OPTION);
+      setCouponCode("");
+      refreshPreview(nextTherapyId, "");
+    } else {
+      refreshPreview(nextTherapyId, couponCode);
+    }
+  }
+
   return (
     <form action={action} className="mt-3 space-y-3 mm-card p-4">
       <input type="hidden" name="clientId" value={clientId} />
@@ -160,53 +179,37 @@ export function PaymentForm({
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-zinc-700">Terapie</label>
-              <Select
-                name="therapyId"
-                value={therapyId}
-                className="mt-1"
-                onChange={(e) => {
-                  const nextTherapyId = e.target.value;
-                  setTherapyId(nextTherapyId);
-
-                  // Dacă cuponul ales din listă nu se mai aplică terapiei noi,
-                  // resetează selecția în loc să trimită un cod care nu se mai potrivește.
-                  const stillApplies =
-                    couponMode === NONE_OPTION ||
-                    couponMode === MANUAL_OPTION ||
-                    coupons.some((c) => c.id === couponMode && couponAppliesTo(c, nextTherapyId));
-
-                  if (!stillApplies) {
-                    setCouponMode(NONE_OPTION);
-                    setCouponCode("");
-                    refreshPreview(nextTherapyId, "");
-                  } else {
-                    refreshPreview(nextTherapyId, couponCode);
-                  }
-                }}
-              >
-                {therapies.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name} — {t.price} RON
-                  </option>
-                ))}
-              </Select>
+          <div>
+            <label className="block text-xs font-medium text-zinc-700">Terapie</label>
+            <input type="hidden" name="therapyId" value={therapyId} />
+            <div className="mm-choice-grid mt-1.5">
+              {therapies.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  data-active={t.id === therapyId}
+                  className="mm-choice"
+                  onClick={() => handleTherapyChange(t.id)}
+                >
+                  <strong>{t.name}</strong>
+                  <span>{t.price} RON</span>
+                </button>
+              ))}
             </div>
-            <div>
-              <label className="block text-xs font-medium text-zinc-700">Cupon</label>
-              <Select value={couponMode} onChange={(e) => handleCouponModeChange(e.target.value)} className="mt-1">
-                <option value={NONE_OPTION}>Fără cupon</option>
-                {availableCoupons.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.code} — {c.value}
-                    {c.type === "PROCENT" ? "%" : " RON"}
-                  </option>
-                ))}
-                <option value={MANUAL_OPTION}>Alt cod (introdu manual)…</option>
-              </Select>
-            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-zinc-700">Cupon</label>
+            <Select value={couponMode} onChange={(e) => handleCouponModeChange(e.target.value)} className="mt-1.5 max-w-xs">
+              <option value={NONE_OPTION}>Fără cupon</option>
+              {availableCoupons.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.code} — {c.value}
+                  {c.type === "PROCENT" ? "%" : " RON"}
+                </option>
+              ))}
+              <option value={MANUAL_OPTION}>Alt cod (introdu manual)…</option>
+            </Select>
           </div>
 
           {couponMode === MANUAL_OPTION && (

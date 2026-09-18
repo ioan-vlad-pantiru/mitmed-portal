@@ -1,8 +1,20 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Valoarea implicită de cod pentru parola de seed a adminului — NU pentru
+# folosire reală. Există doar ca fallback în dev; la pornirea în producție,
+# app/main.py verifică explicit dacă a fost schimbată în .env și refuză să
+# pornească dacă nu a fost (altfel un deploy cu .env incomplet ar publica un
+# cont admin cu parolă cunoscută public, pe un sistem cu date medicale).
+DEFAULT_SEED_ADMIN_PASSWORD = "SchimbaMaLaPrimaAutentificare1!"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    # "development" | "production" — controlează verificările stricte de la
+    # pornire (ex. parola de seed). Setați explicit ENVIRONMENT=production în
+    # .env-ul de pe VPS.
+    environment: str = "development"
 
     database_url: str = "postgresql+psycopg://mitmed:mitmed_dev_password@localhost:5433/mitmed_portal"
     session_cookie_name: str = "mitmed_session"
@@ -17,7 +29,7 @@ class Settings(BaseSettings):
     google_calendar_calendar_id: str | None = None
 
     seed_admin_email: str = "sebastian@mitmed.ro"
-    seed_admin_password: str = "SchimbaMaLaPrimaAutentificare1!"
+    seed_admin_password: str = DEFAULT_SEED_ADMIN_PASSWORD
 
     # SMS/WhatsApp remindere — no-op (doar logare) până se completează un
     # provider. Twilio e implementat ca exemplu; poate fi înlocuit ușor cu
@@ -30,6 +42,24 @@ class Settings(BaseSettings):
 
     # URL-ul de recenzii Google (Maps) — folosit pt. nudge-ul de recenzie din portal.
     google_review_url: str | None = None
+
+    # Plată online (PayU Romania) — vezi app/services/payu.py. Fără
+    # payu_pos_id/payu_client_secret/payu_second_key completate, endpoint-ul
+    # de checkout refuză cererea în loc să eșueze tăcut.
+    payu_base_url: str = "https://secure.snd.payu.com"  # sandbox implicit; https://secure.payu.com în producție
+    payu_pos_id: str | None = None
+    payu_client_secret: str | None = None
+    # "A doua cheie" (MD5) din panoul de comerciant PayU — folosită DOAR la
+    # verificarea semnăturii notificărilor primite pe /webhooks/payu, nu la
+    # autentificarea OAuth (care folosește payu_client_secret).
+    payu_second_key: str | None = None
+    # URL public al API-ului, pentru notifyUrl trimis la PayU — trebuie să fie
+    # accesibil din internet (nu doar din rețeaua Docker internă), altfel PayU
+    # nu poate confirma plata. În dev local, tunelează cu ngrok și pune URL-ul
+    # de acolo aici.
+    public_api_base_url: str = "http://localhost:8000"
+    # URL-ul portalului, pentru redirecționarea clientului înapoi după plată.
+    portal_base_url: str = "http://localhost:3000"
 
 
 settings = Settings()

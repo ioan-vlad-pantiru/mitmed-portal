@@ -6,16 +6,26 @@ ales ca exemplu concret (are și SMS și WhatsApp prin același API); poate fi
 trec prin send_sms().
 """
 
+import logging
+
 from app.config import settings
+
+logger = logging.getLogger("mitmed.notifications")
 
 
 def _is_configured() -> bool:
     return bool(settings.twilio_account_sid and settings.twilio_auth_token and settings.twilio_from_number)
 
 
+def _redact_phone(phone: str) -> str:
+    return f"***{phone[-4:]}" if len(phone) > 4 else "***"
+
+
 def send_sms(to_phone: str, message: str) -> bool:
     if not _is_configured():
-        print(f"[notifications] neconfigurat — n-am trimis către {to_phone}: {message}")
+        # Nu logăm conținutul mesajului (poate menționa detalii ale
+        # programării) — doar faptul că n-a fost trimis, cu numărul redactat.
+        logger.info("Twilio neconfigurat — n-am trimis remindere către %s", _redact_phone(to_phone))
         return False
 
     import requests
@@ -27,7 +37,7 @@ def send_sms(to_phone: str, message: str) -> bool:
         timeout=10,
     )
     if not resp.ok:
-        print(f"[notifications] Twilio a răspuns {resp.status_code}: {resp.text}")
+        logger.error("Twilio a răspuns %s pentru %s", resp.status_code, _redact_phone(to_phone))
         return False
     return True
 

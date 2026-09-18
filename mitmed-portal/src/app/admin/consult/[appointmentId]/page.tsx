@@ -117,6 +117,12 @@ export default async function ConsultPage({ params }: { params: Promise<{ appoin
                     <dd>{client.medical_history.previous_injuries}</dd>
                   </div>
                 )}
+                {client.medical_history.notes && (
+                  <div>
+                    <dt className="text-xs text-zinc-400">Alte informații</dt>
+                    <dd>{client.medical_history.notes}</dd>
+                  </div>
+                )}
               </dl>
             ) : (
               <p className="mt-1 text-sm text-zinc-400">Necompletat.</p>

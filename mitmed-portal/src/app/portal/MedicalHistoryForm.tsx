@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import { AlertTriangle, LockKeyhole, Pill, Save } from "lucide-react";
 import { updateOwnMedicalHistory } from "@/actions/clients";
 
 type MedicalHistory = {
@@ -15,66 +16,12 @@ export function MedicalHistoryForm({ initial }: { initial: MedicalHistory }) {
   const [state, action, pending] = useActionState(updateOwnMedicalHistory, undefined);
 
   return (
-    <form action={action} className="mt-3 space-y-3 mm-card p-4">
-      <p className="text-xs text-zinc-500">
-        Ajută-ne să te tratăm mai bine — completează înainte de prima ședință. Admin/recepția
-        vede aceste informații.
-      </p>
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-xs font-medium text-zinc-700">Alergii</label>
-          <input
-            name="allergies"
-            defaultValue={initial?.allergies}
-            className="mt-1 w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-zinc-700">Afecțiuni cunoscute</label>
-          <input
-            name="conditions"
-            defaultValue={initial?.conditions}
-            className="mt-1 w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-zinc-700">Medicamente curente</label>
-          <input
-            name="medications"
-            defaultValue={initial?.medications}
-            className="mt-1 w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-zinc-700">Leziuni/operații anterioare</label>
-          <input
-            name="previousInjuries"
-            defaultValue={initial?.previous_injuries}
-            className="mt-1 w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
-          />
-        </div>
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-zinc-700">Alte note (opțional)</label>
-        <textarea
-          name="notes"
-          rows={2}
-          defaultValue={initial?.notes}
-          className="mt-1 w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
-        />
-      </div>
-
-      {state?.message && (
-        <p className={`text-sm ${state.success ? "text-emerald-600" : "text-red-600"}`}>{state.message}</p>
-      )}
-
-      <button
-        type="submit"
-        disabled={pending}
-        className="rounded-md bg-sky-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-60"
-      >
-        {pending ? "Se salvează…" : "Salvează chestionarul"}
-      </button>
+    <form action={action} className="medical-history-form">
+      <div className="medical-history-privacy"><LockKeyhole size={18} /><p><strong>Date confidențiale</strong> Informațiile de mai jos sunt vizibile doar echipei MitMed care se ocupă de tratamentul tău.</p></div>
+      <fieldset className="medical-history-section"><legend><AlertTriangle size={17} /> Istoric relevant</legend><div className="medical-history-grid"><label>Alergii<input name="allergies" defaultValue={initial?.allergies} placeholder="De exemplu: latex, penicilină" /></label><label>Afecțiuni cunoscute<input name="conditions" defaultValue={initial?.conditions} placeholder="De exemplu: hipertensiune" /></label><label>Leziuni sau operații anterioare<input name="previousInjuries" defaultValue={initial?.previous_injuries} placeholder="Zona și anul, dacă le știi" /></label></div></fieldset>
+      <fieldset className="medical-history-section"><legend><Pill size={17} /> Tratament curent</legend><label className="medical-history-full">Medicamente sau suplimente<input name="medications" defaultValue={initial?.medications} placeholder="Numele medicamentelor relevante" /></label><label className="medical-history-full">Alte informații pentru terapeut<textarea name="notes" rows={3} defaultValue={initial?.notes} placeholder="Ce ar trebui să știe echipa înainte de ședință?" /></label></fieldset>
+      {state?.message && <p className={`medical-history-result ${state.success ? "is-success" : "is-error"}`} role="alert">{state.message}</p>}
+      <div className="medical-history-actions"><p>Actualizează dosarul când apar schimbări importante pentru recuperarea ta.</p><button type="submit" disabled={pending}>{pending ? "Se salvează…" : <><Save size={16} /> Salvează modificările</>}</button></div>
     </form>
   );
 }

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Logo } from "@/components/Logo";
 
 function RecoveryWave() {
@@ -65,6 +66,16 @@ export function AuthShell({
           <div className="mt-7">{children}</div>
 
           {footer && <div className="mt-6 text-center text-sm text-zinc-500">{footer}</div>}
+
+          <p className="mt-6 text-center text-xs text-zinc-400">
+            <Link href="/confidentialitate" className="hover:underline">
+              Confidențialitate
+            </Link>{" "}
+            ·{" "}
+            <Link href="/termeni" className="hover:underline">
+              Termeni
+            </Link>
+          </p>
         </div>
       </div>
     </div>

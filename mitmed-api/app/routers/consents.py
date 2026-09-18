@@ -1,5 +1,5 @@
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/consents", tags=["consents"])
 # Cele două tipuri cu care pornește orice instalație nouă — folosite doar ca
 # seed inițial (idempotent, la prima accesare), nu ca o listă fixă de valori
 # valide. ADMIN poate adăuga oricând tipuri noi din /admin/documente.
-DEFAULT_TEMPLATES: dict[str, tuple[str, str]] = {
+DEFAULT_TEMPLATES: dict[str, tuple[str, str, str]] = {
     "GDPR": (
         "Acord GDPR",
         "Sunt de acord ca datele mele medicale să fie prelucrate de cabinetul MitMed "
@@ -23,6 +23,7 @@ DEFAULT_TEMPLATES: dict[str, tuple[str, str]] = {
         "Confirm că am fost informat/ă despre natura tratamentului și pot solicita "
         "oricând ștergerea datelor mele, cu excepția celor pe care legea ne obligă "
         "să le păstrăm.",
+        "PRELUCRARE_DATE",
     ),
     "RISC_PRET": (
         "Declarație riscuri + preț",
@@ -31,6 +32,7 @@ DEFAULT_TEMPLATES: dict[str, tuple[str, str]] = {
         "de acord cu politica de preț a cabinetului: sumele achitate pentru ședințe "
         "sau pachete de ședințe NU se restituie, indiferent de motiv, odată ce "
         "ședința a avut loc sau pachetul a fost activat.",
+        "TRATAMENT",
     ),
 }
 
@@ -40,17 +42,20 @@ class ConsentTemplateOut(BaseModel):
     label: str
     text: str
     active: bool
+    category: str
     updated_at: datetime
 
 
 class ConsentTemplateCreate(BaseModel):
     label: str = Field(min_length=2)
     text: str = Field(min_length=1)
+    category: str = Field(default="TRATAMENT")
 
 
 class ConsentTemplateIn(BaseModel):
     label: str = Field(min_length=2)
     text: str = Field(min_length=1)
+    category: str = Field(default="TRATAMENT")
 
 
 class ConsentIn(BaseModel):
@@ -63,15 +68,16 @@ class ConsentOut(BaseModel):
     type: str
     version_text: str
     signed_at: datetime
+    withdrawn_at: datetime | None = None
 
 
 def _ensure_default_templates(db: DBSession) -> None:
     """Seed idempotent — rulează o dată, la prima cerere care atinge acest
     router după o instalare nouă. Nu mai constrânge ce tipuri pot exista."""
     existing = {t for (t,) in db.query(ConsentTemplate.type).all()}
-    for type_, (label, text) in DEFAULT_TEMPLATES.items():
+    for type_, (label, text, category) in DEFAULT_TEMPLATES.items():
         if type_ not in existing:
-            db.add(ConsentTemplate(type=type_, label=label, text=text))
+            db.add(ConsentTemplate(type=type_, label=label, text=text, category=category))
     if len(existing) < len(DEFAULT_TEMPLATES):
         db.commit()
 
@@ -100,7 +106,9 @@ def list_consent_templates(
     _ensure_default_templates(db)
     templates = db.query(ConsentTemplate).order_by(ConsentTemplate.created_at.asc()).all()
     return [
-        ConsentTemplateOut(type=t.type, label=t.label, text=t.text, active=t.active, updated_at=t.updated_at)
+        ConsentTemplateOut(
+            type=t.type, label=t.label, text=t.text, active=t.active, category=t.category, updated_at=t.updated_at
+        )
         for t in templates
     ]
 
@@ -116,7 +124,9 @@ def list_active_consent_templates(
         ConsentTemplate.created_at.asc()
     ).all()
     return [
-        ConsentTemplateOut(type=t.type, label=t.label, text=t.text, active=t.active, updated_at=t.updated_at)
+        ConsentTemplateOut(
+            type=t.type, label=t.label, text=t.text, active=t.active, category=t.category, updated_at=t.updated_at
+        )
         for t in templates
     ]
 
@@ -128,14 +138,14 @@ def create_consent_template(
     """ADMIN adaugă un tip nou de document de semnat (ex. "Acord vaccinare"),
     fără nicio schimbare de cod — devine imediat vizibil clienților în portal."""
     type_ = _unique_type(db, payload.label)
-    template = ConsentTemplate(type=type_, label=payload.label, text=payload.text)
+    template = ConsentTemplate(type=type_, label=payload.label, text=payload.text, category=payload.category)
     db.add(template)
     db.commit()
     db.refresh(template)
     log_audit(db, actor_id=actor.id, action="consent_template.create", target_type="ConsentTemplate", target_id=type_)
     return ConsentTemplateOut(
         type=template.type, label=template.label, text=template.text, active=template.active,
-        updated_at=template.updated_at,
+        category=template.category, updated_at=template.updated_at,
     )
 
 
@@ -155,6 +165,7 @@ def update_consent_template(
         raise HTTPException(status_code=404, detail="Tip de document inexistent.")
     template.label = payload.label
     template.text = payload.text
+    template.category = payload.category
     db.commit()
     log_audit(
         db, actor_id=actor.id, action="consent_template.update", target_type="ConsentTemplate", target_id=consent_type
@@ -229,7 +240,10 @@ def get_own_consents(db: DBSession = Depends(get_db), user: User = Depends(requi
         .order_by(Consent.signed_at.desc())
         .all()
     )
-    return [ConsentOut(id=c.id, type=c.type, version_text=c.version_text, signed_at=c.signed_at) for c in consents]
+    return [
+        ConsentOut(id=c.id, type=c.type, version_text=c.version_text, signed_at=c.signed_at, withdrawn_at=c.withdrawn_at)
+        for c in consents
+    ]
 
 
 @router.post("/me")
@@ -253,6 +267,31 @@ def sign_consent(payload: ConsentIn, db: DBSession = Depends(get_db), user: User
     db.commit()
 
     log_audit(db, actor_id=user.id, action="consent.sign", target_type="Consent", target_id=consent.id, metadata={"type": payload.type})
+    return {"ok": True}
+
+
+@router.post("/me/{consent_id}/withdraw")
+def withdraw_own_consent(
+    consent_id: str, db: DBSession = Depends(get_db), user: User = Depends(require_user)
+) -> dict:
+    """GDPR Art. 7(3): retragerea trebuie să fie la fel de ușoară ca darea
+    consimțământului. Nu șterge semnătura (dovada e obligatorie să rămână),
+    doar marchează momentul retragerii — nu afectează legalitatea prelucrării
+    de dinainte de acest moment. Pentru un consimțământ legat direct de
+    tratamentul în curs, retragerea nu anulează ședințele deja efectuate."""
+    if not user.client_profile:
+        raise HTTPException(status_code=403, detail="Doar clienții pot retrage o declarație.")
+
+    consent = db.get(Consent, consent_id)
+    if not consent or consent.client_id != user.client_profile.id:
+        raise HTTPException(status_code=404, detail="Declarație inexistentă.")
+    if consent.withdrawn_at:
+        raise HTTPException(status_code=422, detail="Această declarație a fost deja retrasă.")
+
+    consent.withdrawn_at = datetime.now(timezone.utc)
+    db.commit()
+
+    log_audit(db, actor_id=user.id, action="consent.withdraw", target_type="Consent", target_id=consent.id)
     return {"ok": True}
 
 

@@ -19,6 +19,8 @@ class PackageItemOut(BaseModel):
 class PackageOut(BaseModel):
     id: str
     name: str
+    discount_percent: str
+    list_price: str
     price: str
     active: bool
     items: list[PackageItemOut]
@@ -31,7 +33,7 @@ class PackageItemIn(BaseModel):
 
 class PackageIn(BaseModel):
     name: str = Field(min_length=2)
-    price: float = Field(ge=0)
+    discount_percent: float = Field(ge=0, le=100)
     items: list[PackageItemIn] = Field(min_length=1)
 
 
@@ -39,6 +41,8 @@ def _serialize(p: TherapyPackage) -> PackageOut:
     return PackageOut(
         id=p.id,
         name=p.name,
+        discount_percent=str(p.discount_percent),
+        list_price=str(p.list_price),
         price=str(p.price),
         active=p.active,
         items=[
@@ -76,7 +80,7 @@ def create_package(
 ) -> PackageOut:
     _validate_items(db, payload.items)
 
-    package = TherapyPackage(name=payload.name, price=payload.price)
+    package = TherapyPackage(name=payload.name, discount_percent=payload.discount_percent)
     package.items = [
         PackageItem(therapy_id=i.therapy_id, sessions_included=i.sessions_included) for i in payload.items
     ]
@@ -100,7 +104,7 @@ def update_package(
     _validate_items(db, payload.items)
 
     package.name = payload.name
-    package.price = payload.price
+    package.discount_percent = payload.discount_percent
     # Rescrie complet lista de terapii incluse — mai simplu și mai puțin
     # predispus la erori decât un diff linie-cu-linie pentru un pachet cu
     # câteva rânduri. Nu afectează pachetele deja cumpărate (Payment-urile

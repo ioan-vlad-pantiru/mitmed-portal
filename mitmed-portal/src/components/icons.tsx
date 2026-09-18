@@ -22,6 +22,7 @@ import {
   Package,
   ChevronLeft,
   ChevronRight,
+  Shield,
   type LucideIcon,
 } from "lucide-react";
 
@@ -52,3 +53,4 @@ export const IconSearch = wrap(Search);
 export const IconPackage = wrap(Package);
 export const IconChevronLeft = wrap(ChevronLeft);
 export const IconChevronRight = wrap(ChevronRight);
+export const IconShield = wrap(Shield);

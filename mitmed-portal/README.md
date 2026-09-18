@@ -20,7 +20,19 @@ business și baza de date trăiesc în [`../mitmed-api`](../mitmed-api) (Python/
   (`src/lib/apiClient.ts`)
 - Roluri: `ADMIN` (Sebastian), `RECEPTIE`, `CLIENT`
 
-## Pornire locală
+## Pornire cu Docker (recomandat)
+
+Din rădăcina repository-ului:
+
+```bash
+docker compose up --build
+```
+
+Deschide `http://localhost:3000`. Portalul apelează API-ul exclusiv în rețeaua
+Docker; acesta nu trebuie configurat în browser. La prima rulare, creează
+contul administratorului cu `docker compose exec api python seed.py`.
+
+## Pornire locală fără container pentru frontend
 
 ```bash
 # 1. Pornește Postgres + backend-ul Python (din rădăcina repo-ului, nu de aici)
@@ -59,5 +71,5 @@ Contul admin implicit e afișat în consolă la seed (`sebastian@mitmed.ro`) —
 - Acces la contul Google Calendar folosit acum de Sebastian (vezi
   `../mitmed-api/.env.example`)
 - Flux de resetare parolă (nu există încă)
-- Mutare pe VPS: `docker-compose.yml` (la rădăcina repo-ului) conține Postgres +
-  API; Next.js rulează separat (`npm run build && npm start`) sau containerizat
+- Pentru un VPS, setează `COOKIE_SECURE=true`, originile CORS reale și secretele
+  în `mitmed-api/.env`; configurația Docker include deja toate cele trei servicii.

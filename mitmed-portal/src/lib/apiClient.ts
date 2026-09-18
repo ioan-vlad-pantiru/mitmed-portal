@@ -105,7 +105,16 @@ export async function apiAuthRequest<T>(path: string, body?: unknown): Promise<T
     if (value === "" || maxAge === 0) {
       store.delete(name);
     } else {
-      store.set(name, value, { httpOnly: true, sameSite: "lax", path: "/", maxAge });
+      // Reflectăm explicit `Secure` în producție — nu depindem de faptul că
+      // backend-ul l-a trimis pe Set-Cookie, fiindcă acel header e consumat
+      // aici și nu ajunge niciodată la browser altfel decât prin acest apel.
+      store.set(name, value, {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        maxAge,
+        secure: process.env.NODE_ENV === "production",
+      });
     }
   }
 

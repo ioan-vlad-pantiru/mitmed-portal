@@ -49,6 +49,23 @@ export async function markPaymentPaid(paymentId: string, clientId: string) {
   await requireRole(Role.ADMIN, Role.RECEPTIE);
   await apiPost(`/payments/${paymentId}/mark-paid`);
   revalidatePath(`/admin/clienti/${clientId}`);
+  revalidatePath("/admin/insights");
+}
+
+export type PayuCheckoutResult = { redirectUrl: string } | { message: string };
+
+/** Inițiază o comandă PayU pentru o plată neîncasată — folosit atât din
+ * portalul clientului (plată pe cont propriu), cât și din admin. Întoarce
+ * URL-ul paginii PayU către care browserul trebuie redirecționat. */
+export async function createPayuCheckout(paymentId: string): Promise<PayuCheckoutResult> {
+  await requireRole(Role.CLIENT, Role.ADMIN, Role.RECEPTIE);
+  try {
+    const result = await apiPost<{ redirect_url: string }>(`/payments/${paymentId}/payu-checkout`);
+    return { redirectUrl: result.redirect_url };
+  } catch (err) {
+    if (err instanceof ApiError) return { message: err.message };
+    throw err;
+  }
 }
 
 /** Export CSV al plăților, pentru contabilitate. */

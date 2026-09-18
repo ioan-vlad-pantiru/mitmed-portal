@@ -33,6 +33,9 @@ export async function createMedicalRecord(
       therapy_id: formData.get("therapyId") || null,
       appointment_id: formData.get("appointmentId") || null,
       diagnosis: formData.get("diagnosis") || null,
+      subjective: formData.get("subjective") || null,
+      objective: formData.get("objective") || null,
+      assessment: formData.get("assessment") || null,
       notes,
       treatment_plan: formData.get("treatmentPlan") || null,
       session_date: formData.get("sessionDate") || null,
@@ -65,6 +68,9 @@ export async function updateMedicalRecord(
   try {
     await apiPut(`/medical-records/${recordId}`, {
       diagnosis: formData.get("diagnosis") || null,
+      subjective: formData.get("subjective") || null,
+      objective: formData.get("objective") || null,
+      assessment: formData.get("assessment") || null,
       notes: String(formData.get("notes") ?? ""),
     });
   } catch (err) {

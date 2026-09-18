@@ -24,6 +24,9 @@ class MedicalRecordIn(BaseModel):
     therapy_id: str | None = None
     appointment_id: str | None = None
     diagnosis: str | None = None
+    subjective: str | None = None
+    objective: str | None = None
+    assessment: str | None = None
     notes: str
     treatment_plan: str | None = None
     session_date: datetime | None = None
@@ -32,6 +35,9 @@ class MedicalRecordIn(BaseModel):
 
 class MedicalRecordUpdate(BaseModel):
     diagnosis: str | None = None
+    subjective: str | None = None
+    objective: str | None = None
+    assessment: str | None = None
     notes: str
     treatment_plan: str | None = None
     body_map: list[BodyMapPoint] | None = None
@@ -52,6 +58,9 @@ def create_medical_record(
         therapy_id=payload.therapy_id,
         appointment_id=payload.appointment_id,
         diagnosis=payload.diagnosis,
+        subjective=payload.subjective,
+        objective=payload.objective,
+        assessment=payload.assessment,
         notes=payload.notes,
         treatment_plan=payload.treatment_plan,
         session_date=payload.session_date or datetime.utcnow(),
@@ -97,6 +106,9 @@ def update_medical_record(
         raise HTTPException(status_code=404, detail="Intrare inexistentă.")
 
     record.diagnosis = payload.diagnosis
+    record.subjective = payload.subjective
+    record.objective = payload.objective
+    record.assessment = payload.assessment
     record.notes = payload.notes
     record.treatment_plan = payload.treatment_plan
     if payload.body_map is not None:

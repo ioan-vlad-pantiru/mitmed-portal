@@ -5,7 +5,7 @@ import { createPackage } from "@/actions/packages";
 import { PackageFields } from "./PackageFields";
 import { Button } from "@/components/ui/Button";
 
-type Therapy = { id: string; name: string };
+type Therapy = { id: string; name: string; price: string };
 
 export function PackageForm({ therapies }: { therapies: Therapy[] }) {
   const [state, action, pending] = useActionState(createPackage, undefined);

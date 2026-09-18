@@ -6,17 +6,27 @@ import { listPackages } from "@/actions/packages";
 import { getClientConsents, listActiveConsentTemplates } from "@/actions/consents";
 import Link from "next/link";
 import { MedicalRecordForm } from "./MedicalRecordForm";
+import { MedicalRecordsPanel } from "./MedicalRecordsPanel";
 import { PaymentForm } from "./PaymentForm";
 import { AppointmentForm } from "./AppointmentForm";
 import { CancelAppointmentButton } from "./CancelAppointmentButton";
 import { ResetPasswordButton } from "./ResetPasswordButton";
-import { BodyMapView } from "@/components/BodyMap";
 import { Badge } from "@/components/ui/Badge";
+import { PackageCheck } from "lucide-react";
+
+type PaymentStatus = "NEPLATIT" | "PARTIAL" | "PLATIT";
+const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = { PLATIT: "Achitat", PARTIAL: "Parțial achitat", NEPLATIT: "Neachitat" };
+const PAYMENT_STATUS_VARIANT: Record<PaymentStatus, "success" | "warning" | "danger"> = { PLATIT: "success", PARTIAL: "warning", NEPLATIT: "danger" };
+function PaymentStatusBadge({ status }: { status: string }) {
+  const known = status as PaymentStatus;
+  return <Badge variant={PAYMENT_STATUS_VARIANT[known] ?? "neutral"}>{PAYMENT_STATUS_LABEL[known] ?? status}</Badge>;
+}
 
 type ClientDetail = {
   id: string;
   full_name: string;
   phone: string | null;
+  birth_date: string | null;
   emergency_contact_name: string | null;
   emergency_contact_phone: string | null;
   notes: string | null;
@@ -27,11 +37,23 @@ type ClientDetail = {
     previous_injuries?: string;
     notes?: string;
   } | null;
+  profile_data: {
+    city?: string;
+    county?: string;
+    occupation?: string;
+    preferred_contact?: string;
+    referral_source?: string;
+    activity_level?: string;
+    primary_goal?: string;
+  } | null;
   user: { id: string; email: string; status: string };
   medical_records: {
     id: string;
     session_date: string;
     diagnosis: string | null;
+    subjective: string | null;
+    objective: string | null;
+    assessment: string | null;
     notes: string;
     treatment_plan: string | null;
     body_map: { x: number; y: number; label?: string }[] | null;
@@ -61,8 +83,10 @@ type ClientDetail = {
   }[];
 };
 
-export default async function ClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ClientDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string }> }) {
   const { id } = await params;
+  const { tab } = await searchParams;
+  const activeTab = ["profil", "dosar", "plati", "programari"].includes(tab ?? "") ? tab! : "profil";
   const [clientRaw, therapiesRaw, coupons, packagesRaw, consentTemplates] = await Promise.all([
     getClientDetail(id),
     listTherapies(),
@@ -82,6 +106,10 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
     .filter((t) => t.active)
     .map((t) => ({ id: t.id, name: t.name, price: t.price }));
   const activePackages = packagesRaw.filter((p) => p.active);
+  const tabs = [
+    { id: "profil", label: "Profil" }, { id: "dosar", label: "Dosar medical" },
+    { id: "plati", label: "Plăți" }, { id: "programari", label: "Programări" },
+  ];
 
   // Plățile provenite dintr-un pachet multi-terapie (același package_purchase_id)
   // se afișează grupate ca "o singură achiziție" cu sub-rânduri per terapie,
@@ -113,6 +141,9 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
 
   return (
     <div className="space-y-8">
+      <nav className="flex overflow-x-auto border-b border-zinc-200" aria-label="Secțiuni client">{tabs.map((item) => <Link key={item.id} href={`/admin/clienti/${client.id}?tab=${item.id}`} className={`shrink-0 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === item.id ? "border-[var(--mitmed-teal)] text-[var(--mitmed-teal-deep)]" : "border-transparent text-zinc-500 hover:text-zinc-900"}`}>{item.label}</Link>)}</nav>
+
+      {activeTab === "profil" && <>
       <section className="mm-card p-4">
         <div className="flex items-start justify-between">
           <h1 className="text-lg font-semibold text-zinc-900">{client.full_name}</h1>
@@ -182,6 +213,21 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
             </dl>
           </div>
         )}
+
+        {client.profile_data && Object.keys(client.profile_data).length > 0 && (
+          <div className="mt-4 border-t border-zinc-100 pt-3">
+            <h2 className="text-xs font-medium uppercase tracking-wide text-zinc-400">Profil și preferințe</h2>
+            <dl className="mt-1.5 grid grid-cols-2 gap-x-6 gap-y-1 text-sm text-zinc-600 sm:grid-cols-4">
+              {client.birth_date && <ProfileDetail label="Data nașterii" value={new Date(client.birth_date).toLocaleDateString("ro-RO")} />}
+              <ProfileDetail label="Localitate" value={[client.profile_data.city, client.profile_data.county].filter(Boolean).join(", ")} />
+              <ProfileDetail label="Ocupație" value={client.profile_data.occupation} />
+              <ProfileDetail label="Contact preferat" value={client.profile_data.preferred_contact} />
+              <ProfileDetail label="Sursă" value={client.profile_data.referral_source} />
+              <ProfileDetail label="Activitate" value={client.profile_data.activity_level} />
+              <ProfileDetail label="Obiectiv" value={client.profile_data.primary_goal} />
+            </dl>
+          </div>
+        )}
       </section>
 
       <section className="mm-card p-4">
@@ -197,53 +243,27 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
           })}
         </div>
       </section>
+      </>}
 
-      <section>
+      {activeTab === "dosar" && <section>
         <h2 className="text-base font-semibold text-zinc-900">Fișă medicală</h2>
-        <div className="mt-3 space-y-3">
-          {client.medical_records.map((r) => (
-            <div key={r.id} className="mm-card p-4 text-sm">
-              <div className="flex justify-between text-zinc-500">
-                <span>{new Date(r.session_date).toLocaleString("ro-RO")}</span>
-                <span>
-                  {r.therapy?.name ?? "—"} · scris de {r.author?.email ?? "—"}
-                </span>
-              </div>
-              {r.diagnosis && (
-                <p className="mt-2">
-                  <strong>Diagnostic:</strong> {r.diagnosis}
-                </p>
-              )}
-              <p className="mt-1 whitespace-pre-wrap">{r.notes}</p>
-              {r.treatment_plan && (
-                <p className="mt-2 rounded-md bg-[var(--mm-info-bg)] px-2.5 py-1.5 text-[var(--mm-info)]">
-                  <strong>Plan de tratament:</strong> {r.treatment_plan}
-                </p>
-              )}
-              {r.body_map && r.body_map.length > 0 && (
-                <div className="mt-2">
-                  <BodyMapView points={r.body_map} />
-                </div>
-              )}
-            </div>
-          ))}
-          {client.medical_records.length === 0 && (
-            <p className="text-sm text-zinc-400">Nicio intrare încă.</p>
-          )}
+        <div className="mt-3">
+          <MedicalRecordsPanel records={client.medical_records} />
         </div>
         <MedicalRecordForm clientId={client.id} therapies={therapies} />
-      </section>
+      </section>}
 
-      <section>
+      {activeTab === "plati" && <section>
         <h2 className="text-base font-semibold text-zinc-900">Plăți</h2>
 
         {packageGroups.length > 0 && (
           <div className="mt-3 space-y-2">
             {packageGroups.map((g) => (
               <div key={g.purchaseId} className="mm-card p-4">
-                <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
-                  <span className="font-medium text-zinc-900">
-                    Pachet: {g.packageName} <span className="font-normal text-zinc-400">({g.status})</span>
+                <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                  <span className="flex items-center gap-2 font-medium text-zinc-900">
+                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[var(--mitmed-sky)]/15 text-[var(--mitmed-teal)]"><PackageCheck size={15} /></span>
+                    Pachet: {g.packageName} <PaymentStatusBadge status={g.status} />
                   </span>
                   <span className="text-zinc-500">
                     {new Date(g.createdAt).toLocaleDateString("ro-RO")} · <strong>{g.total.toFixed(2)} RON</strong>
@@ -293,7 +313,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
                       ? `${p.sessions_used}/${p.package_total_sessions} folosite`
                       : "—"}
                   </td>
-                  <td className="px-4 py-2">{p.status}</td>
+                  <td className="px-4 py-2"><PaymentStatusBadge status={p.status} /></td>
                 </tr>
               ))}
               {singlePayments.length === 0 && (
@@ -307,9 +327,9 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
           </table>
         </div>
         <PaymentForm clientId={client.id} therapies={therapies} coupons={coupons} packages={activePackages} />
-      </section>
+      </section>}
 
-      <section>
+      {activeTab === "programari" && <section>
         <div className="flex items-baseline justify-between">
           <h2 className="text-base font-semibold text-zinc-900">Programări</h2>
           <span className="text-sm text-zinc-500">
@@ -337,7 +357,15 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
           {client.appointments.length === 0 && <p className="text-sm text-zinc-400">Nicio programare încă.</p>}
         </div>
         <AppointmentForm clientId={client.id} therapies={therapies} />
-      </section>
+      </section>}
     </div>
   );
 }
+
+function ProfileDetail({ label, value }: { label: string; value?: string }) {
+  if (!value) return null;
+  return <div><dt className="text-zinc-400">{label}</dt><dd>{value.replaceAll("_", " ")}</dd></div>;
+}
+
+// Randează o secțiune SOAP din fișa de consult doar dacă a fost completată —
+// înregistrările mai vechi (dinainte de câmpurile S/O/A) nu au aceste valori.

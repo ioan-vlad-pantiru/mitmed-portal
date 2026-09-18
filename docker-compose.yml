@@ -23,13 +23,32 @@ services:
       - ./mitmed-api/.env
     environment:
       DATABASE_URL: "postgresql+psycopg://mitmed:mitmed_dev_password@db:5432/mitmed_portal"
+      COOKIE_SECURE: "false"
     ports:
       - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
-    volumes:
-      - ./mitmed-api:/app
+    command: >
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  portal:
+    build: ./mitmed-portal
+    restart: unless-stopped
+    environment:
+      # Server Actions run inside this container, so use Docker's internal DNS
+      # instead of exposing the API URL to the browser.
+      API_BASE_URL: "http://api:8000"
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
 
 volumes:
   mitmed_portal_db:

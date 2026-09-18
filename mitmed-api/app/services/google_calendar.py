@@ -5,9 +5,12 @@ până primim un service account cu acces la acel calendar — vezi .env.example
 Fază 2, dacă e nevoie: sincronizare bidirecțională.
 """
 
+import logging
 from datetime import datetime, timedelta
 
 from app.config import settings
+
+logger = logging.getLogger("mitmed.google_calendar")
 
 
 def _is_configured() -> bool:
@@ -20,7 +23,7 @@ def _is_configured() -> bool:
 
 def sync_appointment_created(*, summary: str, description: str, starts_at: datetime, duration_minutes: int) -> str | None:
     if not _is_configured():
-        print("[google_calendar] neconfigurat — programarea nu e sincronizată cu Google Calendar.")
+        logger.info("neconfigurat — programarea nu e sincronizată cu Google Calendar")
         return None
 
     from google.oauth2.service_account import Credentials
@@ -71,5 +74,5 @@ def sync_appointment_cancelled(event_id: str | None) -> None:
     service = build("calendar", "v3", credentials=credentials)
     try:
         service.events().delete(calendarId=settings.google_calendar_calendar_id, eventId=event_id).execute()
-    except Exception as err:  # noqa: BLE001
-        print(f"[google_calendar] nu am putut șterge evenimentul: {err}")
+    except Exception:
+        logger.exception("nu am putut șterge evenimentul %s", event_id)

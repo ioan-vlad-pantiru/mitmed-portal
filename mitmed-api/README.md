@@ -43,6 +43,23 @@ API-ul e disponibil pe `http://localhost:8000` (documentație interactivă pe
   medical_records, payments, appointments, insights)
 - `alembic/versions/` — migrații
 
+## Teste
+
+```bash
+# O singură dată: bază de test separată, pe aceeași instanță Postgres din docker-compose
+docker exec mitmed-portal-db-1 psql -U mitmed -d postgres -c "CREATE DATABASE mitmed_test;"
+
+pip install -r requirements-dev.txt
+pytest
+```
+
+Testele rulează contra Postgres real (nu SQLite) fiindcă acoperă exact
+comportamente specifice Postgres: indexul unic parțial anti-dublă-rezervare
+(`app/models.py`) și `SELECT ... FOR UPDATE` din `app/services/packages.py`.
+`tests/conftest.py` recreează schema la începutul rulării și golește toate
+tabelele după fiecare test — nu rulați niciodată cu `DATABASE_URL`/
+`TEST_DATABASE_URL` îndreptat spre baza de dezvoltare sau producție.
+
 ## Migrații noi
 
 ```bash

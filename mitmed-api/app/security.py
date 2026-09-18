@@ -6,9 +6,15 @@ from fastapi import Response
 from sqlalchemy.orm import Session as DBSession
 
 from app.config import settings
-from app.models import UserSession
+from app.models import User, UserSession
 
 _hasher = PasswordHasher()
+
+# După acest număr de autentificări eșuate consecutive, contul se blochează
+# temporar — protecție împotriva brute-force/credential-stuffing pe conturi
+# care conțin date medicale. Blocarea e per-cont (nu per-IP), ținută în DB.
+MAX_FAILED_LOGIN_ATTEMPTS = 5
+LOCKOUT_DURATION = timedelta(minutes=15)
 
 
 def hash_password(password: str) -> str:
@@ -22,6 +28,25 @@ def verify_password(password_hash: str, password: str) -> bool:
         return False
     except Exception:
         return False
+
+
+def is_locked_out(user: User) -> bool:
+    return bool(user.locked_until and user.locked_until > datetime.now(timezone.utc))
+
+
+def register_failed_login(db: DBSession, user: User) -> None:
+    user.failed_login_attempts += 1
+    if user.failed_login_attempts >= MAX_FAILED_LOGIN_ATTEMPTS:
+        user.locked_until = datetime.now(timezone.utc) + LOCKOUT_DURATION
+        user.failed_login_attempts = 0
+    db.commit()
+
+
+def register_successful_login(db: DBSession, user: User) -> None:
+    if user.failed_login_attempts or user.locked_until:
+        user.failed_login_attempts = 0
+        user.locked_until = None
+        db.commit()
 
 
 def create_session(db: DBSession, response: Response, user_id: str) -> UserSession:

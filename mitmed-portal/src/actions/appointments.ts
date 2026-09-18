@@ -5,7 +5,20 @@ import { apiGet, apiPost, ApiError } from "@/lib/apiClient";
 import { requireRole, verifySession } from "@/lib/authSession";
 import { Role } from "@/lib/enums";
 
-export type AppointmentFormState = { message?: string } | undefined;
+export type AppointmentFormState = { message?: string; success?: string; paymentId?: string | null } | undefined;
+export type AppointmentAvailability = { slots: string[] };
+
+/** Orele sunt calculate pe API din agenda live și durata terapiei selectate. */
+export async function getOwnAppointmentAvailability(
+  day: string,
+  therapyId: string
+): Promise<AppointmentAvailability> {
+  const user = await verifySession();
+  if (user.role !== Role.CLIENT) {
+    throw new Error("Doar clienții pot vedea disponibilitatea din portal.");
+  }
+  return apiGet<AppointmentAvailability>("/appointments/availability", { day, therapy_id: therapyId });
+}
 
 export async function createOwnAppointment(
   _state: AppointmentFormState,
@@ -16,18 +29,21 @@ export async function createOwnAppointment(
     return { message: "Doar clienții pot face programări din contul lor." };
   }
 
+  let paymentId: string | null = null;
   try {
-    await apiPost("/appointments/me", {
+    const result = await apiPost<{ payment_id: string | null }>("/appointments/me", {
       therapy_id: String(formData.get("therapyId") ?? ""),
       starts_at: String(formData.get("startsAt") ?? ""),
     });
+    paymentId = result.payment_id;
   } catch (err) {
     if (err instanceof ApiError) return { message: err.message };
     throw err;
   }
 
   revalidatePath("/portal");
-  return undefined;
+  revalidatePath("/portal/programari");
+  return { success: "Programarea ta a fost confirmată.", paymentId };
 }
 
 export async function createAppointmentForClient(

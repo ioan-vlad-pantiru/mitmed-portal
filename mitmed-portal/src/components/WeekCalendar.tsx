@@ -83,6 +83,7 @@ export function WeekCalendar({
   const totalHeight = hours.length * HOUR_PX;
 
   const rangeLabel = `${days[0].toLocaleDateString("ro-RO", { day: "numeric", month: "short" })} – ${days[4].toLocaleDateString("ro-RO", { day: "numeric", month: "short", year: "numeric" })}`;
+  const scheduledCount = appointments.filter((appointment) => appointment.status === "PROGRAMATA" || appointment.status === "CONFIRMATA").length;
 
   const colorForTherapy = (therapyId: string) => {
     const idx = therapyOrder.indexOf(therapyId);
@@ -95,8 +96,8 @@ export function WeekCalendar({
 
   return (
     <div className="mm-card overflow-hidden">
-      <div className="flex items-center justify-between border-b border-zinc-100 bg-zinc-50/50 px-5 py-3.5">
-        <span className="text-sm font-semibold tracking-tight text-zinc-800">{rangeLabel}</span>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 bg-zinc-50/50 px-5 py-3.5">
+        <div><span className="text-sm font-semibold tracking-tight text-zinc-800">{rangeLabel}</span><span className="ml-2 text-xs text-zinc-400">{scheduledCount} programări active</span></div>
         <div className="flex items-center gap-1">
           <Link
             href={`/admin?week=${toDateParam(prevWeek)}`}
@@ -177,6 +178,7 @@ export function WeekCalendar({
                   const minutesFromStart = (start.getHours() - DAY_START_HOUR) * 60 + start.getMinutes();
                   const top = Math.max(0, (minutesFromStart / 60) * HOUR_PX);
                   const height = Math.max(24, (a.durationMinutes / 60) * HOUR_PX - 3);
+                  const endsAt = new Date(start.getTime() + a.durationMinutes * 60_000);
                   const color = colorForTherapy(a.therapyId);
                   const cancelled = a.status === "ANULATA";
                   const finalized = a.status === "FINALIZATA";
@@ -193,6 +195,7 @@ export function WeekCalendar({
                       style={{ top, height }}
                     >
                       <Link href={href} className={`block h-full px-2 py-1 text-[11px] leading-tight ${color.text}`}>
+                        <div className="truncate font-semibold">{new Date(a.startsAt).toLocaleTimeString("ro-RO", { hour: "2-digit", minute: "2-digit" })}–{endsAt.toLocaleTimeString("ro-RO", { hour: "2-digit", minute: "2-digit" })}</div>
                         <div className="truncate font-semibold">{a.clientName}</div>
                         <div className="truncate opacity-80">{a.therapyName}</div>
                       </Link>

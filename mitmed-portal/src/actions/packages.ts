@@ -10,6 +10,8 @@ export type PackageItem = { therapy_id: string; therapy_name: string; sessions_i
 export type TherapyPackage = {
   id: string;
   name: string;
+  discount_percent: string;
+  list_price: string;
   price: string;
   active: boolean;
   items: PackageItem[];
@@ -31,7 +33,7 @@ function packagePayloadFrom(formData: FormData) {
 
   return {
     name: String(formData.get("name") ?? ""),
-    price: Number(formData.get("price")),
+    discount_percent: Number(formData.get("discountPercent") ?? 0),
     items,
   };
 }

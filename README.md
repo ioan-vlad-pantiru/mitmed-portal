@@ -12,7 +12,28 @@ locuiește în [repo-ul `mitmed`](https://github.com/ioan-vlad-pantiru/mitmed).
   business, acces la baza de date)
 - `docker-compose.yml` — Postgres + API-ul, pentru dezvoltare locală
 
-## Pornire locală
+## Pornire cu Docker
+
+Pornește întregul stack (Postgres, API și portal):
+
+```bash
+docker compose up --build
+```
+
+Portalul este disponibil la `http://localhost:3000`, iar documentația API la
+`http://localhost:8000/docs`. La fiecare pornire, containerul API aplică în
+siguranță migrațiile Alembic, inclusiv câmpurile opționale de profil client.
+
+Pentru prima rulare, creează administratorul într-un terminal separat:
+
+```bash
+docker compose exec api python seed.py
+```
+
+Oprește serviciile cu `docker compose down`. Baza de date rămâne în volumul
+`mitmed_portal_db`; pentru a o șterge intenționat folosește `docker compose down -v`.
+
+## Dezvoltare fără container pentru frontend
 
 ```bash
 # Postgres + API

@@ -2,6 +2,7 @@
 `reminder_hours_before` ore care nu au primit deja unul. Rulează o dată pe oră.
 """
 
+import logging
 from datetime import datetime, timedelta, timezone
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -10,6 +11,8 @@ from app.config import settings
 from app.database import SessionLocal
 from app.models import Appointment, AppointmentStatus
 from app.services.notifications import appointment_reminder_message, send_sms
+
+logger = logging.getLogger("mitmed.scheduler")
 
 scheduler = BackgroundScheduler(timezone="UTC")
 
@@ -45,7 +48,10 @@ def send_due_reminders() -> None:
 
         if due:
             db.commit()
-            print(f"[scheduler] remindere procesate pentru {len(due)} programări")
+            logger.info("remindere procesate pentru %d programări", len(due))
+    except Exception:
+        logger.exception("job de remindere eșuat")
+        raise
     finally:
         db.close()
 

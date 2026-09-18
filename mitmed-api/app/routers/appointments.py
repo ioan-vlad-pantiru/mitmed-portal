@@ -1,7 +1,10 @@
-from datetime import datetime, timedelta, timezone
+import logging
+from datetime import date, datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DBSession, joinedload
 
 from app.audit import log_audit
@@ -14,15 +17,37 @@ from app.models import (
     Consent,
     MedicalRecord,
     Payment,
+    PaymentStatus,
     Role,
     Therapy,
     User,
 )
 from app.services.google_calendar import sync_appointment_cancelled, sync_appointment_created
 
+logger = logging.getLogger("mitmed.appointments")
+
 router = APIRouter(prefix="/appointments", tags=["appointments"])
 
 MIN_CANCEL_NOTICE = timedelta(hours=48)
+CLINIC_TIMEZONE = ZoneInfo("Europe/Bucharest")
+CLINIC_OPENS_AT = time(hour=9)
+CLINIC_CLOSES_AT = time(hour=18)
+BOOKABLE_STATUSES = (AppointmentStatus.PROGRAMATA, AppointmentStatus.CONFIRMATA)
+
+
+def _void_unpaid_appointment_payment(db: DBSession, appointment_id: str) -> None:
+    """Șterge plata auto-generată la programare (create_own_appointment) dacă
+    programarea e anulată înainte să fie achitată — altfel clientul rămâne cu
+    o datorie fantomă pentru o ședință care n-a mai avut loc. O plată deja
+    parțial/integral achitată NU se atinge — aia se rezolvă manual (rambursare)."""
+    payment = (
+        db.query(Payment)
+        .filter(Payment.appointment_id == appointment_id, Payment.status == PaymentStatus.NEPLATIT)
+        .first()
+    )
+    if payment:
+        db.delete(payment)
+        db.commit()
 
 
 def _ensure_cancellable(appointment: Appointment) -> None:
@@ -50,10 +75,84 @@ class StaffAppointmentIn(BaseModel):
     starts_at: datetime
 
 
-def _create_appointment(db: DBSession, *, client_id: str, therapy_id: str, starts_at: datetime, created_by_id: str) -> Appointment:
+def _to_clinic_time(value: datetime) -> datetime:
+    """Datele vechi pot fi naive; le interpretăm consecvent în fusul clinicii."""
+    if value.tzinfo is None:
+        return value.replace(tzinfo=CLINIC_TIMEZONE)
+    return value.astimezone(CLINIC_TIMEZONE)
+
+
+def _available_slot_starts(db: DBSession, *, day: date, therapy: Therapy) -> list[datetime]:
+    """Construiește sloturi consecutive din golurile reale ale agendei.
+
+    Pasul este durata terapiei, nu un set global de ore predefinite. Astfel, o
+    ședință de 30 de minute se poate alipi direct de o programare existentă.
+    """
+    if day.weekday() >= 5:
+        return []
+
+    day_start = datetime.combine(day, CLINIC_OPENS_AT, tzinfo=CLINIC_TIMEZONE)
+    day_end = datetime.combine(day, CLINIC_CLOSES_AT, tzinfo=CLINIC_TIMEZONE)
+    appointments = (
+        db.query(Appointment)
+        .options(joinedload(Appointment.therapy))
+        .filter(
+            Appointment.status.in_(BOOKABLE_STATUSES),
+            Appointment.starts_at < day_end.astimezone(timezone.utc),
+        )
+        .order_by(Appointment.starts_at.asc())
+        .all()
+    )
+
+    occupied: list[tuple[datetime, datetime]] = []
+    for appointment in appointments:
+        starts_at = _to_clinic_time(appointment.starts_at)
+        ends_at = starts_at + timedelta(minutes=appointment.therapy.duration_minutes)
+        if ends_at > day_start and starts_at < day_end:
+            occupied.append((max(starts_at, day_start), min(ends_at, day_end)))
+
+    slots: list[datetime] = []
+    cursor = day_start
+    duration = timedelta(minutes=therapy.duration_minutes)
+    for starts_at, ends_at in occupied:
+        while cursor + duration <= starts_at:
+            slots.append(cursor)
+            cursor += duration
+        cursor = max(cursor, ends_at)
+    while cursor + duration <= day_end:
+        slots.append(cursor)
+        cursor += duration
+    return slots
+
+
+def _ensure_own_slot_is_available(db: DBSession, *, starts_at: datetime, therapy: Therapy) -> None:
+    local_start = _to_clinic_time(starts_at)
+    valid_starts = _available_slot_starts(db, day=local_start.date(), therapy=therapy)
+    if local_start not in valid_starts:
+        raise HTTPException(
+            status_code=409,
+            detail="Intervalul selectat nu mai este disponibil. Alege o altă oră.",
+        )
+
+
+def _create_appointment(
+    db: DBSession,
+    *,
+    client_id: str,
+    therapy_id: str,
+    starts_at: datetime,
+    created_by_id: str,
+    enforce_live_availability: bool = False,
+) -> Appointment:
     therapy = db.get(Therapy, therapy_id)
     if not therapy or not therapy.active:
         raise HTTPException(status_code=422, detail="Terapia selectată nu este disponibilă.")
+
+    if _to_clinic_time(starts_at).weekday() >= 5:
+        raise HTTPException(status_code=422, detail="Programările sunt disponibile de luni până vineri.")
+
+    if enforce_live_availability:
+        _ensure_own_slot_is_available(db, starts_at=starts_at, therapy=therapy)
 
     client = db.get(ClientProfile, client_id)
     if not client:
@@ -67,8 +166,8 @@ def _create_appointment(db: DBSession, *, client_id: str, therapy_id: str, start
             starts_at=starts_at,
             duration_minutes=therapy.duration_minutes,
         )
-    except Exception as err:  # noqa: BLE001
-        print(f"[google_calendar] sincronizare eșuată: {err}")
+    except Exception:
+        logger.exception("sincronizare Google Calendar eșuată pentru programarea %s", client_id)
 
     appointment = Appointment(
         client_id=client_id,
@@ -78,7 +177,19 @@ def _create_appointment(db: DBSession, *, client_id: str, therapy_id: str, start
         google_calendar_event_id=google_event_id,
     )
     db.add(appointment)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # Ultima linie de apărare împotriva dublei-rezervări: indexul unic
+        # parțial ux_appointments_active_slot (vezi models.py) respinge la
+        # nivel de DB două programări active pe aceeași terapie+oră, chiar
+        # dacă verificarea de disponibilitate de mai sus a trecut pentru
+        # ambele cereri concurente.
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Intervalul selectat tocmai a fost ocupat de altcineva. Alege o altă oră.",
+        )
     db.refresh(appointment)
 
     log_audit(
@@ -105,8 +216,60 @@ def create_own_appointment(
         therapy_id=payload.therapy_id,
         starts_at=payload.starts_at,
         created_by_id=user.id,
+        enforce_live_availability=True,
     )
-    return {"ok": True, "id": appointment.id}
+
+    # Ședința se plătește pe loc, imediat ce e programată — DOAR dacă
+    # clientul n-are deja un pachet activ pentru aceeași terapie (caz în care
+    # ședința se scade din pachet la momentul consultului, vezi
+    # services/packages.consume_package_session, fără o plată nouă).
+    has_active_package = (
+        db.query(Payment)
+        .filter(
+            Payment.client_id == user.client_profile.id,
+            Payment.therapy_id == payload.therapy_id,
+            Payment.package_total_sessions.is_not(None),
+            Payment.sessions_used < Payment.package_total_sessions,
+        )
+        .first()
+    )
+    payment_id = None
+    if not has_active_package:
+        therapy = db.get(Therapy, payload.therapy_id)
+        payment = Payment(
+            client_id=user.client_profile.id,
+            therapy_id=payload.therapy_id,
+            appointment_id=appointment.id,
+            base_price=therapy.price,
+            discount_amount=0,
+            final_price=therapy.price,
+            status=PaymentStatus.NEPLATIT,
+        )
+        db.add(payment)
+        db.commit()
+        db.refresh(payment)
+        payment_id = payment.id
+
+    return {"ok": True, "id": appointment.id, "payment_id": payment_id}
+
+
+@router.get("/availability")
+def own_appointment_availability(
+    day: date,
+    therapy_id: str,
+    db: DBSession = Depends(get_db),
+    user: User = Depends(require_user),
+) -> dict:
+    """Ore rezervabile fără a expune agenda sau datele altor clienți."""
+    if user.role != Role.CLIENT or not user.client_profile:
+        raise HTTPException(status_code=403, detail="Doar clienții pot vedea disponibilitatea din portal.")
+
+    therapy = db.get(Therapy, therapy_id)
+    if not therapy or not therapy.active:
+        raise HTTPException(status_code=422, detail="Terapia selectată nu este disponibilă.")
+
+    slots = _available_slot_starts(db, day=day, therapy=therapy)
+    return {"slots": [slot.strftime("%H:%M") for slot in slots]}
 
 
 @router.post("/staff")
@@ -136,6 +299,7 @@ def cancel_appointment(
 
     appointment.status = AppointmentStatus.ANULATA
     db.commit()
+    _void_unpaid_appointment_payment(db, appointment_id)
 
     sync_appointment_cancelled(appointment.google_calendar_event_id)
 
@@ -160,6 +324,7 @@ def cancel_own_appointment(
 
     appointment.status = AppointmentStatus.ANULATA
     db.commit()
+    _void_unpaid_appointment_payment(db, appointment_id)
 
     sync_appointment_cancelled(appointment.google_calendar_event_id)
 

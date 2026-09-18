@@ -6,12 +6,14 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     JSON,
     Numeric,
     String,
     Table,
     Column,
+    text,
 )
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -64,6 +66,17 @@ class BookingRequestStatus(str, enum.Enum):
     RESPINS = "RESPINS"
 
 
+class DataRequestType(str, enum.Enum):
+    EXPORT = "EXPORT"
+    ERASURE = "ERASURE"
+
+
+class DataRequestStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    COMPLETED = "COMPLETED"
+    REJECTED = "REJECTED"
+
+
 coupon_therapies = Table(
     "coupon_therapies",
     Base.metadata,
@@ -84,6 +97,13 @@ class User(Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    # Blocare temporară a contului după autentificări eșuate repetate — vezi
+    # app/security.py:register_failed_login / register_successful_login.
+    # Ținută în DB (nu în memorie) ca să reziste la restart și la mai multe
+    # instanțe API.
+    failed_login_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     client_profile: Mapped["ClientProfile | None"] = relationship(
         back_populates="user", uselist=False, cascade="all, delete-orphan"
@@ -115,6 +135,10 @@ class ClientProfile(Base):
     # Chestionar medical pre-consultație, completat de client: alergii,
     # afecțiuni, medicamente, leziuni anterioare etc. — structură liberă (JSON).
     medical_history: Mapped[dict | None] = mapped_column(JSON)
+    # Date opționale de profil folosite pentru comunicare și statistici
+    # agregate. Sunt ținute separat de istoricul medical, ca să nu ajungă
+    # din greșeală în rapoarte de marketing/operare.
+    profile_data: Mapped[dict | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
@@ -167,6 +191,11 @@ class MedicalRecord(Base):
     appointment_id: Mapped[str | None] = mapped_column(String, ForeignKey("appointments.id"), index=True)
     session_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     diagnosis: Mapped[str | None] = mapped_column(String)
+    # Structură SOAP pentru documentarea clinică. `notes` rămâne rezumatul
+    # ședinței/intervențiilor pentru compatibilitate și pentru afișarea în dosarul clientului.
+    subjective: Mapped[str | None] = mapped_column(String)
+    objective: Mapped[str | None] = mapped_column(String)
+    assessment: Mapped[str | None] = mapped_column(String)
     notes: Mapped[str] = mapped_column(String, nullable=False)
     # Plan de tratament/exerciții recomandate — text liber în v1 (fără bibliotecă
     # structurată de exerciții); separat semantic de `notes`, ca să poată fi
@@ -184,23 +213,37 @@ class MedicalRecord(Base):
 
 
 class TherapyPackage(Base):
-    """Pachet cu preț fix, definit de admin, care poate combina ședințe din
-    mai multe terapii diferite (ex. "Pachet Recuperare" = 3× Kinetoterapie +
-    2× Masaj). Vânzarea unui pachet generează câte un Payment per terapie
-    inclusă (vezi routers/payments.py) — nu o entitate de plată separată —
-    ca să reutilizeze neschimbat tot codul existent de urmărire a ședințelor
-    (services/packages.py) și atribuirea veniturilor pe terapie (insights)."""
+    """Variantă de pachet (ex. "Pachet Standard" -10%, "Pachet Premium" -20%),
+    definită de admin doar prin numele ei și procentul de reducere. Terapiile
+    incluse și numărul de ședințe rămân complet libere (medicul le alege la
+    vânzare) — prețul nu mai e tastat manual, ci calculat automat din suma
+    prețurilor de listă ale terapiilor incluse, cu reducerea aplicată (vezi
+    proprietatea `price`). Vânzarea unui pachet generează câte un Payment per
+    terapie inclusă (vezi routers/payments.py) — nu o entitate de plată
+    separată — ca să reutilizeze neschimbat tot codul existent de urmărire a
+    ședințelor (services/packages.py) și atribuirea veniturilor pe terapie
+    (insights)."""
 
     __tablename__ = "therapy_packages"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_id)
     name: Mapped[str] = mapped_column(String, nullable=False)
-    price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    discount_percent: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False, default=0)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     items: Mapped[list["PackageItem"]] = relationship(back_populates="package", cascade="all, delete-orphan")
+
+    @property
+    def list_price(self) -> float:
+        """Suma prețurilor de listă ale terapiilor incluse, fără reducere."""
+        return sum(float(i.therapy.price) * i.sessions_included for i in self.items)
+
+    @property
+    def price(self) -> float:
+        """Preț final, calculat automat — nu se mai tastează manual."""
+        return round(self.list_price * (1 - float(self.discount_percent) / 100), 2)
 
 
 class PackageItem(Base):
@@ -250,6 +293,11 @@ class Payment(Base):
     package_id: Mapped[str | None] = mapped_column(String, ForeignKey("therapy_packages.id"), index=True)
     package_purchase_id: Mapped[str | None] = mapped_column(String, index=True)
 
+    # ID-ul comenzii PayU — setat la inițierea plății online (routers/payments.py)
+    # și reconfirmat din webhook (routers/webhooks.py) la finalizare. Util pentru
+    # a corela o plată cu tranzacția din panoul PayU în caz de dispută.
+    payu_order_id: Mapped[str | None] = mapped_column(String)
+
     client: Mapped[ClientProfile] = relationship(back_populates="payments")
     therapy: Mapped[Therapy] = relationship()
     coupon: Mapped[Coupon | None] = relationship()
@@ -277,6 +325,24 @@ class Appointment(Base):
     client: Mapped[ClientProfile] = relationship(back_populates="appointments")
     therapy: Mapped[Therapy] = relationship()
 
+    __table_args__ = (
+        # Interzice două programări ACTIVE pe aceeași terapie + oră exactă la
+        # nivel de bază de date — ultima linie de apărare împotriva
+        # dublei-rezervări sub concurență, independent de verificarea de
+        # disponibilitate din routers/appointments.py (care are o fereastră
+        # citire-apoi-scriere ce se poate pierde la două cereri simultane).
+        # Terapiile diferite se pot suprapune intenționat (mai mulți
+        # terapeuți) — de-asta indexul e pe (therapy_id, starts_at), nu doar
+        # pe starts_at.
+        Index(
+            "ux_appointments_active_slot",
+            "therapy_id",
+            "starts_at",
+            unique=True,
+            postgresql_where=text("status IN ('PROGRAMATA', 'CONFIRMATA')"),
+        ),
+    )
+
 
 class ConsentTemplate(Base):
     """Un TIP de declarație de semnat (ex. GDPR, risc/preț) + textul lui curent,
@@ -295,6 +361,12 @@ class ConsentTemplate(Base):
     label: Mapped[str] = mapped_column(String, nullable=False)
     text: Mapped[str] = mapped_column(String, nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Scop GDPR al acestui document — informativ, folosit pentru afișare și
+    # pentru a decide dacă retragerea are sens (tratament vs. opțional).
+    # Nu schimbă nimic la nivel de bază de date pentru documentele existente
+    # (rămân "TRATAMENT" implicit — GDPR/RISC_PRET erau deja consimțăminte
+    # legate direct de acordarea tratamentului).
+    category: Mapped[str] = mapped_column(String, nullable=False, default="TRATAMENT")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
@@ -311,6 +383,10 @@ class Consent(Base):
     version_text: Mapped[str] = mapped_column(String, nullable=False)
     signature_data_url: Mapped[str] = mapped_column(String, nullable=False)  # PNG base64 din canvas
     signed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # Retragere (GDPR Art. 7(3)) — nu șterge rândul (dovada semnăturii inițiale
+    # trebuie păstrată), doar marchează din ce moment consimțământul nu mai e
+    # valabil. Nu afectează legalitatea prelucrării de dinainte de retragere.
+    withdrawn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     client: Mapped[ClientProfile] = relationship(back_populates="consents")
 
@@ -338,6 +414,29 @@ class PublicBookingRequest(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     therapy: Mapped[Therapy | None] = relationship()
+
+
+class DataSubjectRequest(Base):
+    """Cerere GDPR (Art. 15 export / Art. 17 ștergere) înregistrată de client
+    din portal. Exportul se generează imediat (self-service); ștergerea
+    necesită execuție manuală de admin, fiindcă fișele medicale/financiare
+    trebuie păstrate conform obligațiilor legale de arhivare (nu pot fi șterse
+    orbește doar pentru că clientul a cerut) — vezi routers/clients.py."""
+
+    __tablename__ = "data_subject_requests"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_id)
+    client_id: Mapped[str] = mapped_column(String, ForeignKey("client_profiles.id", ondelete="CASCADE"), index=True)
+    type: Mapped[DataRequestType] = mapped_column(SAEnum(DataRequestType, name="data_request_type"), nullable=False)
+    status: Mapped[DataRequestStatus] = mapped_column(
+        SAEnum(DataRequestStatus, name="data_request_status"), nullable=False, default=DataRequestStatus.PENDING
+    )
+    note: Mapped[str | None] = mapped_column(String)
+    resolved_by_id: Mapped[str | None] = mapped_column(String, ForeignKey("users.id"))
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    client: Mapped[ClientProfile] = relationship()
 
 
 class AuditLog(Base):

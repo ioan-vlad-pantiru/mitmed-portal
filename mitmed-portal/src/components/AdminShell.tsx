@@ -1,11 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { ChevronRight } from "lucide-react";
 import { logout } from "@/actions/auth";
 import { AdminSidebar } from "@/components/AdminSidebar";
 import { CommandPalette } from "@/components/CommandPalette";
 import { Logo } from "@/components/Logo";
 import type { ClientSummary } from "@/actions/clients";
+
+const SIDEBAR_COLLAPSED_KEY = "mm-sidebar-collapsed";
 
 function IconMenu({ className }: { className?: string }) {
   return (
@@ -39,6 +42,31 @@ export function AdminShell({
   children: React.ReactNode;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // Preferința se ține în localStorage, nu în state pe server — colapsarea e
+  // o comoditate vizuală per-dispozitiv. Se aplică după montare (nu poate fi
+  // citită la randarea server) ca să nu strice hidratarea SSR.
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- sincronizare unică cu localStorage, nu poate fi cunoscută la SSR
+      if (localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1") setSidebarCollapsed(true);
+    } catch {
+      // localStorage indisponibil (mod privat etc.) — rămâne extins.
+    }
+  }, []);
+
+  function toggleSidebarCollapsed() {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? "1" : "0");
+      } catch {
+        // ignorăm — doar preferința nu va persista
+      }
+      return next;
+    });
+  }
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -85,12 +113,28 @@ export function AdminShell({
         )}
 
         <div
-          className={`fixed inset-y-0 left-0 z-10 mt-14 transition-transform duration-200 sm:static sm:mt-0 sm:translate-x-0 ${
+          className={`fixed inset-y-0 left-0 z-10 mt-14 overflow-hidden transition-[transform,width] duration-200 sm:static sm:mt-0 sm:translate-x-0 ${
             mobileOpen ? "translate-x-0" : "-translate-x-full"
-          }`}
+          } ${sidebarCollapsed ? "sm:w-0" : "sm:w-56"}`}
         >
-          <AdminSidebar isAdmin={isAdmin} onNavigate={() => setMobileOpen(false)} />
+          <AdminSidebar
+            isAdmin={isAdmin}
+            onNavigate={() => setMobileOpen(false)}
+            onCollapse={toggleSidebarCollapsed}
+          />
         </div>
+
+        {sidebarCollapsed && (
+          <button
+            type="button"
+            onClick={toggleSidebarCollapsed}
+            aria-label="Deschide meniul"
+            title="Deschide meniul"
+            className="fixed top-1/2 left-0 z-10 hidden -translate-y-1/2 items-center rounded-r-lg border border-l-0 border-zinc-200 bg-white py-3 pr-1.5 pl-1 text-zinc-400 shadow-md hover:text-zinc-700 sm:flex"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        )}
 
         <main className="min-w-0 flex-1 px-4 py-6 sm:px-6">{children}</main>
       </div>

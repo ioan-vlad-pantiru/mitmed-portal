@@ -87,6 +87,44 @@ export default function RegisterPage() {
           />
         </div>
 
+        <div>
+          <label htmlFor="birthDate" className="block text-sm font-medium text-zinc-700">
+            Data nașterii
+          </label>
+          <input
+            id="birthDate"
+            name="birthDate"
+            type="date"
+            required
+            className="mt-1.5 w-full rounded-lg border border-zinc-300 px-3.5 py-2.5 text-sm text-[var(--mitmed-ink)] outline-none transition-colors focus:border-[var(--mitmed-sky)] focus:ring-2 focus:ring-[var(--mitmed-sky)]/40"
+          />
+          <p className="mt-1.5 text-xs text-zinc-500">
+            Auto-înregistrarea este posibilă de la 16 ani. Pentru un minor, contul se creează la recepție, cu acordul
+            unui părinte/tutore.
+          </p>
+        </div>
+
+        <div className="flex items-start gap-2.5">
+          <input
+            id="acceptedPrivacyPolicy"
+            name="acceptedPrivacyPolicy"
+            type="checkbox"
+            required
+            className="mt-0.5 h-4 w-4 rounded border-zinc-300 text-[var(--mitmed-teal)] focus:ring-[var(--mitmed-sky)]/40"
+          />
+          <label htmlFor="acceptedPrivacyPolicy" className="text-sm text-zinc-600">
+            Am citit și sunt de acord cu{" "}
+            <Link href="/confidentialitate" target="_blank" className="font-medium text-[var(--mitmed-teal)] hover:underline">
+              Politica de confidențialitate
+            </Link>{" "}
+            și{" "}
+            <Link href="/termeni" target="_blank" className="font-medium text-[var(--mitmed-teal)] hover:underline">
+              Termenii și condițiile
+            </Link>
+            .
+          </label>
+        </div>
+
         {state?.message && !state.success && <p className="text-sm text-red-600">{state.message}</p>}
 
         <button

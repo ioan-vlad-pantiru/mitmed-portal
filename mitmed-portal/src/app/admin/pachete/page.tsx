@@ -8,15 +8,15 @@ import { PackageRow } from "./PackageRow";
 export default async function PackagesPage() {
   await requireRole(Role.ADMIN);
   const [packages, therapiesRaw] = await Promise.all([listPackages(), listTherapies()]);
-  const therapies = therapiesRaw.filter((t) => t.active).map((t) => ({ id: t.id, name: t.name }));
+  const therapies = therapiesRaw.filter((t) => t.active).map((t) => ({ id: t.id, name: t.name, price: t.price }));
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-lg font-semibold text-zinc-900">Pachete de terapii</h1>
         <p className="text-sm text-zinc-500">
-          Combină mai multe terapii într-un singur pachet, cu preț fix (ex. „Pachet Recuperare” = 3× Kinetoterapie +
-          2× Masaj).
+          Definește variante de pachet cu o reducere fixă (ex. „Pachet Standard” -10%) — terapiile incluse și numărul
+          de ședințe se aleg liber, iar prețul se calculează automat.
         </p>
       </div>
 
@@ -26,6 +26,7 @@ export default async function PackagesPage() {
             <tr>
               <th className="px-4 py-2.5">Nume</th>
               <th className="px-4 py-2.5">Terapii incluse</th>
+              <th className="px-4 py-2.5">Reducere</th>
               <th className="px-4 py-2.5">Preț</th>
               <th className="px-4 py-2.5">Activ</th>
               <th className="px-4 py-2" />
@@ -37,7 +38,7 @@ export default async function PackagesPage() {
             ))}
             {packages.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-zinc-400">
+                <td colSpan={6} className="px-4 py-6 text-center text-zinc-400">
                   Niciun pachet încă.
                 </td>
               </tr>

@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/Badge";
 import { IconButton } from "@/components/ui/IconButton";
 import { IconEdit, IconPower, IconTrash, IconClose } from "@/components/icons";
 
-type Therapy = { id: string; name: string };
+type Therapy = { id: string; name: string; price: string };
 
 export function PackageRow({ pkg, therapies }: { pkg: TherapyPackage; therapies: Therapy[] }) {
   const [pending, startTransition] = useTransition();
@@ -33,6 +33,7 @@ export function PackageRow({ pkg, therapies }: { pkg: TherapyPackage; therapies:
             ))}
           </ul>
         </td>
+        <td className="px-4 py-2 text-zinc-600">{pkg.discount_percent}%</td>
         <td className="px-4 py-2 text-zinc-600">{pkg.price} RON</td>
         <td className="px-4 py-2">
           <Badge variant={pkg.active ? "success" : "neutral"}>{pkg.active ? "Da" : "Nu"}</Badge>
@@ -84,9 +85,12 @@ export function PackageRow({ pkg, therapies }: { pkg: TherapyPackage; therapies:
       </tr>
       {editing && (
         <tr>
-          <td colSpan={5} className="bg-zinc-50/60 px-4 py-4">
+          <td colSpan={6} className="bg-zinc-50/60 px-4 py-4">
             <form action={action} className="grid max-w-2xl grid-cols-2 gap-3">
-              <PackageFields therapies={therapies} defaults={{ name: pkg.name, price: pkg.price, items: pkg.items }} />
+              <PackageFields
+                therapies={therapies}
+                defaults={{ name: pkg.name, discountPercent: pkg.discount_percent, items: pkg.items }}
+              />
               {state?.message && <p className="col-span-2 text-sm text-red-600">{state.message}</p>}
               <div className="col-span-2 flex gap-2">
                 <Button type="submit" disabled={saving}>

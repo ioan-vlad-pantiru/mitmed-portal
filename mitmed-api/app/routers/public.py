@@ -5,7 +5,7 @@ confirmă manual, ca să nu putem fi umpluți de conturi false."""
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session as DBSession, joinedload
 
@@ -13,6 +13,7 @@ from app.audit import log_audit
 from app.database import get_db
 from app.deps import require_roles
 from app.models import BookingRequestStatus, PublicBookingRequest, Role, Therapy, User
+from app.rate_limit import limiter
 
 router = APIRouter(prefix="/public", tags=["public"])
 
@@ -41,7 +42,8 @@ class BookingRequestOut(BaseModel):
 # Fără autentificare — accesibilă de pe alt domeniu (site-ul de prezentare),
 # de-asta CORS-ul din app/config.py trebuie să includă și acel domeniu.
 @router.post("/booking-requests", status_code=201)
-def create_booking_request(payload: BookingRequestIn, db: DBSession = Depends(get_db)) -> dict:
+@limiter.limit("10/hour")
+def create_booking_request(request: Request, payload: BookingRequestIn, db: DBSession = Depends(get_db)) -> dict:
     if payload.therapy_id:
         therapy = db.get(Therapy, payload.therapy_id)
         if not therapy:

@@ -9,13 +9,20 @@ import { Role } from "@/lib/enums";
 // nou din /admin/documente, deci rămâne un identificator liber (string).
 export type ConsentType = string;
 
-export type Consent = { id: string; type: ConsentType; version_text: string; signed_at: string };
+export type Consent = {
+  id: string;
+  type: ConsentType;
+  version_text: string;
+  signed_at: string;
+  withdrawn_at: string | null;
+};
 
 export type ConsentTemplate = {
   type: ConsentType;
   label: string;
   text: string;
   active: boolean;
+  category: string;
   updated_at: string;
 };
 
@@ -122,6 +129,22 @@ export async function signConsent(
   }
   revalidatePath("/portal");
   return { success: true, message: "Declarație semnată." };
+}
+
+export type ActionResult = { ok: true } | { ok: false; message: string };
+
+/** GDPR Art. 7(3) — clientul își retrage un consimțământ deja semnat. Nu
+ * șterge semnătura (rămâne dovadă), doar marchează momentul retragerii. */
+export async function withdrawConsent(consentId: string): Promise<ActionResult> {
+  await verifySession();
+  try {
+    await apiPost(`/consents/me/${consentId}/withdraw`);
+  } catch (err) {
+    if (err instanceof ApiError) return { ok: false, message: err.message };
+    throw err;
+  }
+  revalidatePath("/portal");
+  return { ok: true };
 }
 
 export type DeleteResult = { ok: true } | { ok: false; message: string };
