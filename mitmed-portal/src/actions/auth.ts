@@ -1,10 +1,10 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { apiAuthRequest, ApiError } from "@/lib/apiClient";
+import { apiAuthRequest, apiPost, ApiError } from "@/lib/apiClient";
 import { verifySession } from "@/lib/authSession";
 import { Role } from "@/lib/enums";
-import type { LoginFormState, RegisterFormState } from "@/lib/definitions";
+import type { ChangePasswordFormState, LoginFormState, RegisterFormState } from "@/lib/definitions";
 
 export async function login(_state: LoginFormState, formData: FormData): Promise<LoginFormState> {
   const email = String(formData.get("email") ?? "");
@@ -33,9 +33,14 @@ export async function registerClient(
   const email = String(formData.get("email") ?? "");
   const phone = String(formData.get("phone") ?? "");
   const password = String(formData.get("password") ?? "");
+  const birthDate = String(formData.get("birthDate") ?? "");
+  const acceptedPrivacyPolicy = formData.get("acceptedPrivacyPolicy") === "on";
 
-  if (fullName.length < 2 || !email || password.length < 8) {
+  if (fullName.length < 2 || !email || password.length < 8 || !birthDate) {
     return { message: "Completează toate câmpurile obligatorii (parola: minim 8 caractere)." };
+  }
+  if (!acceptedPrivacyPolicy) {
+    return { message: "Trebuie să confirmi că ai citit Politica de confidențialitate." };
   }
 
   try {
@@ -44,6 +49,8 @@ export async function registerClient(
       email,
       phone: phone || null,
       password,
+      birth_date: birthDate,
+      accepted_privacy_policy: acceptedPrivacyPolicy,
     });
     return { success: true, message: result.message };
   } catch (err) {
@@ -60,4 +67,29 @@ export async function logout() {
 /** Used by /admin and /portal pages to fetch the current signed-in user. */
 export async function getSessionUser() {
   return verifySession();
+}
+
+export async function changePassword(
+  _state: ChangePasswordFormState,
+  formData: FormData
+): Promise<ChangePasswordFormState> {
+  const currentPassword = String(formData.get("currentPassword") ?? "");
+  const newPassword = String(formData.get("newPassword") ?? "");
+  const confirmPassword = String(formData.get("confirmPassword") ?? "");
+
+  if (!currentPassword || newPassword.length < 8) {
+    return { message: "Parola nouă trebuie să aibă minim 8 caractere." };
+  }
+  if (newPassword !== confirmPassword) {
+    return { message: "Parolele noi nu coincid." };
+  }
+
+  try {
+    await apiPost("/auth/change-password", { current_password: currentPassword, new_password: newPassword });
+  } catch (err) {
+    if (err instanceof ApiError) return { message: err.message };
+    throw err;
+  }
+
+  return { success: true, message: "Parola a fost schimbată." };
 }

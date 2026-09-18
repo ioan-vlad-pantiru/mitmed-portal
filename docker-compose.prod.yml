@@ -1,0 +1,30 @@
+services:
+  db:
+    ports: !reset []
+
+  api:
+    environment:
+      COOKIE_SECURE: "true"
+    ports: !reset []
+
+  portal:
+    restart: unless-stopped
+    # No host port published — only reachable via Caddy on the docker network.
+    ports: !reset []
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - portal
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -2,21 +2,27 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { ChevronLeft, UserCog } from "lucide-react";
 import {
   IconCalendar,
   IconUsers,
   IconTherapy,
-  IconPackage,
-  IconTag,
   IconChart,
   IconInbox,
-  IconFileText,
 } from "@/components/icons";
 
 type NavItem = { href: string; label: string; icon: React.ComponentType<{ className?: string }> };
 type NavGroup = { label: string; items: NavItem[] };
 
-export function AdminSidebar({ isAdmin, onNavigate }: { isAdmin: boolean; onNavigate?: () => void }) {
+export function AdminSidebar({
+  isAdmin,
+  onNavigate,
+  onCollapse,
+}: {
+  isAdmin: boolean;
+  onNavigate?: () => void;
+  onCollapse?: () => void;
+}) {
   const pathname = usePathname();
 
   // Grupat pe intenție, nu doar înșirat — "Astăzi" e ce se folosește minut cu
@@ -40,20 +46,30 @@ export function AdminSidebar({ isAdmin, onNavigate }: { isAdmin: boolean; onNavi
     ...(isAdmin
       ? [
           {
-            label: "Configurare",
-            items: [
-              { href: "/admin/terapii", label: "Terapii", icon: IconTherapy },
-              { href: "/admin/pachete", label: "Pachete", icon: IconPackage },
-              { href: "/admin/cupoane", label: "Cupoane", icon: IconTag },
-              { href: "/admin/documente", label: "Documente", icon: IconFileText },
-            ],
+            label: "Administrare",
+            items: [{ href: "/admin/setari", label: "Setări", icon: IconTherapy }],
           },
         ]
       : []),
+    {
+      label: "Cont",
+      items: [{ href: "/admin/cont", label: "Contul meu", icon: UserCog }],
+    },
   ];
 
   return (
     <nav className="flex h-[calc(100vh-3.5rem)] w-56 shrink-0 flex-col overflow-y-auto border-r border-zinc-200/70 bg-white px-2.5 py-5 shadow-xl sm:h-full sm:shadow-none">
+      {onCollapse && (
+        <button
+          type="button"
+          onClick={onCollapse}
+          aria-label="Restrânge meniul"
+          title="Restrânge meniul"
+          className="mb-2 hidden w-fit items-center gap-1 self-end rounded-md p-1.5 text-zinc-400 hover:bg-zinc-50 hover:text-zinc-700 sm:flex"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+      )}
       <div className="flex flex-col gap-4">
         {groups.map((group) => (
           <div key={group.label}>
