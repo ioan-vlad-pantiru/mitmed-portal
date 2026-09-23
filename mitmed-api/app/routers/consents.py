@@ -12,6 +12,17 @@ from app.models import Consent, ConsentTemplate, Role, User
 
 router = APIRouter(prefix="/consents", tags=["consents"])
 
+# Doar consimțământul de prelucrare a datelor (GDPR) e retras liber de client,
+# în orice moment — e un drept legal (Art. 7(3)), nu o opțiune de produs.
+# Restul declarațiilor semnate (risc/preț, alte acorduri de tratament) NU
+# sunt un "consimțământ" în sensul GDPR — sunt o confirmare că a luat la
+# cunoștință niște termeni, pe care clinica se bazează în continuare (riscul
+# asumat, politica de preț). A-i permite clientului să le "retragă" unilateral
+# ar goli de sens exact ce erau menite să protejeze, fără să anuleze nimic
+# din ce s-a întâmplat deja. Un template nou creat de admin nu e retras
+# implicit — vezi ConsentTemplateCreate.category, care pornește pe TRATAMENT.
+WITHDRAWABLE_CATEGORY = "PRELUCRARE_DATE"
+
 # Cele două tipuri cu care pornește orice instalație nouă — folosite doar ca
 # seed inițial (idempotent, la prima accesare), nu ca o listă fixă de valori
 # valide. ADMIN poate adăuga oricând tipuri noi din /admin/documente.
@@ -69,6 +80,10 @@ class ConsentOut(BaseModel):
     version_text: str
     signed_at: datetime
     withdrawn_at: datetime | None = None
+    # Inclusă și aici (nu doar pe /consents/{client_id}, folosit de
+    # personal) — clientul poate oricând revedea exact ce a semnat, fără să
+    # poată retrage/re-semna din acest ecran (vezi withdraw_own_consent).
+    signature_data_url: str
 
 
 def _ensure_default_templates(db: DBSession) -> None:
@@ -241,7 +256,14 @@ def get_own_consents(db: DBSession = Depends(get_db), user: User = Depends(requi
         .all()
     )
     return [
-        ConsentOut(id=c.id, type=c.type, version_text=c.version_text, signed_at=c.signed_at, withdrawn_at=c.withdrawn_at)
+        ConsentOut(
+            id=c.id,
+            type=c.type,
+            version_text=c.version_text,
+            signed_at=c.signed_at,
+            withdrawn_at=c.withdrawn_at,
+            signature_data_url=c.signature_data_url,
+        )
         for c in consents
     ]
 
@@ -278,7 +300,11 @@ def withdraw_own_consent(
     consimțământului. Nu șterge semnătura (dovada e obligatorie să rămână),
     doar marchează momentul retragerii — nu afectează legalitatea prelucrării
     de dinainte de acest moment. Pentru un consimțământ legat direct de
-    tratamentul în curs, retragerea nu anulează ședințele deja efectuate."""
+    tratamentul în curs, retragerea nu anulează ședințele deja efectuate.
+
+    Doar aplicabilă categoriei WITHDRAWABLE_CATEGORY — vezi comentariul de la
+    definiția ei. Verificată aici, nu doar ascunsă în UI, ca un client să nu
+    poată retrage o declarație de risc/preț printr-o cerere directă la API."""
     if not user.client_profile:
         raise HTTPException(status_code=403, detail="Doar clienții pot retrage o declarație.")
 
@@ -287,6 +313,13 @@ def withdraw_own_consent(
         raise HTTPException(status_code=404, detail="Declarație inexistentă.")
     if consent.withdrawn_at:
         raise HTTPException(status_code=422, detail="Această declarație a fost deja retrasă.")
+
+    template = db.get(ConsentTemplate, consent.type)
+    if not template or template.category != WITHDRAWABLE_CATEGORY:
+        raise HTTPException(
+            status_code=403,
+            detail="Acest document nu poate fi retras — doar acordul de prelucrare a datelor (GDPR) poate fi retras.",
+        )
 
     consent.withdrawn_at = datetime.now(timezone.utc)
     db.commit()

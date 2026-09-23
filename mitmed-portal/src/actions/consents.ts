@@ -15,6 +15,7 @@ export type Consent = {
   version_text: string;
   signed_at: string;
   withdrawn_at: string | null;
+  signature_data_url: string;
 };
 
 export type ConsentTemplate = {
@@ -39,7 +40,7 @@ export async function getOwnConsents(): Promise<Consent[]> {
 
 export async function getClientConsents(clientId: string) {
   await requireRole(Role.ADMIN, Role.RECEPTIE);
-  return apiGet<(Consent & { signature_data_url: string })[]>(`/consents/${clientId}`);
+  return apiGet<Consent[]>(`/consents/${clientId}`);
 }
 
 /** Toate tipurile de document, inclusiv cele dezactivate — pentru
