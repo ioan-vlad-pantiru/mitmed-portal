@@ -15,6 +15,18 @@ from app.deps import require_roles
 from app.models import BookingRequestStatus, PublicBookingRequest, Role, Therapy, User
 from app.rate_limit import limiter
 
+
+def client_ip(request: Request) -> str:
+    """Cererile publice ajung aici prin proxy-ul portalului (API-ul nu e expus
+    public în producție), deci adresa directă e mereu containerul portalului.
+    Portalul transmite IP-ul real al vizitatorului în X-Forwarded-For (primit
+    de la Caddy), iar limita per-IP trebuie să folosească acel IP — altfel
+    toți vizitatorii ar împărți aceeași limită."""
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
 router = APIRouter(prefix="/public", tags=["public"])
 
 
@@ -25,6 +37,13 @@ class BookingRequestIn(BaseModel):
     therapy_id: str | None = None
     preferred_starts_at: datetime | None = None
     message: str | None = None
+
+
+class PublicTherapyOut(BaseModel):
+    id: str
+    name: str
+    duration_minutes: int
+    is_consultation: bool
 
 
 class BookingRequestOut(BaseModel):
@@ -39,10 +58,28 @@ class BookingRequestOut(BaseModel):
     created_at: datetime
 
 
+# Doar terapiile active, fără preț — alimentează lista „Ce serviciu te
+# interesează?" din formularul de programare fără cont de pe site.
+@router.get("/therapies")
+def list_public_therapies(db: DBSession = Depends(get_db)) -> list[PublicTherapyOut]:
+    therapies = (
+        db.query(Therapy)
+        .filter(Therapy.active.is_(True))
+        .order_by(Therapy.is_consultation.desc(), Therapy.name)
+        .all()
+    )
+    return [
+        PublicTherapyOut(
+            id=t.id, name=t.name, duration_minutes=t.duration_minutes, is_consultation=t.is_consultation
+        )
+        for t in therapies
+    ]
+
+
 # Fără autentificare — accesibilă de pe alt domeniu (site-ul de prezentare),
 # de-asta CORS-ul din app/config.py trebuie să includă și acel domeniu.
 @router.post("/booking-requests", status_code=201)
-@limiter.limit("10/hour")
+@limiter.limit("10/hour", key_func=client_ip)
 def create_booking_request(request: Request, payload: BookingRequestIn, db: DBSession = Depends(get_db)) -> dict:
     if payload.therapy_id:
         therapy = db.get(Therapy, payload.therapy_id)
