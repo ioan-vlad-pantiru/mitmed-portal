@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { apiGet, apiPost, apiPatch, apiDelete, apiPostForm, ApiError } from "@/lib/apiClient";
+import { apiGet, apiPost, apiPatch, apiPut, apiDelete, apiPostForm, ApiError } from "@/lib/apiClient";
 import { requireRole } from "@/lib/authSession";
 import { Role } from "@/lib/enums";
 
@@ -108,10 +108,47 @@ export async function getOwnClientData() {
   }
 }
 
-export async function updateClientNotes(clientProfileId: string, notes: string) {
+export type NotesFormState = { message?: string; success?: boolean } | undefined;
+
+/** Note interne despre client (context, preferințe, ce trebuie reținut) —
+ * vizibile doar personalului, niciodată clientului. */
+export async function updateClientNotes(
+  clientProfileId: string,
+  _state: NotesFormState,
+  formData: FormData
+): Promise<NotesFormState> {
   await requireRole(Role.ADMIN, Role.RECEPTIE);
-  await apiPatch(`/clients/${clientProfileId}/notes`, { notes });
+  const notes = String(formData.get("notes") ?? "");
+  try {
+    await apiPatch(`/clients/${clientProfileId}/notes`, { notes });
+  } catch (err) {
+    if (err instanceof ApiError) return { message: err.message };
+    throw err;
+  }
   revalidatePath(`/admin/clienti/${clientProfileId}`);
+  return { success: true, message: "Note salvate." };
+}
+
+export type UnlockedTherapiesFormState = { message?: string; success?: boolean } | undefined;
+
+/** Terapiile deblocate manual de medic pentru un client — de obicei imediat
+ * după consultația inițială. Un client nou vede/poate rezerva singur din
+ * portal doar terapii marcate `is_consultation`, până la acest pas. */
+export async function updateClientUnlockedTherapies(
+  clientProfileId: string,
+  _state: UnlockedTherapiesFormState,
+  formData: FormData
+): Promise<UnlockedTherapiesFormState> {
+  await requireRole(Role.ADMIN, Role.RECEPTIE);
+  const therapyIds = formData.getAll("therapyIds").map(String);
+  try {
+    await apiPut(`/clients/${clientProfileId}/unlocked-therapies`, { therapy_ids: therapyIds });
+  } catch (err) {
+    if (err instanceof ApiError) return { message: err.message };
+    throw err;
+  }
+  revalidatePath(`/admin/clienti/${clientProfileId}`);
+  return { success: true, message: "Terapii actualizate." };
 }
 
 export type CnpFormState = { message?: string; success?: boolean } | undefined;

@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { IconFileText, IconPackage, IconShield, IconTag, IconTherapy } from "@/components/icons";
+import { IconClock, IconFileText, IconPackage, IconShield, IconTag, IconTherapy } from "@/components/icons";
 
 const settings = [
+  { href: "/admin/program", title: "Program și concedii", description: "Orele cabinetului pe zile ale săptămânii și perioadele de vacanță.", icon: IconClock },
   { href: "/admin/terapii", title: "Terapii", description: "Servicii, durate, prețuri și disponibilitate.", icon: IconTherapy },
   { href: "/admin/pachete", title: "Pachete", description: "Pachete de ședințe și combinații de terapii.", icon: IconPackage },
   { href: "/admin/cupoane", title: "Cupoane", description: "Reduceri, condiții de folosire și valabilitate.", icon: IconTag },

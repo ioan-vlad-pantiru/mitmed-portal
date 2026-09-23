@@ -1,12 +1,15 @@
 import { notFound } from "next/navigation";
 import { getClientDetail, listClientDocuments } from "@/actions/clients";
 import { listTherapies } from "@/actions/therapies";
+import { listWeekdayHours, listVacations } from "@/actions/clinic";
 import { listCoupons } from "@/actions/coupons";
 import { listPackages } from "@/actions/packages";
 import { getClientConsents, listActiveConsentTemplates } from "@/actions/consents";
 import Link from "next/link";
 import { MedicalRecordForm } from "./MedicalRecordForm";
 import { CnpForm } from "./CnpForm";
+import { NotesForm } from "./NotesForm";
+import { UnlockedTherapiesForm } from "./UnlockedTherapiesForm";
 import { MedicalRecordsPanel } from "./MedicalRecordsPanel";
 import { PatientDocumentsPanel } from "./PatientDocumentsPanel";
 import { PaymentForm } from "./PaymentForm";
@@ -27,12 +30,14 @@ function PaymentStatusBadge({ status }: { status: string }) {
 type ClientDetail = {
   id: string;
   full_name: string;
+  created_at: string;
   phone: string | null;
   birth_date: string | null;
   cnp: string | null;
   emergency_contact_name: string | null;
   emergency_contact_phone: string | null;
   notes: string | null;
+  unlocked_therapy_ids: string[];
   medical_history: {
     allergies?: string;
     conditions?: string;
@@ -41,13 +46,20 @@ type ClientDetail = {
     notes?: string;
   } | null;
   profile_data: {
+    gender?: string;
     city?: string;
     county?: string;
+    address?: string;
     occupation?: string;
+    occupation_category?: string;
     preferred_contact?: string;
+    preferred_language?: string;
     referral_source?: string;
+    referral_details?: string;
     activity_level?: string;
     primary_goal?: string;
+    secondary_goal?: string;
+    communication_consent?: boolean;
   } | null;
   user: { id: string; email: string; status: string };
   medical_records: {
@@ -90,13 +102,15 @@ export default async function ClientDetailPage({ params, searchParams }: { param
   const { id } = await params;
   const { tab } = await searchParams;
   const activeTab = ["profil", "dosar", "plati", "programari"].includes(tab ?? "") ? tab! : "profil";
-  const [clientRaw, therapiesRaw, coupons, packagesRaw, consentTemplates, documents] = await Promise.all([
+  const [clientRaw, therapiesRaw, coupons, packagesRaw, consentTemplates, documents, hours, vacations] = await Promise.all([
     getClientDetail(id),
     listTherapies(),
     listCoupons(),
     listPackages(),
     listActiveConsentTemplates(),
     listClientDocuments(id),
+    listWeekdayHours(),
+    listVacations(),
   ]);
 
   if (!clientRaw) notFound();
@@ -105,6 +119,25 @@ export default async function ClientDetailPage({ params, searchParams }: { param
   const signedTypes = new Set(consents.map((c) => c.type));
 
   const activeAppointmentsCount = client.appointments.filter((a) => a.status === "PROGRAMATA").length;
+  // Statistici rapide pentru un overview la o privire, în capul tab-ului
+  // Profil — nu duplicat de date, doar agregate din ce oricum se încarcă mai
+  // jos pentru tab-urile Dosar/Plăți/Programări.
+  const lastVisit = client.medical_records[0]?.session_date ?? null; // deja sortate desc
+  const totalPaid = client.payments
+    .filter((p) => p.status === "PLATIT")
+    .reduce((sum, p) => sum + Number(p.final_price), 0);
+  const unpaidCount = client.payments.filter((p) => p.status !== "PLATIT").length;
+  const clientActivePackagesCount = client.payments.filter(
+    (p) => p.package_total_sessions && p.sessions_used < p.package_total_sessions
+  ).length;
+  const unlockedTherapyNames = therapiesRaw
+    .filter((t) => client.unlocked_therapy_ids.includes(t.id))
+    .map((t) => t.name);
+  const hasMedicalHistory = Boolean(client.medical_history && Object.values(client.medical_history).some(Boolean));
+  // profile_data devine un obiect (fie și doar cu communication_consent: false)
+  // din prima salvare a formularului din portal — non-null înseamnă "a
+  // completat formularul măcar o dată", indiferent ce a lăsat necompletat.
+  const hasProfileData = client.profile_data != null;
 
   const therapies = therapiesRaw
     .filter((t) => t.active)
@@ -150,10 +183,14 @@ export default async function ClientDetailPage({ params, searchParams }: { param
       {activeTab === "profil" && <>
       <section className="mm-card p-4">
         <div className="flex items-start justify-between">
-          <h1 className="text-lg font-semibold text-zinc-900">{client.full_name}</h1>
+          <div>
+            <h1 className="text-lg font-semibold text-zinc-900">{client.full_name}</h1>
+            <p className="mt-0.5 text-xs text-zinc-400">Client din {new Date(client.created_at).toLocaleDateString("ro-RO", { day: "numeric", month: "long", year: "numeric" })}</p>
+          </div>
           <ResetPasswordButton userId={client.user.id} />
         </div>
-        <dl className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-sm text-zinc-600 sm:grid-cols-4">
+
+        <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-sm text-zinc-600 sm:grid-cols-4">
           <div>
             <dt className="text-zinc-400">Email</dt>
             <dd>{client.user.email ?? "—"}</dd>
@@ -167,6 +204,10 @@ export default async function ClientDetailPage({ params, searchParams }: { param
             <dd className="tabular-nums">{client.cnp ?? "—"}</dd>
           </div>
           <div>
+            <dt className="text-zinc-400">Data nașterii</dt>
+            <dd>{client.birth_date ? new Date(client.birth_date).toLocaleDateString("ro-RO") : "—"}</dd>
+          </div>
+          <div>
             <dt className="text-zinc-400">Status cont</dt>
             <dd>{client.user.status}</dd>
           </div>
@@ -177,66 +218,95 @@ export default async function ClientDetailPage({ params, searchParams }: { param
             </dd>
           </div>
           <div>
-            <dt className="text-zinc-400">Ședințe active</dt>
-            <dd className="font-medium text-sky-700">{activeAppointmentsCount}</dd>
+            <dt className="text-zinc-400">Documente</dt>
+            <dd>{documents.length}</dd>
+          </div>
+          <div>
+            <dt className="text-zinc-400">Declarații semnate</dt>
+            <dd>{signedTypes.size}/{consentTemplates.length}</dd>
           </div>
         </dl>
 
-        {client.medical_history && Object.keys(client.medical_history).length > 0 && (
+        {/* Overview la o privire — agregate din tab-urile Dosar/Plăți/Programări,
+            ca personalul să nu trebuiască să le deschidă pe fiecare doar ca
+            să-și facă o idee generală despre client. */}
+        <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-zinc-100 pt-3 sm:grid-cols-5">
+          <div className="rounded-lg bg-zinc-50 px-3 py-2">
+            <dt className="text-xs text-zinc-400">Ședințe active</dt>
+            <dd className="text-base font-semibold text-sky-700">{activeAppointmentsCount}</dd>
+          </div>
+          <div className="rounded-lg bg-zinc-50 px-3 py-2">
+            <dt className="text-xs text-zinc-400">Ultima vizită</dt>
+            <dd className="text-base font-semibold text-zinc-800">{lastVisit ? new Date(lastVisit).toLocaleDateString("ro-RO") : "—"}</dd>
+          </div>
+          <div className="rounded-lg bg-zinc-50 px-3 py-2">
+            <dt className="text-xs text-zinc-400">Total încasat</dt>
+            <dd className="text-base font-semibold text-emerald-700">{totalPaid.toFixed(2)} RON</dd>
+          </div>
+          <div className="rounded-lg bg-zinc-50 px-3 py-2">
+            <dt className="text-xs text-zinc-400">Plăți restante</dt>
+            <dd className={`text-base font-semibold ${unpaidCount ? "text-amber-600" : "text-zinc-800"}`}>{unpaidCount}</dd>
+          </div>
+          <div className="rounded-lg bg-zinc-50 px-3 py-2">
+            <dt className="text-xs text-zinc-400">Pachete active</dt>
+            <dd className="text-base font-semibold text-zinc-800">{clientActivePackagesCount}</dd>
+          </div>
+        </dl>
+
+        {unlockedTherapyNames.length > 0 && (
           <div className="mt-4 border-t border-zinc-100 pt-3">
-            <h2 className="text-xs font-medium uppercase tracking-wide text-zinc-400">
-              Chestionar medical (completat de client)
-            </h2>
-            <dl className="mt-1.5 grid grid-cols-2 gap-x-6 gap-y-1 text-sm text-zinc-600 sm:grid-cols-4">
-              {client.medical_history.allergies && (
-                <div>
-                  <dt className="text-zinc-400">Alergii</dt>
-                  <dd>{client.medical_history.allergies}</dd>
-                </div>
-              )}
-              {client.medical_history.conditions && (
-                <div>
-                  <dt className="text-zinc-400">Afecțiuni</dt>
-                  <dd>{client.medical_history.conditions}</dd>
-                </div>
-              )}
-              {client.medical_history.medications && (
-                <div>
-                  <dt className="text-zinc-400">Medicamente</dt>
-                  <dd>{client.medical_history.medications}</dd>
-                </div>
-              )}
-              {client.medical_history.previous_injuries && (
-                <div>
-                  <dt className="text-zinc-400">Leziuni anterioare</dt>
-                  <dd>{client.medical_history.previous_injuries}</dd>
-                </div>
-              )}
-              {client.medical_history.notes && (
-                <div className="col-span-2 sm:col-span-4">
-                  <dt className="text-zinc-400">Alte note</dt>
-                  <dd>{client.medical_history.notes}</dd>
-                </div>
-              )}
-            </dl>
+            <h2 className="text-xs font-medium uppercase tracking-wide text-zinc-400">Terapii deblocate</h2>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {unlockedTherapyNames.map((name) => (
+                <Badge key={name} variant="success">{name}</Badge>
+              ))}
+            </div>
           </div>
         )}
 
-        {client.profile_data && Object.keys(client.profile_data).length > 0 && (
-          <div className="mt-4 border-t border-zinc-100 pt-3">
-            <h2 className="text-xs font-medium uppercase tracking-wide text-zinc-400">Profil și preferințe</h2>
-            <dl className="mt-1.5 grid grid-cols-2 gap-x-6 gap-y-1 text-sm text-zinc-600 sm:grid-cols-4">
-              {client.birth_date && <ProfileDetail label="Data nașterii" value={new Date(client.birth_date).toLocaleDateString("ro-RO")} />}
-              <ProfileDetail label="Localitate" value={[client.profile_data.city, client.profile_data.county].filter(Boolean).join(", ")} />
-              <ProfileDetail label="Ocupație" value={client.profile_data.occupation} />
-              <ProfileDetail label="Contact preferat" value={client.profile_data.preferred_contact} />
-              <ProfileDetail label="Sursă" value={client.profile_data.referral_source} />
-              <ProfileDetail label="Activitate" value={client.profile_data.activity_level} />
-              <ProfileDetail label="Obiectiv" value={client.profile_data.primary_goal} />
-            </dl>
+        <div className="mt-4 border-t border-zinc-100 pt-3">
+          <div className="flex items-center gap-2">
+            <h2 className="text-xs font-medium uppercase tracking-wide text-zinc-400">
+              Chestionar medical (completat de client)
+            </h2>
+            {!hasMedicalHistory && <Badge variant="neutral">Necompletat</Badge>}
           </div>
-        )}
+          <dl className="mt-1.5 grid grid-cols-2 gap-x-6 gap-y-1 text-sm text-zinc-600 sm:grid-cols-4">
+            <ProfileDetail label="Alergii" value={client.medical_history?.allergies} />
+            <ProfileDetail label="Afecțiuni" value={client.medical_history?.conditions} />
+            <ProfileDetail label="Medicamente" value={client.medical_history?.medications} />
+            <ProfileDetail label="Leziuni anterioare" value={client.medical_history?.previous_injuries} />
+            <ProfileDetail label="Alte note" value={client.medical_history?.notes} className="col-span-2 sm:col-span-4" />
+          </dl>
+        </div>
+
+        <div className="mt-4 border-t border-zinc-100 pt-3">
+          <div className="flex items-center gap-2">
+            <h2 className="text-xs font-medium uppercase tracking-wide text-zinc-400">Profil și preferințe</h2>
+            {!hasProfileData && <Badge variant="neutral">Necompletat</Badge>}
+          </div>
+          <dl className="mt-1.5 grid grid-cols-2 gap-x-6 gap-y-1 text-sm text-zinc-600 sm:grid-cols-4">
+            <ProfileDetail label="Gen" value={client.profile_data?.gender} />
+            <ProfileDetail label="Localitate" value={[client.profile_data?.city, client.profile_data?.county].filter(Boolean).join(", ")} />
+            <ProfileDetail label="Adresă" value={client.profile_data?.address} />
+            <ProfileDetail label="Ocupație" value={client.profile_data?.occupation} />
+            <ProfileDetail label="Categorie ocupație" value={client.profile_data?.occupation_category} />
+            <ProfileDetail label="Contact preferat" value={client.profile_data?.preferred_contact} />
+            <ProfileDetail label="Limbă preferată" value={client.profile_data?.preferred_language} />
+            <ProfileDetail label="Sursă" value={client.profile_data?.referral_source} />
+            <ProfileDetail label="Detalii sursă" value={client.profile_data?.referral_details} />
+            <ProfileDetail label="Activitate" value={client.profile_data?.activity_level} />
+            <ProfileDetail label="Obiectiv" value={client.profile_data?.primary_goal} />
+            <ProfileDetail label="Obiectiv secundar" value={client.profile_data?.secondary_goal} />
+            <ProfileDetail
+              label="Acceptă comunicare marketing"
+              value={client.profile_data?.communication_consent === undefined ? undefined : client.profile_data.communication_consent ? "Da" : "Nu"}
+            />
+          </dl>
+        </div>
       </section>
+
+      <NotesForm clientId={client.id} notes={client.notes} />
 
       <section className="mm-card p-4">
         <h2 className="text-xs font-medium uppercase tracking-wide text-zinc-400">Declarații semnate</h2>
@@ -256,6 +326,11 @@ export default async function ClientDetailPage({ params, searchParams }: { param
       {activeTab === "dosar" && <section>
         <h2 className="text-base font-semibold text-zinc-900">Fișă medicală</h2>
         <CnpForm clientId={client.id} cnp={client.cnp} />
+        <UnlockedTherapiesForm
+          clientId={client.id}
+          therapies={therapiesRaw.map((t) => ({ id: t.id, name: t.name, is_consultation: t.is_consultation }))}
+          unlockedTherapyIds={client.unlocked_therapy_ids}
+        />
         <div className="mt-3">
           <MedicalRecordsPanel records={client.medical_records} />
         </div>
@@ -370,15 +445,21 @@ export default async function ClientDetailPage({ params, searchParams }: { param
           ))}
           {client.appointments.length === 0 && <p className="text-sm text-zinc-400">Nicio programare încă.</p>}
         </div>
-        <AppointmentForm clientId={client.id} therapies={therapies} />
+        <AppointmentForm clientId={client.id} therapies={therapies} hours={hours} vacations={vacations} />
       </section>}
     </div>
   );
 }
 
-function ProfileDetail({ label, value }: { label: string; value?: string }) {
-  if (!value) return null;
-  return <div><dt className="text-zinc-400">{label}</dt><dd>{value.replaceAll("_", " ")}</dd></div>;
+// Randează mereu (nu doar când e completat) — un admin trebuie să vadă
+// dintr-o privire și ce clientul N-A completat încă, nu doar ce a completat.
+function ProfileDetail({ label, value, className }: { label: string; value?: string; className?: string }) {
+  return (
+    <div className={className}>
+      <dt className="text-zinc-400">{label}</dt>
+      <dd>{value ? value.replaceAll("_", " ") : "—"}</dd>
+    </div>
+  );
 }
 
 // Randează o secțiune SOAP din fișa de consult doar dacă a fost completată —

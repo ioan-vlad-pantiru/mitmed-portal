@@ -1,5 +1,5 @@
 import logging
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -14,6 +14,7 @@ from app.models import (
     Appointment,
     AppointmentStatus,
     ClientProfile,
+    ClinicVacation,
     Consent,
     MedicalRecord,
     Payment,
@@ -21,6 +22,7 @@ from app.models import (
     Role,
     Therapy,
     User,
+    WeekdayHours,
 )
 from app.services.google_calendar import sync_appointment_cancelled, sync_appointment_created
 
@@ -33,14 +35,10 @@ MIN_CANCEL_NOTICE = timedelta(hours=48)
 # programeze manual same-day (ex: urgențe, apel telefonic de ultim moment).
 MIN_BOOKING_NOTICE = timedelta(hours=24)
 CLINIC_TIMEZONE = ZoneInfo("Europe/Bucharest")
-CLINIC_OPENS_AT = time(hour=10)
-CLINIC_CLOSES_AT = time(hour=18)
-# Pauza de prânz — nicio ședință nu poate începe, trece prin sau se încheie în
-# acest interval (nici din portal, nici programată manual de recepție).
-LUNCH_BREAK_STARTS_AT = time(hour=13)
-LUNCH_BREAK_ENDS_AT = time(hour=14)
 # Pauză obligatorie după fiecare ședință (pregătirea cabinetului) — între
 # sfârșitul unei programări și începutul următoarei rămân minim 15 minute.
+# Fix — spre deosebire de orele de deschidere/pauza de prânz, nu e editabilă
+# de admin (ține de timpul minim de igienizare a cabinetului, nu de program).
 APPOINTMENT_BUFFER = timedelta(minutes=15)
 BOOKABLE_STATUSES = (AppointmentStatus.PROGRAMATA, AppointmentStatus.CONFIRMATA)
 
@@ -92,10 +90,29 @@ def _to_clinic_time(value: datetime) -> datetime:
     return value.astimezone(CLINIC_TIMEZONE)
 
 
-def _lunch_break(day: date) -> tuple[datetime, datetime]:
+def _weekday_hours(db: DBSession, weekday: int) -> WeekdayHours | None:
+    """Programul editabil de admin pentru o zi din săptămână — vezi
+    routers/clinic.py. None (sau `is_open=False`) înseamnă cabinet închis."""
+    row = db.get(WeekdayHours, weekday)
+    return row if row and row.is_open else None
+
+
+def _active_vacation(db: DBSession, day: date) -> ClinicVacation | None:
+    """O vacanță (concediu/sărbătoare) care acoperă `day`, dacă există —
+    editabilă de admin din /admin/program, vezi routers/clinic.py."""
     return (
-        datetime.combine(day, LUNCH_BREAK_STARTS_AT, tzinfo=CLINIC_TIMEZONE),
-        datetime.combine(day, LUNCH_BREAK_ENDS_AT, tzinfo=CLINIC_TIMEZONE),
+        db.query(ClinicVacation)
+        .filter(ClinicVacation.starts_on <= day, ClinicVacation.ends_on >= day)
+        .first()
+    )
+
+
+def _lunch_break(day: date, hours: WeekdayHours) -> tuple[datetime, datetime] | None:
+    if not hours.break_starts_at or not hours.break_ends_at:
+        return None
+    return (
+        datetime.combine(day, hours.break_starts_at, tzinfo=CLINIC_TIMEZONE),
+        datetime.combine(day, hours.break_ends_at, tzinfo=CLINIC_TIMEZONE),
     )
 
 
@@ -107,11 +124,14 @@ def _available_slot_starts(db: DBSession, *, day: date, therapy: Therapy) -> lis
     după sfârșitul programării anterioare și se termină cu minim 15 minute
     înainte de următoarea. Pauza de prânz și ora de închidere nu cer buffer.
     """
-    if day.weekday() >= 5:
+    hours = _weekday_hours(db, day.weekday())
+    if not hours or not hours.opens_at or not hours.closes_at:
+        return []
+    if _active_vacation(db, day):
         return []
 
-    day_start = datetime.combine(day, CLINIC_OPENS_AT, tzinfo=CLINIC_TIMEZONE)
-    day_end = datetime.combine(day, CLINIC_CLOSES_AT, tzinfo=CLINIC_TIMEZONE)
+    day_start = datetime.combine(day, hours.opens_at, tzinfo=CLINIC_TIMEZONE)
+    day_end = datetime.combine(day, hours.closes_at, tzinfo=CLINIC_TIMEZONE)
     appointments = (
         db.query(Appointment)
         .options(joinedload(Appointment.therapy))
@@ -129,9 +149,10 @@ def _available_slot_starts(db: DBSession, *, day: date, therapy: Therapy) -> lis
         ends_at = starts_at + timedelta(minutes=appointment.therapy.duration_minutes)
         if ends_at > day_start and starts_at < day_end:
             occupied.append((starts_at - APPOINTMENT_BUFFER, ends_at + APPOINTMENT_BUFFER))
-    # Pauza e tratată ca un interval ocupat: sloturile se opresc înainte de
-    # 13:00 și reîncep exact la 14:00.
-    occupied.append(_lunch_break(day))
+    # Pauza (dacă există în acea zi) e tratată ca un interval ocupat.
+    break_interval = _lunch_break(day, hours)
+    if break_interval:
+        occupied.append(break_interval)
     occupied.sort()
 
     slots: list[datetime] = []
@@ -151,31 +172,46 @@ def _available_slot_starts(db: DBSession, *, day: date, therapy: Therapy) -> lis
     return [slot for slot in slots if slot.astimezone(timezone.utc) >= earliest_bookable]
 
 
-def _ensure_within_business_hours(*, starts_at: datetime, therapy: Therapy) -> None:
-    """Program: luni-vineri, 10:00-18:00, cu pauză 13:00-14:00 — o programare nu poate începe
-    înainte de deschidere și nici să se termine după închidere. Verificată
-    unconditionat în `_create_appointment`, indiferent dacă vine din
-    portalul clientului sau e creată manual de recepție — altfel recepția
-    ar putea bloca un slot care depășește ora 18:00."""
+def _ensure_within_business_hours(db: DBSession, *, starts_at: datetime, therapy: Therapy) -> None:
+    """Programul cabinetului (editabil de admin din /admin/program, vezi
+    routers/clinic.py) — o programare nu poate începe înainte de deschidere,
+    nu se poate termina după închidere, nu poate atinge pauza zilei și nu
+    poate cădea într-o vacanță. Verificată unconditionat în
+    `_create_appointment`, indiferent dacă vine din portalul clientului sau e
+    creată manual de recepție — altfel recepția ar putea bloca un slot în
+    afara programului."""
     local_start = _to_clinic_time(starts_at)
-    if local_start.weekday() >= 5:
-        raise HTTPException(status_code=422, detail="Programările sunt disponibile de luni până vineri.")
+    hours = _weekday_hours(db, local_start.weekday())
+    if not hours or not hours.opens_at or not hours.closes_at:
+        raise HTTPException(status_code=422, detail="Cabinetul este închis în această zi.")
 
-    day_start = datetime.combine(local_start.date(), CLINIC_OPENS_AT, tzinfo=CLINIC_TIMEZONE)
-    day_end = datetime.combine(local_start.date(), CLINIC_CLOSES_AT, tzinfo=CLINIC_TIMEZONE)
+    vacation = _active_vacation(db, local_start.date())
+    if vacation:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Cabinetul este închis în această perioadă ({vacation.label or 'vacanță'}).",
+        )
+
+    day_start = datetime.combine(local_start.date(), hours.opens_at, tzinfo=CLINIC_TIMEZONE)
+    day_end = datetime.combine(local_start.date(), hours.closes_at, tzinfo=CLINIC_TIMEZONE)
     local_end = local_start + timedelta(minutes=therapy.duration_minutes)
     if local_start < day_start or local_end > day_end:
         raise HTTPException(
             status_code=422,
-            detail="Programările sunt posibile doar între 10:00 și 18:00, iar ședința trebuie să se încheie până la ora 18:00.",
+            detail=f"Programările sunt posibile doar între {hours.opens_at.strftime('%H:%M')} și "
+            f"{hours.closes_at.strftime('%H:%M')}, iar ședința trebuie să se încheie în acest interval.",
         )
 
-    break_start, break_end = _lunch_break(local_start.date())
-    if local_start < break_end and local_end > break_start:
-        raise HTTPException(
-            status_code=422,
-            detail="Între 13:00 și 14:00 este pauză — ședința trebuie să se încheie până la 13:00 sau să înceapă de la 14:00.",
-        )
+    break_interval = _lunch_break(local_start.date(), hours)
+    if break_interval:
+        break_start, break_end = break_interval
+        if local_start < break_end and local_end > break_start:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Între {hours.break_starts_at.strftime('%H:%M')} și "
+                f"{hours.break_ends_at.strftime('%H:%M')} este pauză — ședința trebuie să se încheie înainte sau "
+                "să înceapă după.",
+            )
 
 
 def _ensure_own_slot_is_available(db: DBSession, *, starts_at: datetime, therapy: Therapy) -> None:
@@ -206,14 +242,23 @@ def _create_appointment(
     if not therapy or not therapy.active:
         raise HTTPException(status_code=422, detail="Terapia selectată nu este disponibilă.")
 
-    _ensure_within_business_hours(starts_at=starts_at, therapy=therapy)
-
-    if enforce_live_availability:
-        _ensure_own_slot_is_available(db, starts_at=starts_at, therapy=therapy)
+    _ensure_within_business_hours(db, starts_at=starts_at, therapy=therapy)
 
     client = db.get(ClientProfile, client_id)
     if not client:
         raise HTTPException(status_code=422, detail="Client inexistent.")
+
+    if enforce_live_availability:
+        # Auto-programarea din portal e limitată la terapii "de consultație"
+        # și la ce a deblocat medicul pentru acest client anume — recepția
+        # rămâne exceptată (poate crea manual orice programare, ex. chiar
+        # consultația inițială sau o excepție punctuală).
+        if not therapy.is_consultation and therapy not in client.unlocked_therapies:
+            raise HTTPException(
+                status_code=403,
+                detail="Această terapie nu este încă disponibilă pentru tine. Programează-te mai întâi la o consultație.",
+            )
+        _ensure_own_slot_is_available(db, starts_at=starts_at, therapy=therapy)
 
     google_event_id = None
     try:

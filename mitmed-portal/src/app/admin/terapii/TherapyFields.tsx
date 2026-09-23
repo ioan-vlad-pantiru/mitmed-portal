@@ -8,6 +8,7 @@ export function TherapyFields({
     description?: string | null;
     durationMinutes?: number;
     price?: string | number;
+    isConsultation?: boolean;
   };
 }) {
   return (
@@ -49,6 +50,21 @@ export function TherapyFields({
       <div className="col-span-2">
         <label className="block text-xs font-medium text-zinc-700">Descriere (opțional)</label>
         <Textarea name="description" rows={2} defaultValue={defaults?.description ?? ""} className="mt-1" />
+      </div>
+      <div className="col-span-2">
+        <label className="flex items-start gap-2 text-xs text-zinc-700">
+          <input
+            type="checkbox"
+            name="isConsultation"
+            defaultChecked={defaults?.isConsultation ?? false}
+            className="mt-0.5"
+          />
+          <span>
+            <strong className="block font-medium">Este o consultație</strong>
+            Rezervabilă liber de orice client din portal, chiar dacă medicul nu i-a deblocat încă alte terapii. Un
+            client nou vede doar terapiile marcate astfel, până e deblocat pentru restul.
+          </span>
+        </label>
       </div>
     </>
   );

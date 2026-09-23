@@ -99,7 +99,7 @@ def test_own_booking_less_than_24h_ahead_is_rejected(db_session, make_therapy):
 
 def test_own_booking_at_least_24h_ahead_is_allowed(db_session, make_client_user, make_therapy):
     _, client_a = make_client_user(email="a@example.com")
-    therapy = make_therapy()
+    therapy = make_therapy(is_consultation=True)
     starts_at = _far_weekday_at_local(10)
 
     appointment = _create_appointment(
@@ -223,3 +223,118 @@ def test_available_slots_keep_15_minute_buffer_around_appointments(db_session, m
     slots = [s.strftime("%H:%M") for s in _available_slot_starts(db_session, day=starts_at.date(), therapy=therapy)]
     assert slots[:4] == ["10:00", "12:00", "14:00", "14:45"]  # 12:45 ar intra în pauza de prânz
     assert "10:45" not in slots and "11:45" not in slots
+
+
+def test_own_booking_of_non_consultation_therapy_is_rejected_when_locked(db_session, make_client_user, make_therapy):
+    """Un client nou n-a fost deblocat pentru nicio terapie — poate rezerva
+    singur doar o terapie de consultație."""
+    _, client_a = make_client_user(email="a@example.com")
+    therapy = make_therapy()
+
+    try:
+        _create_appointment(
+            db_session,
+            client_id=client_a.id,
+            therapy_id=therapy.id,
+            starts_at=_far_weekday_at_local(10),
+            created_by_id=client_a.user_id,
+            enforce_live_availability=True,
+        )
+        assert False, "terapia neconsultație, nedeblocată, ar fi trebuit respinsă"
+    except HTTPException as exc:
+        assert exc.status_code == 403
+
+
+def test_own_booking_of_unlocked_therapy_is_allowed(db_session, make_client_user, make_therapy):
+    _, client_a = make_client_user(email="a@example.com")
+    therapy = make_therapy()
+    client_a.unlocked_therapies = [therapy]
+    db_session.commit()
+
+    appointment = _create_appointment(
+        db_session,
+        client_id=client_a.id,
+        therapy_id=therapy.id,
+        starts_at=_far_weekday_at_local(10),
+        created_by_id=client_a.user_id,
+        enforce_live_availability=True,
+    )
+    assert appointment.id
+
+
+def test_staff_booking_ignores_unlock_restriction(db_session, make_client_user, make_therapy):
+    """Recepția/admin pot programa orice terapie manual, chiar dacă n-a fost
+    deblocată — restricția e doar pentru auto-programarea din portal."""
+    _, client_a = make_client_user(email="a@example.com")
+    therapy = make_therapy()
+
+    appointment = _create_appointment(
+        db_session,
+        client_id=client_a.id,
+        therapy_id=therapy.id,
+        starts_at=_next_weekday_at_local(10),
+        created_by_id=client_a.user_id,
+    )
+    assert appointment.id
+
+
+def test_appointment_during_vacation_is_rejected(db_session, make_client_user, make_therapy):
+    from app.models import ClinicVacation
+
+    _, client_a = make_client_user(email="a@example.com")
+    _, staff = make_client_user(email="staff@example.com")
+    therapy = make_therapy()
+    starts_at = _far_weekday_at_local(10)
+
+    db_session.add(
+        ClinicVacation(
+            starts_on=starts_at.date(),
+            ends_on=starts_at.date() + timedelta(days=2),
+            label="Concediu",
+            created_by_id=staff.user_id,
+        )
+    )
+    db_session.commit()
+
+    try:
+        _create_appointment(
+            db_session, client_id=client_a.id, therapy_id=therapy.id, starts_at=starts_at, created_by_id=client_a.user_id
+        )
+        assert False, "programarea într-o zi de vacanță ar fi trebuit respinsă"
+    except HTTPException as exc:
+        assert exc.status_code == 422
+
+
+def test_available_slots_empty_during_vacation(db_session, make_therapy, make_admin_user):
+    from app.models import ClinicVacation
+
+    admin = make_admin_user(email="admin@example.com", password="parola123", role="ADMIN")
+    therapy = make_therapy(duration_minutes=30)
+    day = _far_weekday_at_local(10).date()
+    db_session.add(ClinicVacation(starts_on=day, ends_on=day, created_by_id=admin.id))
+    db_session.commit()
+
+    slots = _available_slot_starts(db_session, day=day, therapy=therapy)
+    assert slots == []
+
+
+def test_appointment_on_day_marked_closed_is_rejected(db_session, make_client_user, make_therapy):
+    from app.models import WeekdayHours
+
+    _, client_a = make_client_user(email="a@example.com")
+    therapy = make_therapy()
+    starts_at = _far_weekday_at_local(10)
+
+    hours = db_session.get(WeekdayHours, starts_at.weekday())
+    hours.is_open = False
+    hours.opens_at = None
+    hours.closes_at = None
+    db_session.commit()
+
+    try:
+        _create_appointment(
+            db_session, client_id=client_a.id, therapy_id=therapy.id, starts_at=starts_at, created_by_id=client_a.user_id
+        )
+        assert False, "programarea într-o zi închisă ar fi trebuit respinsă"
+    except HTTPException as exc:
+        assert exc.status_code == 422

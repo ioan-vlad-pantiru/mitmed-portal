@@ -12,6 +12,7 @@ export type Therapy = {
   duration_minutes: number;
   price: string;
   active: boolean;
+  is_consultation: boolean;
 };
 
 export type TherapyFormState = { message?: string } | undefined;
@@ -27,6 +28,7 @@ function parseTherapyForm(formData: FormData) {
     description: String(formData.get("description") ?? "") || null,
     duration_minutes: Number(formData.get("durationMinutes")),
     price: Number(formData.get("price")),
+    is_consultation: formData.get("isConsultation") === "on",
   };
 }
 

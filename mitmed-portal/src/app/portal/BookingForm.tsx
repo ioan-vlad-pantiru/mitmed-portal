@@ -4,6 +4,7 @@ import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { Banknote, CalendarClock, Check, ChevronLeft, ChevronRight, Clock3, CreditCard, WalletCards } from "lucide-react";
 import { createOwnAppointment, getOwnAppointmentAvailability } from "@/actions/appointments";
 import { createPayuCheckout } from "@/actions/payments";
+import type { WeekdayHours, Vacation } from "@/actions/clinic";
 import { useToast } from "@/components/Toast";
 import { Button } from "@/components/ui/Button";
 import { PayOnlineButton } from "@/components/PayOnlineButton";
@@ -15,14 +16,24 @@ function toLocalDateInput(date: Date): string {
   return offsetDate.toISOString().slice(0, 10);
 }
 
-function nextAvailableDays(page: number): Date[] {
+// date.getDay() (0=duminică…6=sâmbătă) -> convenția backend-ului
+// (0=luni…6=duminică, ca Python date.weekday()).
+function toBackendWeekday(date: Date): number {
+  return (date.getDay() + 6) % 7;
+}
+
+function nextAvailableDays(page: number, openWeekdays: Set<number>, closedDates: Set<string>): Date[] {
   const days: Date[] = [];
   const cursor = new Date();
   let skippedBookableDays = 0;
   cursor.setHours(0, 0, 0, 0);
+  // Dacă nu s-a încărcat încă programul, nu ascundem nimic — mai bine
+  // arătăm toate zilele (backend-ul tot validează la rezervare) decât un
+  // calendar gol pentru o clipă.
   while (days.length < 7) {
     cursor.setDate(cursor.getDate() + 1);
-    if (cursor.getDay() === 0 || cursor.getDay() === 6) continue;
+    if (openWeekdays.size && !openWeekdays.has(toBackendWeekday(cursor))) continue;
+    if (closedDates.has(toLocalDateInput(cursor))) continue;
     if (skippedBookableDays < page * 7) {
       skippedBookableDays += 1;
       continue;
@@ -39,13 +50,26 @@ function formatDayRange(days: Date[]): string {
   return `${first} – ${last}`;
 }
 
-export function BookingForm({ therapies }: { therapies: Therapy[] }) {
+export function BookingForm({ therapies, hours, vacations }: { therapies: Therapy[]; hours: WeekdayHours[]; vacations: Vacation[] }) {
   const [state, action, pending] = useActionState(createOwnAppointment, undefined);
   const toast = useToast();
   const toastRef = useRef(toast);
   const [selectedId, setSelectedId] = useState(therapies[0]?.id ?? "");
   const [dayPage, setDayPage] = useState(0);
-  const days = useMemo(() => nextAvailableDays(dayPage), [dayPage]);
+  const openWeekdays = useMemo(() => new Set(hours.filter((h) => h.is_open).map((h) => h.weekday)), [hours]);
+  const closedDates = useMemo(() => {
+    const dates = new Set<string>();
+    for (const vacation of vacations) {
+      const cursor = new Date(`${vacation.starts_on}T12:00:00`);
+      const end = new Date(`${vacation.ends_on}T12:00:00`);
+      while (cursor <= end) {
+        dates.add(toLocalDateInput(cursor));
+        cursor.setDate(cursor.getDate() + 1);
+      }
+    }
+    return dates;
+  }, [vacations]);
+  const days = useMemo(() => nextAvailableDays(dayPage, openWeekdays, closedDates), [dayPage, openWeekdays, closedDates]);
   const [selectedDate, setSelectedDate] = useState(() => toLocalDateInput(days[0] ?? new Date()));
   const [selectedTime, setSelectedTime] = useState("");
   const [availableTimes, setAvailableTimes] = useState<string[]>([]);
@@ -75,7 +99,7 @@ export function BookingForm({ therapies }: { therapies: Therapy[] }) {
 
   function selectDayPage(nextPage: number) {
     setDayPage(nextPage);
-    selectDate(toLocalDateInput(nextAvailableDays(nextPage)[0]));
+    selectDate(toLocalDateInput(nextAvailableDays(nextPage, openWeekdays, closedDates)[0]));
   }
 
   useEffect(() => {

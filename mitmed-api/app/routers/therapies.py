@@ -18,6 +18,7 @@ class TherapyOut(BaseModel):
     duration_minutes: int
     price: str
     active: bool
+    is_consultation: bool
 
     @classmethod
     def from_orm_obj(cls, t: Therapy) -> "TherapyOut":
@@ -28,6 +29,7 @@ class TherapyOut(BaseModel):
             duration_minutes=t.duration_minutes,
             price=str(t.price),
             active=t.active,
+            is_consultation=t.is_consultation,
         )
 
 
@@ -36,6 +38,7 @@ class TherapyIn(BaseModel):
     description: str | None = None
     duration_minutes: int = Field(gt=0)
     price: float = Field(ge=0)
+    is_consultation: bool = False
 
 
 # Catalogul de terapii + prețurile — editabil DOAR de ADMIN (nu recepție).
@@ -45,9 +48,18 @@ class TherapyIn(BaseModel):
 
 @router.get("")
 def list_therapies(
-    db: DBSession = Depends(get_db), _user: User = Depends(require_roles(Role.ADMIN, Role.RECEPTIE, Role.CLIENT))
+    db: DBSession = Depends(get_db), actor: User = Depends(require_roles(Role.ADMIN, Role.RECEPTIE, Role.CLIENT))
 ) -> list[TherapyOut]:
     therapies = db.query(Therapy).order_by(Therapy.name.asc()).all()
+    if actor.role == Role.CLIENT:
+        # Un client nou nu are nicio terapie deblocată — poate rezerva singur
+        # doar consultația (sau alte terapii marcate `is_consultation`), până
+        # când medicul îi deblochează manual restul (vezi
+        # clients.update_client_unlocked_therapies), de obicei după ce l-a
+        # văzut la consultație.
+        client = actor.client_profile
+        unlocked_ids = {t.id for t in client.unlocked_therapies} if client else set()
+        therapies = [t for t in therapies if t.is_consultation or t.id in unlocked_ids]
     return [TherapyOut.from_orm_obj(t) for t in therapies]
 
 

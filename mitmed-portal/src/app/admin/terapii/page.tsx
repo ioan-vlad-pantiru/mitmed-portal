@@ -45,6 +45,7 @@ export default async function TherapiesPage() {
                     durationMinutes: t.duration_minutes,
                     price: t.price,
                     active: t.active,
+                    isConsultation: t.is_consultation,
                   }}
                 />
               ))}

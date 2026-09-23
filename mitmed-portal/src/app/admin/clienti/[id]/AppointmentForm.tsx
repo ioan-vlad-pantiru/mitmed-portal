@@ -3,15 +3,11 @@
 import { useActionState, useMemo, useState } from "react";
 import { CalendarPlus, Clock3, Stethoscope } from "lucide-react";
 import { createAppointmentForClient } from "@/actions/appointments";
+import type { WeekdayHours, Vacation } from "@/actions/clinic";
 import { Input, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 
 type Therapy = { id: string; name: string; duration_minutes: number };
-
-const CLINIC_OPENS_AT = "10:00";
-const CLINIC_CLOSES_AT = "18:00";
-const LUNCH_BREAK_STARTS_AT = "13:00";
-const LUNCH_BREAK_ENDS_AT = "14:00";
 
 const toMinutes = (value: string) => {
   const [h, m] = value.split(":").map(Number);
@@ -22,38 +18,64 @@ function formatDateTime(date: string, time: string) {
   return date && time ? `${date}T${time}` : "";
 }
 
-function isWeekday(value: string) {
-  if (!value) return true;
-  const day = new Date(`${value}T12:00:00`).getDay();
-  return day !== 0 && day !== 6;
+// date.getDay() (0=duminică…6=sâmbătă) -> convenția backend-ului
+// (0=luni…6=duminică, ca Python date.weekday()).
+function toBackendWeekday(value: string): number {
+  const jsDay = new Date(`${value}T12:00:00`).getDay();
+  return (jsDay + 6) % 7;
 }
 
-/** Ora selectată trebuie să fie în intervalul 10:00-18:00, iar ședința (în
- * funcție de durata terapiei) trebuie să se încheie până la ora 18:00. */
-function fitsBusinessHours(time: string, durationMinutes: number) {
-  if (!time) return true;
-  const startMinutes = toMinutes(time);
-  return startMinutes >= toMinutes(CLINIC_OPENS_AT) && startMinutes + durationMinutes <= toMinutes(CLINIC_CLOSES_AT);
+function vacationFor(value: string, vacations: Vacation[]): Vacation | undefined {
+  return vacations.find((v) => v.starts_on <= value && value <= v.ends_on);
 }
 
-/** Ședința nu poate atinge pauza de prânz (13:00-14:00). */
-function avoidsLunchBreak(time: string, durationMinutes: number) {
-  if (!time) return true;
-  const startMinutes = toMinutes(time);
-  return startMinutes + durationMinutes <= toMinutes(LUNCH_BREAK_STARTS_AT) || startMinutes >= toMinutes(LUNCH_BREAK_ENDS_AT);
-}
-
-export function AppointmentForm({ clientId, therapies }: { clientId: string; therapies: Therapy[] }) {
+export function AppointmentForm({
+  clientId,
+  therapies,
+  hours,
+  vacations,
+}: {
+  clientId: string;
+  therapies: Therapy[];
+  hours: WeekdayHours[];
+  vacations: Vacation[];
+}) {
   const action = createAppointmentForClient.bind(null, clientId);
   const [state, formAction, pending] = useActionState(action, undefined);
   const [date, setDate] = useState("");
-  const [time, setTime] = useState(CLINIC_OPENS_AT);
+  const dayHours = date ? hours.find((h) => h.weekday === toBackendWeekday(date)) : undefined;
+  const [time, setTime] = useState("");
   const [therapyId, setTherapyId] = useState(therapies[0]?.id ?? "");
   const appointmentValue = useMemo(() => formatDateTime(date, time), [date, time]);
-  const weekdaySelected = isWeekday(date);
   const selectedTherapy = therapies.find((t) => t.id === therapyId);
-  const withinHours = fitsBusinessHours(time, selectedTherapy?.duration_minutes ?? 0);
-  const outsideBreak = avoidsLunchBreak(time, selectedTherapy?.duration_minutes ?? 0);
+  const duration = selectedTherapy?.duration_minutes ?? 0;
+  const onVacation = date ? vacationFor(date, vacations) : undefined;
+  const isOpenDay = Boolean(dayHours?.is_open && dayHours.opens_at && dayHours.closes_at) && !onVacation;
+
+  const opensAt = dayHours?.opens_at?.slice(0, 5) ?? "";
+  const closesAt = dayHours?.closes_at?.slice(0, 5) ?? "";
+  const breakStartsAt = dayHours?.break_starts_at?.slice(0, 5);
+  const breakEndsAt = dayHours?.break_ends_at?.slice(0, 5);
+
+  const withinHours =
+    !isOpenDay || !time
+      ? true
+      : toMinutes(time) >= toMinutes(opensAt) && toMinutes(time) + duration <= toMinutes(closesAt);
+  const outsideBreak =
+    !isOpenDay || !time || !breakStartsAt || !breakEndsAt
+      ? true
+      : toMinutes(time) + duration <= toMinutes(breakStartsAt) || toMinutes(time) >= toMinutes(breakEndsAt);
+
+  const canSubmit = Boolean(date && time && isOpenDay && withinHours && outsideBreak);
+
+  let hint = "Alege o zi ca să vezi programul cabinetului.";
+  if (date) {
+    if (onVacation) hint = `Cabinetul e închis în această zi (${onVacation.label || "vacanță"}).`;
+    else if (!isOpenDay) hint = "Cabinetul este închis în această zi.";
+    else if (!withinHours) hint = `Programul zilei este ${opensAt}-${closesAt} — ședința trebuie să se încheie în acest interval.`;
+    else if (!outsideBreak) hint = `Între ${breakStartsAt} și ${breakEndsAt} este pauză — ședința trebuie să se încheie înainte sau să înceapă după.`;
+    else hint = breakStartsAt ? `Program: ${opensAt}-${closesAt}, pauză ${breakStartsAt}-${breakEndsAt}.` : `Program: ${opensAt}-${closesAt}.`;
+  }
 
   return (
     <form action={formAction} className="mt-3 grid gap-4 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm md:grid-cols-2">
@@ -70,23 +92,28 @@ export function AppointmentForm({ clientId, therapies }: { clientId: string; the
         </Select>
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <label className="block text-xs font-medium text-zinc-700">Data<Input type="date" required value={date} min={new Date().toISOString().slice(0, 10)} onChange={(event) => setDate(event.target.value)} className="mt-1.5" /></label>
-        <label className="block text-xs font-medium text-zinc-700"><span className="flex items-center gap-1.5"><Clock3 size={14} /> Ora</span><Input type="time" required value={time} step="300" min={CLINIC_OPENS_AT} max={CLINIC_CLOSES_AT} onChange={(event) => setTime(event.target.value)} className="mt-1.5" /></label>
+        <label className="block text-xs font-medium text-zinc-700">Data<Input type="date" required value={date} min={new Date().toISOString().slice(0, 10)} onChange={(event) => { setDate(event.target.value); setTime(""); }} className="mt-1.5" /></label>
+        <label className="block text-xs font-medium text-zinc-700">
+          <span className="flex items-center gap-1.5"><Clock3 size={14} /> Ora</span>
+          <Input
+            type="time"
+            required
+            value={time}
+            step="300"
+            min={isOpenDay ? opensAt : undefined}
+            max={isOpenDay ? closesAt : undefined}
+            disabled={!isOpenDay}
+            onChange={(event) => setTime(event.target.value)}
+            className="mt-1.5"
+          />
+        </label>
       </div>
 
       {state?.message && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700 md:col-span-2">{state.message}</p>}
 
       <div className="flex items-center justify-between gap-3 border-t border-zinc-100 pt-3 md:col-span-2">
-        <p className={`text-xs ${weekdaySelected && withinHours && outsideBreak ? "text-zinc-400" : "font-medium text-red-600"}`}>
-          {!weekdaySelected
-            ? "Selectează o zi de luni până vineri."
-            : !withinHours
-              ? "Programul clinicii este 10:00-18:00 — ședința trebuie să se încheie până la ora 18:00."
-              : !outsideBreak
-                ? "Între 13:00 și 14:00 este pauză — ședința trebuie să se încheie până la 13:00 sau să înceapă de la 14:00."
-                : "Programul clinicii: luni-vineri, 10:00-18:00, pauză 13:00-14:00."}
-        </p>
-        <Button type="submit" disabled={pending || !weekdaySelected || !withinHours || !outsideBreak}>
+        <p className={`text-xs ${!date || (isOpenDay && withinHours && outsideBreak) ? "text-zinc-400" : "font-medium text-red-600"}`}>{hint}</p>
+        <Button type="submit" disabled={pending || !canSubmit}>
           {pending ? "Se programează…" : "Creează programarea"}
         </Button>
       </div>

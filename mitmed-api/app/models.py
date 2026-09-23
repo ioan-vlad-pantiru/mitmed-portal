@@ -1,9 +1,10 @@
 import enum
 import secrets
-from datetime import datetime, timezone
+from datetime import date as date_, datetime, time as time_, timezone
 
 from sqlalchemy import (
     Boolean,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -12,6 +13,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Table,
+    Time,
     Column,
     text,
 )
@@ -84,6 +86,15 @@ coupon_therapies = Table(
     Column("therapy_id", String, ForeignKey("therapies.id", ondelete="CASCADE"), primary_key=True),
 )
 
+# Terapiile pe care un medic le-a "deblocat" pentru un anumit client, de
+# obicei după consultația inițială — vezi ClientProfile.unlocked_therapies.
+client_unlocked_therapies = Table(
+    "client_unlocked_therapies",
+    Base.metadata,
+    Column("client_id", String, ForeignKey("client_profiles.id", ondelete="CASCADE"), primary_key=True),
+    Column("therapy_id", String, ForeignKey("therapies.id", ondelete="CASCADE"), primary_key=True),
+)
+
 
 class User(Base):
     __tablename__ = "users"
@@ -150,6 +161,10 @@ class ClientProfile(Base):
     payments: Mapped[list["Payment"]] = relationship(back_populates="client")
     appointments: Mapped[list["Appointment"]] = relationship(back_populates="client")
     consents: Mapped[list["Consent"]] = relationship(back_populates="client")
+    # Terapii pe care clientul le poate rezerva singur din portal, dincolo de
+    # consultație — deblocate manual de medic după ce a văzut clientul. Gol
+    # pentru un client nou: poate rezerva doar o terapie marcată `is_consultation`.
+    unlocked_therapies: Mapped[list["Therapy"]] = relationship(secondary=client_unlocked_therapies)
 
 
 class Therapy(Base):
@@ -161,6 +176,12 @@ class Therapy(Base):
     duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
     price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # O terapie marcată astfel e mereu rezervabilă de orice client din portal,
+    # indiferent de lista de terapii deblocate — e "consultația" (sau o altă
+    # ședință de evaluare) prin care un client nou intră în sistem. Rămâne o
+    # terapie obișnuită din punct de vedere al prețului/duratei, editabilă de
+    # admin la fel ca oricare alta.
+    is_consultation: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
@@ -465,4 +486,38 @@ class AuditLog(Base):
     target_type: Mapped[str] = mapped_column(String, nullable=False, index=True)
     target_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     audit_metadata: Mapped[dict | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class WeekdayHours(Base):
+    """Programul cabinetului pentru o zi din săptămână — un rând per zi
+    (0=luni…6=duminică, la fel ca `date.weekday()`, ca să nu fie nevoie de
+    nicio conversie față de restul codului). Când `is_open` e fals, cabinetul
+    e închis în acea zi indiferent de orele completate. Pauza (break_*) e
+    opțională — None înseamnă "fără pauză" în acea zi."""
+
+    __tablename__ = "weekday_hours"
+
+    weekday: Mapped[int] = mapped_column(Integer, primary_key=True)
+    is_open: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    opens_at: Mapped[time_ | None] = mapped_column(Time)
+    closes_at: Mapped[time_ | None] = mapped_column(Time)
+    break_starts_at: Mapped[time_ | None] = mapped_column(Time)
+    break_ends_at: Mapped[time_ | None] = mapped_column(Time)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class ClinicVacation(Base):
+    """O perioadă (inclusiv capetele) în care cabinetul e complet închis —
+    concediu, sărbători etc. Blochează programările noi (client sau recepție)
+    în acel interval; nu atinge programările deja existente, care se
+    gestionează manual (anulare/reprogramare) dacă e cazul."""
+
+    __tablename__ = "clinic_vacations"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_id)
+    starts_on: Mapped[date_] = mapped_column(Date, nullable=False)
+    ends_on: Mapped[date_] = mapped_column(Date, nullable=False)
+    label: Mapped[str | None] = mapped_column(String)
+    created_by_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

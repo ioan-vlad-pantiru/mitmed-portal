@@ -17,6 +17,7 @@ type Therapy = {
   durationMinutes: number;
   price: string;
   active: boolean;
+  isConsultation: boolean;
 };
 
 export function TherapyRow({ therapy }: { therapy: Therapy }) {
@@ -31,7 +32,10 @@ export function TherapyRow({ therapy }: { therapy: Therapy }) {
     <>
       <tr className="transition-colors hover:bg-zinc-50/70">
         <td className="px-4 py-2 text-zinc-900">
-          {therapy.name}
+          <span className="flex items-center gap-1.5">
+            {therapy.name}
+            {therapy.isConsultation && <Badge variant="neutral">Consultație</Badge>}
+          </span>
           {therapy.description && <p className="text-xs text-zinc-400">{therapy.description}</p>}
         </td>
         <td className="px-4 py-2 text-zinc-600">{therapy.durationMinutes} min</td>
@@ -88,7 +92,7 @@ export function TherapyRow({ therapy }: { therapy: Therapy }) {
         <tr>
           <td colSpan={5} className="bg-zinc-50/60 px-4 py-4">
             <form action={action} className="grid max-w-2xl grid-cols-2 gap-3">
-              <TherapyFields defaults={therapy} />
+              <TherapyFields defaults={{ ...therapy, isConsultation: therapy.isConsultation }} />
               {state?.message && <p className="col-span-2 text-sm text-red-600">{state.message}</p>}
               <div className="col-span-2 flex gap-2">
                 <Button type="submit" disabled={saving}>

@@ -21,6 +21,7 @@ from app.models import (
     Payment,
     Appointment,
     Role,
+    Therapy,
     User,
 )
 from app.security import hash_password
@@ -219,6 +220,7 @@ def get_own_client_data(db: DBSession = Depends(get_db), user: User = Depends(re
             joinedload(ClientProfile.medical_records).joinedload(MedicalRecord.therapy),
             joinedload(ClientProfile.payments).joinedload(Payment.therapy),
             joinedload(ClientProfile.appointments).joinedload(Appointment.therapy),
+            joinedload(ClientProfile.unlocked_therapies),
         )
         .filter(ClientProfile.id == user.client_profile.id)
         .first()
@@ -247,6 +249,7 @@ def export_own_data(db: DBSession = Depends(get_db), user: User = Depends(requir
             joinedload(ClientProfile.payments).joinedload(Payment.therapy),
             joinedload(ClientProfile.appointments).joinedload(Appointment.therapy),
             joinedload(ClientProfile.consents),
+            joinedload(ClientProfile.unlocked_therapies),
         )
         .filter(ClientProfile.id == user.client_profile.id)
         .first()
@@ -405,6 +408,7 @@ def get_client_detail(
             joinedload(ClientProfile.payments).joinedload(Payment.coupon),
             joinedload(ClientProfile.payments).joinedload(Payment.package),
             joinedload(ClientProfile.appointments).joinedload(Appointment.therapy),
+            joinedload(ClientProfile.unlocked_therapies),
         )
         .filter(ClientProfile.id == client_id)
         .first()
@@ -453,6 +457,42 @@ def update_own_profile_data(
     db.commit()
 
     log_audit(db, actor_id=user.id, action="client.update_profile", target_type="ClientProfile", target_id=client.id)
+    return {"ok": True}
+
+
+class UnlockedTherapiesRequest(BaseModel):
+    therapy_ids: list[str] = []
+
+
+@router.put("/clients/{client_id}/unlocked-therapies")
+def update_client_unlocked_therapies(
+    client_id: str,
+    payload: UnlockedTherapiesRequest,
+    db: DBSession = Depends(get_db),
+    actor: User = Depends(require_roles(Role.ADMIN, Role.RECEPTIE)),
+) -> dict:
+    """Terapiile deblocate manual de medic pentru acest client, de obicei
+    imediat după consultația inițială — un client nou poate rezerva singur
+    din portal doar terapii marcate `is_consultation`, până la acest pas
+    (vezi verificarea din routers/appointments._create_appointment)."""
+    client = db.get(ClientProfile, client_id)
+    if not client:
+        raise HTTPException(status_code=404, detail="Client inexistent.")
+
+    therapies = (
+        db.query(Therapy).filter(Therapy.id.in_(payload.therapy_ids)).all() if payload.therapy_ids else []
+    )
+    client.unlocked_therapies = therapies
+    db.commit()
+
+    log_audit(
+        db,
+        actor_id=actor.id,
+        action="client.update_unlocked_therapies",
+        target_type="ClientProfile",
+        target_id=client_id,
+        metadata={"therapy_ids": [t.id for t in therapies]},
+    )
     return {"ok": True}
 
 
@@ -508,6 +548,7 @@ def _serialize_client_detail(client: ClientProfile) -> dict:
     return {
         "id": client.id,
         "full_name": client.full_name,
+        "created_at": client.created_at,
         "phone": client.phone,
         "birth_date": client.birth_date,
         "cnp": client.cnp,
@@ -516,6 +557,7 @@ def _serialize_client_detail(client: ClientProfile) -> dict:
         "notes": client.notes,
         "medical_history": client.medical_history,
         "profile_data": client.profile_data,
+        "unlocked_therapy_ids": [t.id for t in client.unlocked_therapies],
         "medical_records": [
             {
                 "id": r.id,

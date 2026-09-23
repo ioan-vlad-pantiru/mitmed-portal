@@ -44,6 +44,32 @@ def _create_schema():
 
 
 @pytest.fixture(autouse=True)
+def _seed_default_clinic_hours(db_session):
+    """Programul implicit folosit înainte ca orele să devină editabile de
+    admin (vezi migrarea a1b2c3d4e5f7) — luni-vineri 10:00-18:00, pauză
+    13:00-14:00; weekend închis. Testele existente presupun acest program;
+    un test care vrea alte ore le suprascrie explicit peste acest rând."""
+    from datetime import time
+
+    from app.models import WeekdayHours
+
+    for day in range(7):
+        is_weekday = day < 5
+        db_session.merge(
+            WeekdayHours(
+                weekday=day,
+                is_open=is_weekday,
+                opens_at=time(10, 0) if is_weekday else None,
+                closes_at=time(18, 0) if is_weekday else None,
+                break_starts_at=time(13, 0) if is_weekday else None,
+                break_ends_at=time(14, 0) if is_weekday else None,
+            )
+        )
+    db_session.commit()
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _reset_rate_limiter():
     # Fără asta, testele care lovesc /auth/login sau /public/booking-requests
     # de mai multe ori s-ar bloca reciproc între ele prin limita per-IP
@@ -113,8 +139,10 @@ def make_admin_user(db_session):
 def make_therapy(db_session):
     from app.models import Therapy
 
-    def _make(name: str = "Kinetoterapie", duration_minutes: int = 30, price: float = 100):
-        therapy = Therapy(name=name, duration_minutes=duration_minutes, price=price, active=True)
+    def _make(name: str = "Kinetoterapie", duration_minutes: int = 30, price: float = 100, is_consultation: bool = False):
+        therapy = Therapy(
+            name=name, duration_minutes=duration_minutes, price=price, active=True, is_consultation=is_consultation
+        )
         db_session.add(therapy)
         db_session.commit()
         db_session.refresh(therapy)

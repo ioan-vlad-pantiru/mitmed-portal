@@ -1,6 +1,7 @@
 import { CalendarDays } from "lucide-react";
 import { getOwnClientData } from "@/actions/clients";
 import { listTherapies } from "@/actions/therapies";
+import { listWeekdayHours, listVacations } from "@/actions/clinic";
 import { BookingForm } from "../BookingForm";
 import { CancelOwnAppointmentButton } from "../CancelOwnAppointmentButton";
 import { PayOnlineButton } from "@/components/PayOnlineButton";
@@ -8,7 +9,12 @@ import { PayOnlineButton } from "@/components/PayOnlineButton";
 type Payment = { id: string; status: string; appointment_id: string | null };
 
 export default async function AppointmentsPage() {
-  const [raw, therapies] = await Promise.all([getOwnClientData(), listTherapies()]);
+  const [raw, therapies, hours, vacations] = await Promise.all([
+    getOwnClientData(),
+    listTherapies(),
+    listWeekdayHours(),
+    listVacations(),
+  ]);
   const client = raw as {
     appointments: { id: string; starts_at: string; status: string; therapy: { name: string } }[];
     payments: Payment[];
@@ -74,6 +80,8 @@ export default async function AppointmentsPage() {
           therapies={therapies
             .filter((item) => item.active)
             .map((item) => ({ id: item.id, name: item.name, price: item.price, durationMinutes: item.duration_minutes }))}
+          hours={hours}
+          vacations={vacations}
         />
       </section>
     </div>
