@@ -1,6 +1,6 @@
 def test_export_own_data_contains_expected_sections(client, make_client_user):
     make_client_user(email="c@example.com", password="parola123", full_name="Ana Ionescu")
-    client.post("/auth/login", json={"email": "c@example.com", "password": "parola123"})
+    client.post("/auth/login", json={"identifier": "c@example.com", "password": "parola123"})
 
     resp = client.get("/clients/me/export")
 
@@ -18,7 +18,7 @@ def test_erasure_request_lifecycle(client, make_client_user, make_admin_user):
     _, profile = make_client_user(email="c@example.com", password="parola123", full_name="Ana Ionescu")
     make_admin_user(email="admin@example.com", password="parola123")
 
-    client.post("/auth/login", json={"email": "c@example.com", "password": "parola123"})
+    client.post("/auth/login", json={"identifier": "c@example.com", "password": "parola123"})
     request_resp = client.post("/clients/me/erasure-request")
     assert request_resp.status_code == 201
 
@@ -27,7 +27,7 @@ def test_erasure_request_lifecycle(client, make_client_user, make_admin_user):
     assert duplicate_resp.status_code == 409
     client.post("/auth/logout")
 
-    client.post("/auth/login", json={"email": "admin@example.com", "password": "parola123"})
+    client.post("/auth/login", json={"identifier": "admin@example.com", "password": "parola123"})
     pending = client.get("/data-subject-requests").json()
     assert len(pending) == 1
     request_id = pending[0]["id"]

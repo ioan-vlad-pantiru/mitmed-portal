@@ -12,7 +12,7 @@ export function PendingClientRow({
   fullName,
 }: {
   userId: string;
-  email: string;
+  email: string | null;
   fullName: string;
 }) {
   const [pending, startTransition] = useTransition();
@@ -44,16 +44,16 @@ export function PendingClientRow({
   }
 
   return (
-    <li className="flex items-center justify-between rounded-md bg-white px-3 py-2 text-sm">
+    <li className="flex flex-col gap-2 rounded-md bg-white px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between">
       <span>
         <strong className="text-zinc-900">{fullName}</strong>{" "}
-        <span className="text-zinc-500">{email}</span>
+        <span className="break-all text-zinc-500">{email ?? "—"}</span>
       </span>
       <span className="flex gap-2">
-        <Button variant="success" disabled={pending} onClick={handleApprove}>
+        <Button variant="success" disabled={pending} onClick={handleApprove} className="flex-1 sm:flex-none">
           Aprobă
         </Button>
-        <Button variant="secondary" disabled={pending} onClick={handleReject}>
+        <Button variant="secondary" disabled={pending} onClick={handleReject} className="flex-1 sm:flex-none">
           Respinge
         </Button>
       </span>

@@ -82,7 +82,7 @@ export function CommandPalette({
               return (
                 <Command.Item
                   key={c.id}
-                  value={`${c.full_name} ${c.phone ?? ""} ${c.email}`}
+                  value={`${c.full_name} ${c.phone ?? ""} ${c.email ?? ""}`}
                   onSelect={() => go(appointmentId ? `/admin/consult/${appointmentId}` : `/admin/clienti/${c.id}`)}
                   className="flex cursor-pointer items-center justify-between gap-2.5 rounded-md px-2.5 py-2 text-sm text-zinc-700 aria-selected:bg-[var(--mitmed-sky)]/12 aria-selected:text-[var(--mitmed-teal-deep)]"
                 >

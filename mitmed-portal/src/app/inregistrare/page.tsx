@@ -50,13 +50,12 @@ export default function RegisterPage() {
 
         <div>
           <label htmlFor="email" className="block text-sm font-medium text-zinc-700">
-            Email
+            Email (opțional)
           </label>
           <input
             id="email"
             name="email"
             type="email"
-            required
             autoComplete="email"
             className="mt-1.5 w-full rounded-lg border border-zinc-300 px-3.5 py-2.5 text-sm text-[var(--mitmed-ink)] outline-none transition-colors focus:border-[var(--mitmed-sky)] focus:ring-2 focus:ring-[var(--mitmed-sky)]/40"
           />
@@ -64,11 +63,13 @@ export default function RegisterPage() {
 
         <div>
           <label htmlFor="phone" className="block text-sm font-medium text-zinc-700">
-            Telefon (opțional)
+            Telefon
           </label>
           <input
             id="phone"
             name="phone"
+            required
+            autoComplete="tel"
             className="mt-1.5 w-full rounded-lg border border-zinc-300 px-3.5 py-2.5 text-sm text-[var(--mitmed-ink)] outline-none transition-colors focus:border-[var(--mitmed-sky)] focus:ring-2 focus:ring-[var(--mitmed-sky)]/40"
           />
         </div>

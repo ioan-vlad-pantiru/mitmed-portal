@@ -65,8 +65,8 @@ export function OutstandingTrigger({ totalLabel }: { totalLabel: string }) {
           <p className="py-6 text-center text-sm text-zinc-400">Nicio sumă neîncasată. 🎉</p>
         )}
         {!loading && payments && payments.length > 0 && (
-          <div className="max-h-[60vh] overflow-y-auto">
-            <table className="w-full text-sm">
+          <div className="max-h-[60vh] overflow-auto">
+            <table className="w-full min-w-[520px] text-sm">
               <thead className="sticky top-0 border-b border-zinc-100 bg-white text-left text-xs font-medium uppercase tracking-wide text-zinc-400">
                 <tr>
                   <th className="py-2 pr-3">Client</th>

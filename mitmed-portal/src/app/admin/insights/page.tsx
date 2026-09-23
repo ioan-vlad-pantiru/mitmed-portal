@@ -133,36 +133,38 @@ export default async function InsightsPage() {
       <div>
         <h2 className="text-base font-semibold tracking-tight text-zinc-900">Detaliu</h2>
         <div className="mt-3 overflow-hidden mm-card">
-          <table className="w-full text-sm">
-            <thead className="border-b border-zinc-100 bg-zinc-50/60 text-left text-xs font-medium uppercase tracking-wide text-zinc-400">
-              <tr>
-                <th className="px-4 py-2.5">Terapie</th>
-                <th className="px-4 py-2.5">Ședințe finalizate</th>
-                <th className="px-4 py-2.5">Clienți unici</th>
-                <th className="px-4 py-2.5">Venit încasat</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-100">
-              {therapyInsights.map((t) => (
-                <tr key={t.id} className={`transition-colors hover:bg-zinc-50/70 ${t.active ? "" : "opacity-50"}`}>
-                  <td className="px-4 py-3 font-medium text-zinc-900">
-                    {t.name}
-                    {!t.active && <span className="ml-2 text-xs font-normal text-zinc-400">(inactivă)</span>}
-                  </td>
-                  <td className="mm-numeric px-4 py-3 text-zinc-600">{t.sessions_completed}</td>
-                  <td className="mm-numeric px-4 py-3 text-zinc-600">{t.distinct_clients}</td>
-                  <td className="mm-numeric px-4 py-3 font-semibold text-zinc-900">{t.revenue} RON</td>
-                </tr>
-              ))}
-              {therapyInsights.length === 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[560px] text-sm">
+              <thead className="border-b border-zinc-100 bg-zinc-50/60 text-left text-xs font-medium uppercase tracking-wide text-zinc-400">
                 <tr>
-                  <td colSpan={4} className="px-4 py-6 text-center text-zinc-400">
-                    Niciun cont de terapie încă.
-                  </td>
+                  <th className="px-4 py-2.5">Terapie</th>
+                  <th className="px-4 py-2.5">Ședințe finalizate</th>
+                  <th className="px-4 py-2.5">Clienți unici</th>
+                  <th className="px-4 py-2.5">Venit încasat</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {therapyInsights.map((t) => (
+                  <tr key={t.id} className={`transition-colors hover:bg-zinc-50/70 ${t.active ? "" : "opacity-50"}`}>
+                    <td className="px-4 py-3 font-medium text-zinc-900">
+                      {t.name}
+                      {!t.active && <span className="ml-2 text-xs font-normal text-zinc-400">(inactivă)</span>}
+                    </td>
+                    <td className="mm-numeric px-4 py-3 text-zinc-600">{t.sessions_completed}</td>
+                    <td className="mm-numeric px-4 py-3 text-zinc-600">{t.distinct_clients}</td>
+                    <td className="mm-numeric px-4 py-3 font-semibold text-zinc-900">{t.revenue} RON</td>
+                  </tr>
+                ))}
+                {therapyInsights.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="px-4 py-6 text-center text-zinc-400">
+                      Niciun cont de terapie încă.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 

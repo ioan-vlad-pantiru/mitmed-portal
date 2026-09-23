@@ -74,8 +74,9 @@ export function AdminShell({
         <div className="flex items-center gap-2">
           <button
             onClick={() => setMobileOpen((v) => !v)}
-            className="-ml-1 flex h-8 w-8 items-center justify-center rounded-md text-[var(--mitmed-mist)] hover:bg-white/10 sm:hidden"
+            className="-ml-1 flex h-10 w-10 items-center justify-center rounded-md text-[var(--mitmed-mist)] hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mitmed-sky)] sm:hidden"
             aria-label={mobileOpen ? "Închide meniul" : "Deschide meniul"}
+            aria-expanded={mobileOpen}
           >
             {mobileOpen ? <IconClose className="h-5 w-5" /> : <IconMenu className="h-5 w-5" />}
           </button>

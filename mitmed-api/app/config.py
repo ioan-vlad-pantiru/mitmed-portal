@@ -61,5 +61,10 @@ class Settings(BaseSettings):
     # URL-ul portalului, pentru redirecționarea clientului înapoi după plată.
     portal_base_url: str = "http://localhost:3000"
 
+    # Director pentru documentele atașate fișei clientului (vezi
+    # app/services/file_storage.py) — cale relativă în dev/teste, creat la nevoie;
+    # în Docker e suprascris cu un volum montat (vezi docker-compose.yml).
+    upload_dir: str = "uploads"
+
 
 settings = Settings()

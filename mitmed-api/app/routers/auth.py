@@ -35,17 +35,22 @@ def _age_years(birth_date: date) -> int:
 
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    identifier: str = Field(min_length=1)
     password: str
 
 
 class RegisterRequest(BaseModel):
     full_name: str = Field(min_length=2)
-    email: EmailStr
-    phone: str | None = None
+    email: EmailStr | None = None
+    phone: str = Field(min_length=6)
     password: str = Field(min_length=8)
     birth_date: date
     accepted_privacy_policy: bool
+
+    @field_validator("phone")
+    @classmethod
+    def _normalize_phone(cls, value: str) -> str:
+        return value.strip()
 
     @field_validator("accepted_privacy_policy")
     @classmethod
@@ -72,7 +77,7 @@ class ChangePasswordRequest(BaseModel):
 
 class MeResponse(BaseModel):
     id: str
-    email: str
+    email: str | None
     role: Role
     status: AccountStatus
     full_name: str | None = None
@@ -82,7 +87,17 @@ class MeResponse(BaseModel):
 @router.post("/login")
 @limiter.limit("10/minute")
 def login(request: Request, payload: LoginRequest, response: Response, db: DBSession = Depends(get_db)) -> MeResponse:
-    user = db.query(User).filter(User.email == payload.email.lower()).first()
+    identifier = payload.identifier.strip()
+    user = None
+    if "@" in identifier:
+        user = db.query(User).filter(User.email == identifier.lower()).first()
+    else:
+        user = (
+            db.query(User)
+            .join(ClientProfile, ClientProfile.user_id == User.id)
+            .filter(ClientProfile.phone == identifier)
+            .first()
+        )
 
     # Același mesaj generic indiferent dacă emailul nu există, parola e
     # greșită sau contul e blocat temporar — altfel se scurge informație
@@ -127,14 +142,21 @@ def login(request: Request, payload: LoginRequest, response: Response, db: DBSes
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 @limiter.limit("5/hour")
 def register(request: Request, payload: RegisterRequest, db: DBSession = Depends(get_db)) -> dict:
-    existing = db.query(User).filter(User.email == payload.email.lower()).first()
-    if existing:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Există deja un cont cu acest email.")
+    if payload.email:
+        existing = db.query(User).filter(User.email == payload.email.lower()).first()
+        if existing:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Există deja un cont cu acest email.")
+
+    existing_phone = db.query(ClientProfile).filter(ClientProfile.phone == payload.phone).first()
+    if existing_phone:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Există deja un cont cu acest număr de telefon."
+        )
 
     # Auto-înregistrare -> PENDING, aprobat manual de admin/recepție (evită
     # conturi false pe un sistem cu date medicale).
     user = User(
-        email=payload.email.lower(),
+        email=payload.email.lower() if payload.email else None,
         password_hash=hash_password(payload.password),
         role=Role.CLIENT,
         status=AccountStatus.PENDING,

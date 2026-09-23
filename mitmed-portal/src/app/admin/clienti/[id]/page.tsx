@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getClientDetail } from "@/actions/clients";
+import { getClientDetail, listClientDocuments } from "@/actions/clients";
 import { listTherapies } from "@/actions/therapies";
 import { listCoupons } from "@/actions/coupons";
 import { listPackages } from "@/actions/packages";
@@ -7,6 +7,7 @@ import { getClientConsents, listActiveConsentTemplates } from "@/actions/consent
 import Link from "next/link";
 import { MedicalRecordForm } from "./MedicalRecordForm";
 import { MedicalRecordsPanel } from "./MedicalRecordsPanel";
+import { PatientDocumentsPanel } from "./PatientDocumentsPanel";
 import { PaymentForm } from "./PaymentForm";
 import { AppointmentForm } from "./AppointmentForm";
 import { CancelAppointmentButton } from "./CancelAppointmentButton";
@@ -87,12 +88,13 @@ export default async function ClientDetailPage({ params, searchParams }: { param
   const { id } = await params;
   const { tab } = await searchParams;
   const activeTab = ["profil", "dosar", "plati", "programari"].includes(tab ?? "") ? tab! : "profil";
-  const [clientRaw, therapiesRaw, coupons, packagesRaw, consentTemplates] = await Promise.all([
+  const [clientRaw, therapiesRaw, coupons, packagesRaw, consentTemplates, documents] = await Promise.all([
     getClientDetail(id),
     listTherapies(),
     listCoupons(),
     listPackages(),
     listActiveConsentTemplates(),
+    listClientDocuments(id),
   ]);
 
   if (!clientRaw) notFound();
@@ -104,7 +106,7 @@ export default async function ClientDetailPage({ params, searchParams }: { param
 
   const therapies = therapiesRaw
     .filter((t) => t.active)
-    .map((t) => ({ id: t.id, name: t.name, price: t.price }));
+    .map((t) => ({ id: t.id, name: t.name, price: t.price, duration_minutes: t.duration_minutes }));
   const activePackages = packagesRaw.filter((p) => p.active);
   const tabs = [
     { id: "profil", label: "Profil" }, { id: "dosar", label: "Dosar medical" },
@@ -152,7 +154,7 @@ export default async function ClientDetailPage({ params, searchParams }: { param
         <dl className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-sm text-zinc-600 sm:grid-cols-4">
           <div>
             <dt className="text-zinc-400">Email</dt>
-            <dd>{client.user.email}</dd>
+            <dd>{client.user.email ?? "—"}</dd>
           </div>
           <div>
             <dt className="text-zinc-400">Telefon</dt>
@@ -251,6 +253,9 @@ export default async function ClientDetailPage({ params, searchParams }: { param
           <MedicalRecordsPanel records={client.medical_records} />
         </div>
         <MedicalRecordForm clientId={client.id} therapies={therapies} />
+
+        <h2 className="mt-8 text-base font-semibold text-zinc-900">Documente</h2>
+        <PatientDocumentsPanel clientId={client.id} documents={documents} />
       </section>}
 
       {activeTab === "plati" && <section>
@@ -285,46 +290,48 @@ export default async function ClientDetailPage({ params, searchParams }: { param
         )}
 
         <div className="mt-3 overflow-hidden mm-card">
-          <table className="w-full text-sm">
-            <thead className="border-b border-zinc-100 bg-zinc-50/60 text-left text-xs font-medium uppercase tracking-wide text-zinc-400">
-              <tr>
-                <th className="px-4 py-2.5">Data</th>
-                <th className="px-4 py-2.5">Terapie</th>
-                <th className="px-4 py-2.5">Preț</th>
-                <th className="px-4 py-2.5">Reducere</th>
-                <th className="px-4 py-2.5">Total</th>
-                <th className="px-4 py-2.5">Pachet</th>
-                <th className="px-4 py-2.5">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-100">
-              {singlePayments.map((p) => (
-                <tr key={p.id} className="transition-colors hover:bg-zinc-50/70">
-                  <td className="px-4 py-2 text-zinc-600">{new Date(p.created_at).toLocaleDateString("ro-RO")}</td>
-                  <td className="px-4 py-2">{p.therapy.name}</td>
-                  <td className="px-4 py-2">{p.base_price} RON</td>
-                  <td className="px-4 py-2">
-                    {p.discount_amount !== "0" && p.discount_amount !== "0.00" ? `-${p.discount_amount} RON` : "—"}
-                    {p.coupon ? ` (${p.coupon.code})` : ""}
-                  </td>
-                  <td className="px-4 py-2.5">{p.final_price} RON</td>
-                  <td className="px-4 py-2 text-zinc-600">
-                    {p.package_total_sessions
-                      ? `${p.sessions_used}/${p.package_total_sessions} folosite`
-                      : "—"}
-                  </td>
-                  <td className="px-4 py-2"><PaymentStatusBadge status={p.status} /></td>
-                </tr>
-              ))}
-              {singlePayments.length === 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] text-sm">
+              <thead className="border-b border-zinc-100 bg-zinc-50/60 text-left text-xs font-medium uppercase tracking-wide text-zinc-400">
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-zinc-400">
-                    Nicio plată individuală încă.
-                  </td>
+                  <th className="px-4 py-2.5">Data</th>
+                  <th className="px-4 py-2.5">Terapie</th>
+                  <th className="px-4 py-2.5">Preț</th>
+                  <th className="px-4 py-2.5">Reducere</th>
+                  <th className="px-4 py-2.5">Total</th>
+                  <th className="px-4 py-2.5">Pachet</th>
+                  <th className="px-4 py-2.5">Status</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {singlePayments.map((p) => (
+                  <tr key={p.id} className="transition-colors hover:bg-zinc-50/70">
+                    <td className="px-4 py-2 text-zinc-600">{new Date(p.created_at).toLocaleDateString("ro-RO")}</td>
+                    <td className="px-4 py-2">{p.therapy.name}</td>
+                    <td className="px-4 py-2">{p.base_price} RON</td>
+                    <td className="px-4 py-2">
+                      {p.discount_amount !== "0" && p.discount_amount !== "0.00" ? `-${p.discount_amount} RON` : "—"}
+                      {p.coupon ? ` (${p.coupon.code})` : ""}
+                    </td>
+                    <td className="px-4 py-2.5">{p.final_price} RON</td>
+                    <td className="px-4 py-2 text-zinc-600">
+                      {p.package_total_sessions
+                        ? `${p.sessions_used}/${p.package_total_sessions} folosite`
+                        : "—"}
+                    </td>
+                    <td className="px-4 py-2"><PaymentStatusBadge status={p.status} /></td>
+                  </tr>
+                ))}
+                {singlePayments.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-6 text-center text-zinc-400">
+                      Nicio plată individuală încă.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
         <PaymentForm clientId={client.id} therapies={therapies} coupons={coupons} packages={activePackages} />
       </section>}

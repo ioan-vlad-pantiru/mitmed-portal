@@ -122,6 +122,24 @@ body {
     cursor: not-allowed;
   }
 
+  .mm-btn:focus-visible,
+  .mm-chip:focus-visible,
+  .mm-choice:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--mitmed-sky) 45%, transparent);
+  }
+
+  /* Prag minim de 44px pentru butoane/rânduri atinse cu degetul — pe ecrane
+     tactile (telefon/tabletă), nu doar la click de mouse. */
+  @media (pointer: coarse) {
+    .mm-btn {
+      min-height: 2.75rem;
+    }
+    .mm-chip {
+      min-height: 2.25rem;
+    }
+  }
+
   .mm-btn[data-variant="primary"] {
     background: var(--mitmed-teal);
     color: #fff;

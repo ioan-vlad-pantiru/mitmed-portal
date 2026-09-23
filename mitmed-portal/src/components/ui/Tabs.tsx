@@ -12,7 +12,7 @@ export function Tabs({ items, defaultKey }: { items: TabItem[]; defaultKey?: str
 
   return (
     <div>
-      <div role="tablist" className="flex gap-1 border-b border-zinc-100">
+      <div role="tablist" className="flex gap-1 overflow-x-auto border-b border-zinc-100">
         {items.map((item) => (
           <button
             key={item.key}
@@ -20,7 +20,7 @@ export function Tabs({ items, defaultKey }: { items: TabItem[]; defaultKey?: str
             type="button"
             aria-selected={item.key === active}
             onClick={() => setActive(item.key)}
-            className={`relative px-3 py-2 text-sm font-medium transition-colors ${
+            className={`relative shrink-0 px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--mitmed-sky)] ${
               item.key === active ? "text-[var(--mitmed-teal-deep)]" : "text-zinc-500 hover:text-zinc-800"
             }`}
           >

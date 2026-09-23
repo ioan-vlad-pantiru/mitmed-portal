@@ -9,7 +9,7 @@ const SESSION_COOKIE_NAME = "mitmed_session";
 
 export type SessionUser = {
   id: string;
-  email: string;
+  email: string | null;
   role: Role;
   status: string;
   full_name: string | null;

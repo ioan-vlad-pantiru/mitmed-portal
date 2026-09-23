@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { apiGet, apiPost, apiPatch, ApiError } from "@/lib/apiClient";
+import { apiGet, apiPost, apiPatch, apiDelete, apiPostForm, ApiError } from "@/lib/apiClient";
 import { requireRole } from "@/lib/authSession";
 import { Role } from "@/lib/enums";
 
@@ -9,11 +9,11 @@ export type ClientSummary = {
   id: string;
   full_name: string;
   phone: string | null;
-  email: string;
+  email: string | null;
   status: string;
 };
 
-export type PendingUser = { id: string; email: string; full_name: string | null };
+export type PendingUser = { id: string; email: string | null; full_name: string | null };
 
 /** Admin/recepție: listă completă de clienți, cu statusul contului. */
 export async function listClients(): Promise<ClientSummary[]> {
@@ -72,12 +72,12 @@ export async function createClientAccount(
   const password = String(formData.get("password") ?? "");
   const values = { fullName, email, phone };
 
-  if (fullName.length < 2 || !email || password.length < 8) {
-    return { message: "Completează toate câmpurile obligatorii (parola: minim 8 caractere).", values };
+  if (fullName.length < 2 || !phone || password.length < 8) {
+    return { message: "Completează toate câmpurile obligatorii (telefonul, parola: minim 8 caractere).", values };
   }
 
   try {
-    await apiPost("/clients", { full_name: fullName, email, phone: phone || null, password });
+    await apiPost("/clients", { full_name: fullName, email: email || null, phone, password });
   } catch (err) {
     if (err instanceof ApiError) return { message: err.message, values };
     throw err;
@@ -219,6 +219,55 @@ export async function rejectDataSubjectRequest(requestId: string, note: string) 
   await requireRole(Role.ADMIN);
   await apiPost(`/data-subject-requests/${requestId}/reject`, { notes: note });
   revalidatePath("/admin/setari");
+}
+
+export type ClientDocument = {
+  id: string;
+  original_filename: string;
+  content_type: string;
+  size_bytes: number;
+  created_at: string;
+  uploaded_by_label: string;
+};
+
+/** Admin/recepție: documente atașate fișei clientului (scanări, poze, etc.) — nu vizibile clientului. */
+export async function listClientDocuments(clientId: string): Promise<ClientDocument[]> {
+  await requireRole(Role.ADMIN, Role.RECEPTIE);
+  return apiGet<ClientDocument[]>(`/clients/${clientId}/documents`);
+}
+
+export type UploadDocumentFormState = { message?: string; success?: boolean } | undefined;
+
+export async function uploadClientDocument(
+  clientId: string,
+  _state: UploadDocumentFormState,
+  formData: FormData
+): Promise<UploadDocumentFormState> {
+  await requireRole(Role.ADMIN, Role.RECEPTIE);
+
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) {
+    return { message: "Alege un fișier de încărcat." };
+  }
+
+  const form = new FormData();
+  form.set("file", file);
+
+  try {
+    await apiPostForm(`/clients/${clientId}/documents`, form);
+  } catch (err) {
+    if (err instanceof ApiError) return { message: err.message };
+    throw err;
+  }
+
+  revalidatePath(`/admin/clienti/${clientId}`);
+  return { success: true, message: "Document încărcat." };
+}
+
+export async function deleteClientDocument(clientId: string, docId: string) {
+  await requireRole(Role.ADMIN, Role.RECEPTIE);
+  await apiDelete(`/clients/${clientId}/documents/${docId}`);
+  revalidatePath(`/admin/clienti/${clientId}`);
 }
 
 /** Statistici rapide pentru bordul admin. */

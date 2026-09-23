@@ -23,32 +23,34 @@ export default async function TherapiesPage() {
       </div>
 
       <div className="overflow-hidden mm-card">
-        <table className="w-full text-sm">
-          <thead className="border-b border-zinc-100 bg-zinc-50/60 text-left text-xs font-medium uppercase tracking-wide text-zinc-400">
-            <tr>
-              <th className="px-4 py-2.5">Nume</th>
-              <th className="px-4 py-2.5">Durată</th>
-              <th className="px-4 py-2.5">Preț</th>
-              <th className="px-4 py-2.5">Activă</th>
-              <th className="px-4 py-2" />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-zinc-100">
-            {therapies.map((t) => (
-              <TherapyRow
-                key={t.id}
-                therapy={{
-                  id: t.id,
-                  name: t.name,
-                  description: t.description,
-                  durationMinutes: t.duration_minutes,
-                  price: t.price,
-                  active: t.active,
-                }}
-              />
-            ))}
-          </tbody>
-        </table>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[560px] text-sm">
+            <thead className="border-b border-zinc-100 bg-zinc-50/60 text-left text-xs font-medium uppercase tracking-wide text-zinc-400">
+              <tr>
+                <th className="px-4 py-2.5">Nume</th>
+                <th className="px-4 py-2.5">Durată</th>
+                <th className="px-4 py-2.5">Preț</th>
+                <th className="px-4 py-2.5">Activă</th>
+                <th className="px-4 py-2" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100">
+              {therapies.map((t) => (
+                <TherapyRow
+                  key={t.id}
+                  therapy={{
+                    id: t.id,
+                    name: t.name,
+                    description: t.description,
+                    durationMinutes: t.duration_minutes,
+                    price: t.price,
+                    active: t.active,
+                  }}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div>

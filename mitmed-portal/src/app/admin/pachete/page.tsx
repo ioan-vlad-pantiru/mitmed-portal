@@ -21,30 +21,32 @@ export default async function PackagesPage() {
       </div>
 
       <div className="overflow-hidden mm-card">
-        <table className="w-full text-sm">
-          <thead className="border-b border-zinc-100 bg-zinc-50/60 text-left text-xs font-medium uppercase tracking-wide text-zinc-400">
-            <tr>
-              <th className="px-4 py-2.5">Nume</th>
-              <th className="px-4 py-2.5">Terapii incluse</th>
-              <th className="px-4 py-2.5">Reducere</th>
-              <th className="px-4 py-2.5">Preț</th>
-              <th className="px-4 py-2.5">Activ</th>
-              <th className="px-4 py-2" />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-zinc-100">
-            {packages.map((p) => (
-              <PackageRow key={p.id} pkg={p} therapies={therapies} />
-            ))}
-            {packages.length === 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[640px] text-sm">
+            <thead className="border-b border-zinc-100 bg-zinc-50/60 text-left text-xs font-medium uppercase tracking-wide text-zinc-400">
               <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-zinc-400">
-                  Niciun pachet încă.
-                </td>
+                <th className="px-4 py-2.5">Nume</th>
+                <th className="px-4 py-2.5">Terapii incluse</th>
+                <th className="px-4 py-2.5">Reducere</th>
+                <th className="px-4 py-2.5">Preț</th>
+                <th className="px-4 py-2.5">Activ</th>
+                <th className="px-4 py-2" />
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-zinc-100">
+              {packages.map((p) => (
+                <PackageRow key={p.id} pkg={p} therapies={therapies} />
+              ))}
+              {packages.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-4 py-6 text-center text-zinc-400">
+                    Niciun pachet încă.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div>

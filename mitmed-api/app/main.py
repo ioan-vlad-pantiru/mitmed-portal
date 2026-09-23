@@ -12,6 +12,7 @@ from app.scheduler import start_scheduler, scheduler
 from app.routers import (
     appointments,
     auth,
+    client_documents,
     clients,
     config_public,
     consents,
@@ -66,6 +67,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(clients.router)
+app.include_router(client_documents.router)
 app.include_router(therapies.router)
 app.include_router(packages.router)
 app.include_router(coupons.router)

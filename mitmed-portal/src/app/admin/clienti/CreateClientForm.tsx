@@ -50,11 +50,10 @@ export function CreateClientForm() {
         />
       </div>
       <div className="col-span-2 sm:col-span-1">
-        <label className="block text-xs font-medium text-zinc-700">Email</label>
+        <label className="block text-xs font-medium text-zinc-700">Email (opțional)</label>
         <Input
           name="email"
           type="email"
-          required
           autoComplete="off"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
@@ -65,6 +64,7 @@ export function CreateClientForm() {
         <label className="block text-xs font-medium text-zinc-700">Telefon</label>
         <Input
           name="phone"
+          required
           autoComplete="off"
           value={phone}
           onChange={(e) => setPhone(e.target.value)}

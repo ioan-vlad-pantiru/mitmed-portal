@@ -89,7 +89,7 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_id)
-    email: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
+    email: Mapped[str | None] = mapped_column(String, unique=True, index=True, nullable=True)
     password_hash: Mapped[str] = mapped_column(String, nullable=False)
     role: Mapped[Role] = mapped_column(SAEnum(Role, name="role"), nullable=False)
     status: Mapped[AccountStatus] = mapped_column(
@@ -210,6 +210,20 @@ class MedicalRecord(Base):
     client: Mapped[ClientProfile] = relationship(back_populates="medical_records")
     author: Mapped[User] = relationship()
     therapy: Mapped[Therapy | None] = relationship()
+
+
+class ClientDocument(Base):
+    __tablename__ = "client_documents"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_id)
+    client_id: Mapped[str] = mapped_column(String, ForeignKey("client_profiles.id", ondelete="CASCADE"), index=True)
+    uploaded_by_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"))
+    original_filename: Mapped[str] = mapped_column(String, nullable=False)
+    content_type: Mapped[str] = mapped_column(String, nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Cale relativă la settings.upload_dir — vezi app/services/file_storage.py.
+    storage_path: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class TherapyPackage(Base):

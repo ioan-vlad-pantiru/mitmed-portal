@@ -24,6 +24,9 @@ services:
     environment:
       DATABASE_URL: "postgresql+psycopg://mitmed:mitmed_dev_password@db:5432/mitmed_portal"
       COOKIE_SECURE: "false"
+      UPLOAD_DIR: "/data/uploads"
+    volumes:
+      - mitmed_portal_uploads:/data/uploads
     ports:
       - "8000:8000"
     depends_on:
@@ -52,3 +55,4 @@ services:
 
 volumes:
   mitmed_portal_db:
+  mitmed_portal_uploads:

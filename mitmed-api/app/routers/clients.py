@@ -33,20 +33,20 @@ class ClientSummary(BaseModel):
     id: str
     full_name: str
     phone: str | None
-    email: str
+    email: str | None
     status: AccountStatus
 
 
 class PendingUser(BaseModel):
     id: str
-    email: str
+    email: str | None
     full_name: str | None
 
 
 class CreateClientRequest(BaseModel):
     full_name: str = Field(min_length=2)
-    email: EmailStr
-    phone: str | None = None
+    email: EmailStr | None = None
+    phone: str = Field(min_length=6)
     password: str = Field(min_length=8)
 
 
@@ -169,12 +169,17 @@ def create_client_account(
     db: DBSession = Depends(get_db),
     actor: User = Depends(require_roles(Role.ADMIN, Role.RECEPTIE)),
 ) -> dict:
-    existing = db.query(User).filter(User.email == payload.email.lower()).first()
-    if existing:
-        raise HTTPException(status_code=409, detail="Există deja un cont cu acest email.")
+    if payload.email:
+        existing = db.query(User).filter(User.email == payload.email.lower()).first()
+        if existing:
+            raise HTTPException(status_code=409, detail="Există deja un cont cu acest email.")
+
+    existing_phone = db.query(ClientProfile).filter(ClientProfile.phone == payload.phone).first()
+    if existing_phone:
+        raise HTTPException(status_code=409, detail="Există deja un cont cu acest număr de telefon.")
 
     user = User(
-        email=payload.email.lower(),
+        email=payload.email.lower() if payload.email else None,
         password_hash=hash_password(payload.password),
         role=Role.CLIENT,
         status=AccountStatus.ACTIVE,

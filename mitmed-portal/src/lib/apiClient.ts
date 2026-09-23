@@ -78,6 +78,18 @@ export const apiPut = <T>(path: string, body?: unknown) => request<T>("PUT", pat
 export const apiPatch = <T>(path: string, body?: unknown) => request<T>("PATCH", path, { body });
 export const apiDelete = <T>(path: string) => request<T>("DELETE", path, {});
 
+/** Upload multipart — nu setăm Content-Type, ca fetch să pună singur boundary-ul. */
+export async function apiPostForm<T>(path: string, form: FormData): Promise<T> {
+  const res = await fetch(buildUrl(path), {
+    method: "POST",
+    headers: { Cookie: await cookieHeader() },
+    body: form,
+    cache: "no-store",
+  });
+  if (!res.ok) throw new ApiError(res.status, await parseErrorDetail(res));
+  return (await res.json()) as T;
+}
+
 /**
  * Doar pentru login/register/logout — API-ul setează/șterge cookie-ul de
  * sesiune (Set-Cookie). Next.js rulează pe server, deci trebuie să citim

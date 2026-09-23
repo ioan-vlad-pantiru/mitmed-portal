@@ -9,7 +9,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   return (
     <AdminShell
-      email={user.email}
+      email={user.email ?? "—"}
       roleLabel={user.role === Role.ADMIN ? "Admin" : "Recepție"}
       isAdmin={user.role === Role.ADMIN}
       clients={clients}

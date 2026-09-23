@@ -29,8 +29,11 @@ logger = logging.getLogger("mitmed.appointments")
 router = APIRouter(prefix="/appointments", tags=["appointments"])
 
 MIN_CANCEL_NOTICE = timedelta(hours=48)
+# Doar pentru auto-programarea din portal — recepția poate în continuare să
+# programeze manual same-day (ex: urgențe, apel telefonic de ultim moment).
+MIN_BOOKING_NOTICE = timedelta(hours=24)
 CLINIC_TIMEZONE = ZoneInfo("Europe/Bucharest")
-CLINIC_OPENS_AT = time(hour=9)
+CLINIC_OPENS_AT = time(hour=10)
 CLINIC_CLOSES_AT = time(hour=18)
 BOOKABLE_STATUSES = (AppointmentStatus.PROGRAMATA, AppointmentStatus.CONFIRMATA)
 
@@ -122,11 +125,38 @@ def _available_slot_starts(db: DBSession, *, day: date, therapy: Therapy) -> lis
     while cursor + duration <= day_end:
         slots.append(cursor)
         cursor += duration
-    return slots
+
+    earliest_bookable = datetime.now(timezone.utc) + MIN_BOOKING_NOTICE
+    return [slot for slot in slots if slot.astimezone(timezone.utc) >= earliest_bookable]
+
+
+def _ensure_within_business_hours(*, starts_at: datetime, therapy: Therapy) -> None:
+    """Program: luni-vineri, 10:00-18:00 — o programare nu poate începe
+    înainte de deschidere și nici să se termine după închidere. Verificată
+    unconditionat în `_create_appointment`, indiferent dacă vine din
+    portalul clientului sau e creată manual de recepție — altfel recepția
+    ar putea bloca un slot care depășește ora 18:00."""
+    local_start = _to_clinic_time(starts_at)
+    if local_start.weekday() >= 5:
+        raise HTTPException(status_code=422, detail="Programările sunt disponibile de luni până vineri.")
+
+    day_start = datetime.combine(local_start.date(), CLINIC_OPENS_AT, tzinfo=CLINIC_TIMEZONE)
+    day_end = datetime.combine(local_start.date(), CLINIC_CLOSES_AT, tzinfo=CLINIC_TIMEZONE)
+    local_end = local_start + timedelta(minutes=therapy.duration_minutes)
+    if local_start < day_start or local_end > day_end:
+        raise HTTPException(
+            status_code=422,
+            detail="Programările sunt posibile doar între 10:00 și 18:00, iar ședința trebuie să se încheie până la ora 18:00.",
+        )
 
 
 def _ensure_own_slot_is_available(db: DBSession, *, starts_at: datetime, therapy: Therapy) -> None:
     local_start = _to_clinic_time(starts_at)
+    if local_start.astimezone(timezone.utc) < datetime.now(timezone.utc) + MIN_BOOKING_NOTICE:
+        raise HTTPException(
+            status_code=422,
+            detail="Programările din portal se fac cu cel puțin 24 de ore înainte. Pentru o programare mai apropiată, sună la recepție.",
+        )
     valid_starts = _available_slot_starts(db, day=local_start.date(), therapy=therapy)
     if local_start not in valid_starts:
         raise HTTPException(
@@ -148,8 +178,7 @@ def _create_appointment(
     if not therapy or not therapy.active:
         raise HTTPException(status_code=422, detail="Terapia selectată nu este disponibilă.")
 
-    if _to_clinic_time(starts_at).weekday() >= 5:
-        raise HTTPException(status_code=422, detail="Programările sunt disponibile de luni până vineri.")
+    _ensure_within_business_hours(starts_at=starts_at, therapy=therapy)
 
     if enforce_live_availability:
         _ensure_own_slot_is_available(db, starts_at=starts_at, therapy=therapy)

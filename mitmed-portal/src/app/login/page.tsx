@@ -23,15 +23,15 @@ export default function LoginPage() {
     >
       <form action={action} className="space-y-5">
         <div>
-          <label htmlFor="email" className="block text-sm font-medium text-zinc-700">
-            Email
+          <label htmlFor="identifier" className="block text-sm font-medium text-zinc-700">
+            Email sau telefon
           </label>
           <input
-            id="email"
-            name="email"
-            type="email"
+            id="identifier"
+            name="identifier"
+            type="text"
             required
-            autoComplete="email"
+            autoComplete="username"
             className="mt-1.5 w-full rounded-lg border border-zinc-300 px-3.5 py-2.5 text-sm text-[var(--mitmed-ink)] outline-none transition-colors focus:border-[var(--mitmed-sky)] focus:ring-2 focus:ring-[var(--mitmed-sky)]/40"
           />
         </div>

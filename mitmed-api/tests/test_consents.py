@@ -3,7 +3,7 @@ TINY_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAA
 
 def test_sign_then_withdraw_consent(client, make_client_user):
     user, _ = make_client_user(email="c@example.com", password="parola123")
-    client.post("/auth/login", json={"email": "c@example.com", "password": "parola123"})
+    client.post("/auth/login", json={"identifier": "c@example.com", "password": "parola123"})
     client.get("/consents/templates/active")  # seedul implicit de template-uri (GDPR, RISC_PRET)
 
     sign_resp = client.post("/consents/me", json={"type": "GDPR", "signature_data_url": TINY_PNG})
@@ -23,7 +23,7 @@ def test_sign_then_withdraw_consent(client, make_client_user):
 
 def test_withdrawing_twice_fails(client, make_client_user):
     make_client_user(email="c@example.com", password="parola123")
-    client.post("/auth/login", json={"email": "c@example.com", "password": "parola123"})
+    client.post("/auth/login", json={"identifier": "c@example.com", "password": "parola123"})
     client.get("/consents/templates/active")
     client.post("/consents/me", json={"type": "GDPR", "signature_data_url": TINY_PNG})
     consent_id = client.get("/consents/me").json()[0]["id"]
@@ -39,13 +39,13 @@ def test_cannot_withdraw_someone_elses_consent(client, make_client_user):
     make_client_user(email="c1@example.com", password="parola123")
     make_client_user(email="c2@example.com", password="parola123")
 
-    client.post("/auth/login", json={"email": "c1@example.com", "password": "parola123"})
+    client.post("/auth/login", json={"identifier": "c1@example.com", "password": "parola123"})
     client.get("/consents/templates/active")
     client.post("/consents/me", json={"type": "GDPR", "signature_data_url": TINY_PNG})
     consent_id = client.get("/consents/me").json()[0]["id"]
     client.post("/auth/logout")
 
-    client.post("/auth/login", json={"email": "c2@example.com", "password": "parola123"})
+    client.post("/auth/login", json={"identifier": "c2@example.com", "password": "parola123"})
     resp = client.post(f"/consents/me/{consent_id}/withdraw")
 
     assert resp.status_code == 404

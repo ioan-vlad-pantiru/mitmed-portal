@@ -38,7 +38,7 @@ export default async function ConsultPage({ params }: { params: Promise<{ appoin
   return (
     <div className="-m-4 flex h-[calc(100vh-3.5rem)] flex-col sm:-m-6 sm:h-screen">
       {/* Header fix — informația de context nu ar trebui să ceară niciun scroll. */}
-      <header className="flex shrink-0 items-center justify-between border-b border-zinc-200/70 bg-white px-4 py-3 sm:px-6">
+      <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-zinc-200/70 bg-white px-4 py-3 sm:px-6">
         <div className="flex items-center gap-3">
           {dayAppointments.length > 1 && (
             <span className="mm-numeric shrink-0 text-xs text-zinc-400">
@@ -54,7 +54,7 @@ export default async function ConsultPage({ params }: { params: Promise<{ appoin
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {prevAppointmentId && (
             <Link
               href={`/admin/consult/${prevAppointmentId}`}

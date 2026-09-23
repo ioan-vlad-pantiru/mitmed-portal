@@ -122,7 +122,7 @@ export function WeekCalendar({
         </div>
       </div>
 
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto overscroll-x-contain">
         <div className="grid min-w-[720px] grid-cols-[56px_repeat(5,1fr)]">
           <div />
           {days.map((d) => (

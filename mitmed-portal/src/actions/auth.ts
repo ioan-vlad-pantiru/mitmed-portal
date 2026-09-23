@@ -7,16 +7,16 @@ import { Role } from "@/lib/enums";
 import type { ChangePasswordFormState, LoginFormState, RegisterFormState } from "@/lib/definitions";
 
 export async function login(_state: LoginFormState, formData: FormData): Promise<LoginFormState> {
-  const email = String(formData.get("email") ?? "");
+  const identifier = String(formData.get("identifier") ?? "");
   const password = String(formData.get("password") ?? "");
 
-  if (!email || !password) {
-    return { message: "Completează emailul și parola." };
+  if (!identifier || !password) {
+    return { message: "Completează emailul sau telefonul și parola." };
   }
 
   let user;
   try {
-    user = await apiAuthRequest<{ role: string }>("/auth/login", { email, password });
+    user = await apiAuthRequest<{ role: string }>("/auth/login", { identifier, password });
   } catch (err) {
     if (err instanceof ApiError) return { message: err.message };
     throw err;
@@ -36,8 +36,8 @@ export async function registerClient(
   const birthDate = String(formData.get("birthDate") ?? "");
   const acceptedPrivacyPolicy = formData.get("acceptedPrivacyPolicy") === "on";
 
-  if (fullName.length < 2 || !email || password.length < 8 || !birthDate) {
-    return { message: "Completează toate câmpurile obligatorii (parola: minim 8 caractere)." };
+  if (fullName.length < 2 || !phone || password.length < 8 || !birthDate) {
+    return { message: "Completează toate câmpurile obligatorii (telefonul, parola: minim 8 caractere)." };
   }
   if (!acceptedPrivacyPolicy) {
     return { message: "Trebuie să confirmi că ai citit Politica de confidențialitate." };
@@ -46,8 +46,8 @@ export async function registerClient(
   try {
     const result = await apiAuthRequest<{ message: string }>("/auth/register", {
       full_name: fullName,
-      email,
-      phone: phone || null,
+      email: email || null,
+      phone,
       password,
       birth_date: birthDate,
       accepted_privacy_policy: acceptedPrivacyPolicy,

@@ -17,7 +17,7 @@ export function MedicalRecordForm({ clientId, therapies }: { clientId: string; t
       <input type="hidden" name="clientId" value={clientId} />
       <input type="hidden" name="bodyMap" value={JSON.stringify(bodyMap)} />
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
           <label className="block text-xs font-medium text-zinc-700">Terapie (opțional)</label>
           <Select name="therapyId" className="mt-1">

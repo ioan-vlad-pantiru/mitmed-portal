@@ -22,30 +22,30 @@ export function CouponFields({
 
   return (
     <>
-      <div>
+      <div className="col-span-2 sm:col-span-1">
         <label className="block text-xs font-medium text-zinc-700">Cod</label>
         <Input name="code" required defaultValue={defaults?.code} className="mt-1 uppercase" />
       </div>
-      <div>
+      <div className="col-span-2 sm:col-span-1">
         <label className="block text-xs font-medium text-zinc-700">Tip</label>
         <Select name="type" defaultValue={defaults?.type ?? "PROCENT"} className="mt-1">
           <option value="PROCENT">Procent (%)</option>
           <option value="FIX">Sumă fixă (RON)</option>
         </Select>
       </div>
-      <div>
+      <div className="col-span-2 sm:col-span-1">
         <label className="block text-xs font-medium text-zinc-700">Valoare</label>
         <Input name="value" type="number" step="0.01" min={0} required defaultValue={defaults?.value} className="mt-1" />
       </div>
-      <div>
+      <div className="col-span-2 sm:col-span-1">
         <label className="block text-xs font-medium text-zinc-700">Utilizări maxime (opțional)</label>
         <Input name="maxUses" type="number" min={1} defaultValue={defaults?.maxUses ?? undefined} className="mt-1" />
       </div>
-      <div>
+      <div className="col-span-2 sm:col-span-1">
         <label className="block text-xs font-medium text-zinc-700">Valabil de la (opțional)</label>
         <Input name="validFrom" type="date" defaultValue={defaults?.validFrom ?? undefined} className="mt-1" />
       </div>
-      <div>
+      <div className="col-span-2 sm:col-span-1">
         <label className="block text-xs font-medium text-zinc-700">Valabil până la (opțional)</label>
         <Input name="validUntil" type="date" defaultValue={defaults?.validUntil ?? undefined} className="mt-1" />
       </div>

@@ -23,6 +23,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Shield,
+  Image as ImageIcon,
+  Download,
+  Upload,
   type LucideIcon,
 } from "lucide-react";
 
@@ -54,3 +57,6 @@ export const IconPackage = wrap(Package);
 export const IconChevronLeft = wrap(ChevronLeft);
 export const IconChevronRight = wrap(ChevronRight);
 export const IconShield = wrap(Shield);
+export const IconImage = wrap(ImageIcon);
+export const IconDownload = wrap(Download);
+export const IconUpload = wrap(Upload);
