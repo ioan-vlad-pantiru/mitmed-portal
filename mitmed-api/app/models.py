@@ -607,3 +607,27 @@ class ClientFidelityCard(Base):
     client: Mapped[ClientProfile] = relationship(back_populates="fidelity_cards")
     card_type: Mapped[FidelityCardType] = relationship()
     issued_by: Mapped[User] = relationship()
+
+
+class PendingRegistration(Base):
+    """Auto-înregistrare în așteptarea verificării telefonului prin SMS — nu
+    devine User/ClientProfile până nu se confirmă codul primit prin SMS.
+    Ținută separat (nu direct pe User) ca un cod niciodată introdus să nu
+    lase un cont orfan/neverificat în tabela principală. Un singur rând activ
+    per telefon — o cerere nouă de cod pentru același telefon suprascrie
+    datele vechi (nume/parolă pot fi corectate la o a doua încercare)."""
+
+    __tablename__ = "pending_registrations"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_id)
+    phone: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
+    full_name: Mapped[str] = mapped_column(String, nullable=False)
+    email: Mapped[str | None] = mapped_column(String)
+    password_hash: Mapped[str] = mapped_column(String, nullable=False)
+    birth_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # Hash-ul codului de 6 cifre (nu textul clar) — verificat cu aceeași
+    # funcție argon2 ca parolele, vezi app/security.py.
+    code_hash: Mapped[str] = mapped_column(String, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

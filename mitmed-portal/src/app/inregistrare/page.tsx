@@ -1,31 +1,37 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import Link from "next/link";
+import { CalendarCheck2 } from "lucide-react";
 import { registerClient } from "@/actions/auth";
 import { AuthShell } from "@/components/AuthShell";
+import { AuthPasswordField } from "@/components/AuthPasswordField";
+import { VerifyCodeForm } from "./VerifyCodeForm";
 
 export default function RegisterPage() {
   const [state, action, pending] = useActionState(registerClient, undefined);
 
-  if (state?.success) {
+  // Câmpuri controlate — ca datele introduse să nu dispară dacă submisia
+  // eșuează (ex: telefon deja folosit). Parola rămâne necontrolată/nu se
+  // păstrează, ca în restul aplicației (vezi CreateClientForm.tsx).
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [birthDate, setBirthDate] = useState("");
+  const [acceptedPrivacyPolicy, setAcceptedPrivacyPolicy] = useState(false);
+
+  if (state?.success && state.phone) {
     return (
-      <AuthShell heading="Cont creat" subheading="Un ultim pas — recepția trebuie să-l aprobe.">
-        <p className="text-sm text-zinc-600">{state.message}</p>
-        <Link
-          href="/login"
-          className="mt-6 inline-block text-sm font-medium text-[var(--mitmed-teal)] hover:underline"
-        >
-          Înapoi la autentificare
-        </Link>
+      <AuthShell heading="Încă un pas." subheading="Confirmă numărul de telefon și ești în cont.">
+        <VerifyCodeForm phone={state.phone} />
       </AuthShell>
     );
   }
 
   return (
     <AuthShell
-      heading="Creează cont client"
-      subheading="Contul devine activ după aprobarea recepției."
+      heading="Ai ajuns unde trebuie."
+      subheading="Mai sunt doar câțiva pași până la prima ta programare."
       footer={
         <>
           Ai deja cont?{" "}
@@ -35,6 +41,13 @@ export default function RegisterPage() {
         </>
       }
     >
+      <div className="mb-6 flex items-start gap-2.5 rounded-lg bg-[var(--mitmed-sky)]/12 px-3.5 py-3 text-sm text-[var(--mitmed-teal-deep)]">
+        <CalendarCheck2 size={18} className="mt-0.5 shrink-0" />
+        <p>
+          Completezi datele o singură dată (sub 2 minute), confirmi telefonul printr-un cod SMS, iar apoi alegi
+          singur/ă ziua și ora ședinței, din calendar. Fără email — telefonul e suficient.
+        </p>
+      </div>
       <form action={action} className="space-y-5">
         <div>
           <label htmlFor="fullName" className="block text-sm font-medium text-zinc-700">
@@ -44,6 +57,8 @@ export default function RegisterPage() {
             id="fullName"
             name="fullName"
             required
+            value={fullName}
+            onChange={(e) => setFullName(e.target.value)}
             className="mt-1.5 w-full rounded-lg border border-zinc-300 px-3.5 py-2.5 text-sm text-[var(--mitmed-ink)] outline-none transition-colors focus:border-[var(--mitmed-sky)] focus:ring-2 focus:ring-[var(--mitmed-sky)]/40"
           />
         </div>
@@ -57,6 +72,8 @@ export default function RegisterPage() {
             name="email"
             type="email"
             autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
             className="mt-1.5 w-full rounded-lg border border-zinc-300 px-3.5 py-2.5 text-sm text-[var(--mitmed-ink)] outline-none transition-colors focus:border-[var(--mitmed-sky)] focus:ring-2 focus:ring-[var(--mitmed-sky)]/40"
           />
         </div>
@@ -70,23 +87,13 @@ export default function RegisterPage() {
             name="phone"
             required
             autoComplete="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
             className="mt-1.5 w-full rounded-lg border border-zinc-300 px-3.5 py-2.5 text-sm text-[var(--mitmed-ink)] outline-none transition-colors focus:border-[var(--mitmed-sky)] focus:ring-2 focus:ring-[var(--mitmed-sky)]/40"
           />
         </div>
 
-        <div>
-          <label htmlFor="password" className="block text-sm font-medium text-zinc-700">
-            Parolă
-          </label>
-          <input
-            id="password"
-            name="password"
-            type="password"
-            required
-            autoComplete="new-password"
-            className="mt-1.5 w-full rounded-lg border border-zinc-300 px-3.5 py-2.5 text-sm text-[var(--mitmed-ink)] outline-none transition-colors focus:border-[var(--mitmed-sky)] focus:ring-2 focus:ring-[var(--mitmed-sky)]/40"
-          />
-        </div>
+        <AuthPasswordField id="password" name="password" label="Parolă" autoComplete="new-password" />
 
         <div>
           <label htmlFor="birthDate" className="block text-sm font-medium text-zinc-700">
@@ -97,6 +104,8 @@ export default function RegisterPage() {
             name="birthDate"
             type="date"
             required
+            value={birthDate}
+            onChange={(e) => setBirthDate(e.target.value)}
             className="mt-1.5 w-full rounded-lg border border-zinc-300 px-3.5 py-2.5 text-sm text-[var(--mitmed-ink)] outline-none transition-colors focus:border-[var(--mitmed-sky)] focus:ring-2 focus:ring-[var(--mitmed-sky)]/40"
           />
           <p className="mt-1.5 text-xs text-zinc-500">
@@ -111,6 +120,8 @@ export default function RegisterPage() {
             name="acceptedPrivacyPolicy"
             type="checkbox"
             required
+            checked={acceptedPrivacyPolicy}
+            onChange={(e) => setAcceptedPrivacyPolicy(e.target.checked)}
             className="mt-0.5 h-4 w-4 rounded border-zinc-300 text-[var(--mitmed-teal)] focus:ring-[var(--mitmed-sky)]/40"
           />
           <label htmlFor="acceptedPrivacyPolicy" className="text-sm text-zinc-600">

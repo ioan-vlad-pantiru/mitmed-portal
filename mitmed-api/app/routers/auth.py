@@ -1,4 +1,6 @@
-from datetime import date, datetime, time, timezone
+import secrets
+import string
+from datetime import date, datetime, time, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -9,7 +11,7 @@ from app.config import settings
 from app.database import get_db
 from app.deps import get_current_user, require_user
 from app.rate_limit import limiter
-from app.models import AccountStatus, ClientProfile, Role, User, UserSession
+from app.models import AccountStatus, ClientProfile, PendingRegistration, Role, User, UserSession
 from app.security import (
     create_session,
     delete_session_cookie,
@@ -19,6 +21,7 @@ from app.security import (
     register_successful_login,
     verify_password,
 )
+from app.services.notifications import send_sms
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -27,6 +30,24 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 # GDPR în România). Sub această vârstă, înregistrarea trebuie făcută de
 # recepție împreună cu un părinte/tutore (cont creat manual din /admin).
 MIN_SELF_REGISTRATION_AGE = 16
+
+# Auto-înregistrarea se face în doi pași: /register trimite un cod prin SMS,
+# /register/verify îl confirmă și abia atunci creează contul, deja ACTIV —
+# telefonul verificat înlocuiește aprobarea manuală de recepție de dinainte
+# (un telefon real, capabil să primească SMS, e o dovadă suficientă că nu e
+# un cont fals, și nu cere nici email, nici așteptare — important pentru
+# clienții vârstnici care pot să nu aibă adresă de email deloc).
+OTP_LENGTH = 6
+OTP_TTL = timedelta(minutes=10)
+MAX_OTP_ATTEMPTS = 5
+
+
+def _generate_otp() -> str:
+    return "".join(secrets.choice(string.digits) for _ in range(OTP_LENGTH))
+
+
+def _otp_message(code: str) -> str:
+    return f"Codul tău MitMed: {code}. Valabil {int(OTP_TTL.total_seconds() // 60)} minute."
 
 
 def _age_years(birth_date: date) -> int:
@@ -68,6 +89,15 @@ class RegisterRequest(BaseModel):
                 "Pentru un minor, contul se creează la recepție, cu acordul unui părinte/tutore."
             )
         return value
+
+
+class VerifyRegistrationRequest(BaseModel):
+    phone: str = Field(min_length=6)
+    code: str = Field(min_length=1)
+
+
+class ResendCodeRequest(BaseModel):
+    phone: str = Field(min_length=6)
 
 
 class ChangePasswordRequest(BaseModel):
@@ -153,29 +183,95 @@ def register(request: Request, payload: RegisterRequest, db: DBSession = Depends
             status_code=status.HTTP_409_CONFLICT, detail="Există deja un cont cu acest număr de telefon."
         )
 
-    # Auto-înregistrare -> PENDING, aprobat manual de admin/recepție (evită
-    # conturi false pe un sistem cu date medicale).
+    code = _generate_otp()
+    pending = db.query(PendingRegistration).filter(PendingRegistration.phone == payload.phone).first()
+    if not pending:
+        pending = PendingRegistration(phone=payload.phone)
+        db.add(pending)
+    pending.full_name = payload.full_name
+    pending.email = payload.email.lower() if payload.email else None
+    pending.password_hash = hash_password(payload.password)
+    pending.birth_date = datetime.combine(payload.birth_date, time.min, tzinfo=timezone.utc)
+    pending.code_hash = hash_password(code)
+    pending.expires_at = datetime.now(timezone.utc) + OTP_TTL
+    pending.attempts = 0
+    db.commit()
+
+    if not send_sms(payload.phone, _otp_message(code)):
+        # Nu ascundem eșecul — altfel clientul așteaptă la nesfârșit un cod
+        # care n-a plecat niciodată (ex: număr neverificat pe un cont Twilio
+        # trial, sau providerul e picat). Rândul PendingRegistration rămâne —
+        # /register/resend sau un nou /register pot încerca din nou fără să
+        # retasteze totul.
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Nu am putut trimite codul prin SMS la acest număr. Verifică numărul sau încearcă din nou în "
+            "câteva minute — dacă problema persistă, sună la recepție.",
+        )
+
+    return {"message": "Ți-am trimis un cod prin SMS la numărul indicat.", "phone": payload.phone}
+
+
+@router.post("/register/verify")
+@limiter.limit("10/hour")
+def verify_registration(
+    request: Request, payload: VerifyRegistrationRequest, response: Response, db: DBSession = Depends(get_db)
+) -> MeResponse:
+    """Confirmă codul SMS și creează contul, deja ACTIV — verificarea
+    telefonului e ce înlocuiește aprobarea manuală de recepție (vezi
+    comentariul de la OTP_TTL mai sus)."""
+    phone = payload.phone.strip()
+    generic_error = HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Cod incorect.")
+
+    pending = db.query(PendingRegistration).filter(PendingRegistration.phone == phone).first()
+    if not pending:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Nicio înregistrare în așteptare pentru acest telefon."
+        )
+
+    if pending.expires_at < datetime.now(timezone.utc):
+        db.delete(pending)
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Codul a expirat — solicită unul nou."
+        )
+
+    if pending.attempts >= MAX_OTP_ATTEMPTS:
+        db.delete(pending)
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Prea multe coduri greșite — solicită unul nou.",
+        )
+
+    if not verify_password(pending.code_hash, payload.code.strip()):
+        pending.attempts += 1
+        db.commit()
+        raise generic_error
+
     user = User(
-        email=payload.email.lower() if payload.email else None,
-        password_hash=hash_password(payload.password),
+        email=pending.email,
+        password_hash=pending.password_hash,
         role=Role.CLIENT,
-        status=AccountStatus.PENDING,
+        status=AccountStatus.ACTIVE,
     )
     db.add(user)
     db.flush()
-    db.add(
-        ClientProfile(
-            user_id=user.id,
-            full_name=payload.full_name,
-            phone=payload.phone,
-            birth_date=datetime.combine(payload.birth_date, time.min, tzinfo=timezone.utc),
-        )
+    client_profile = ClientProfile(
+        user_id=user.id,
+        full_name=pending.full_name,
+        phone=pending.phone,
+        birth_date=pending.birth_date,
     )
+    db.add(client_profile)
+    db.delete(pending)
     db.commit()
+    db.refresh(user)
+    db.refresh(client_profile)
 
     # Dovadă că politica de confidențialitate a fost prezentată și acceptată
     # la momentul colectării datelor (GDPR Art. 13) — separată de
-    # consimțământul de tratament, care se semnează abia după aprobare.
+    # consimțământul de tratament, care se semnează din portal.
     log_audit(
         db,
         actor_id=user.id,
@@ -184,8 +280,41 @@ def register(request: Request, payload: RegisterRequest, db: DBSession = Depends
         target_id=user.id,
         metadata={"at_registration": True},
     )
+    log_audit(db, actor_id=user.id, action="user.phone_verified", target_type="User", target_id=user.id)
 
-    return {"message": "Cont creat. Recepția va aproba contul înainte să te poți autentifica."}
+    create_session(db, response, user.id)
+    return MeResponse(
+        id=user.id,
+        email=user.email,
+        role=user.role,
+        status=user.status,
+        full_name=client_profile.full_name,
+        client_profile_id=client_profile.id,
+    )
+
+
+@router.post("/register/resend")
+@limiter.limit("3/hour")
+def resend_registration_code(request: Request, payload: ResendCodeRequest, db: DBSession = Depends(get_db)) -> dict:
+    pending = db.query(PendingRegistration).filter(PendingRegistration.phone == payload.phone.strip()).first()
+    if not pending:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Nicio înregistrare în așteptare pentru acest telefon."
+        )
+
+    code = _generate_otp()
+    pending.code_hash = hash_password(code)
+    pending.expires_at = datetime.now(timezone.utc) + OTP_TTL
+    pending.attempts = 0
+    db.commit()
+
+    if not send_sms(pending.phone, _otp_message(code)):
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Nu am putut retrimite codul prin SMS. Încearcă din nou în câteva minute — dacă problema "
+            "persistă, sună la recepție.",
+        )
+    return {"message": "Cod retrimis."}
 
 
 @router.post("/logout")

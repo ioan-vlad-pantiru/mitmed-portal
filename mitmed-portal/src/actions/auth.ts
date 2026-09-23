@@ -25,6 +25,9 @@ export async function login(_state: LoginFormState, formData: FormData): Promise
   redirect(user.role === Role.CLIENT ? "/portal" : "/admin");
 }
 
+/** Pasul 1 — trimite datele de cont, primește un cod prin SMS. Nu creează
+ * încă niciun cont (vezi /auth/register/verify mai jos, care îl creează deja
+ * ACTIV — telefonul verificat înlocuiește aprobarea manuală de recepție). */
 export async function registerClient(
   _state: RegisterFormState,
   formData: FormData
@@ -44,7 +47,7 @@ export async function registerClient(
   }
 
   try {
-    const result = await apiAuthRequest<{ message: string }>("/auth/register", {
+    const result = await apiPost<{ message: string; phone: string }>("/auth/register", {
       full_name: fullName,
       email: email || null,
       phone,
@@ -52,9 +55,37 @@ export async function registerClient(
       birth_date: birthDate,
       accepted_privacy_policy: acceptedPrivacyPolicy,
     });
-    return { success: true, message: result.message };
+    return { success: true, message: result.message, phone: result.phone };
   } catch (err) {
     if (err instanceof ApiError) return { message: err.message };
+    throw err;
+  }
+}
+
+export type VerifyCodeResult = { ok: true } | { ok: false; message: string };
+
+/** Pasul 2 — confirmă codul primit prin SMS. La succes, backend-ul creează
+ * contul (deja ACTIV) și pornește sesiunea (Set-Cookie) — folosim
+ * apiAuthRequest, nu apiPost, exact ca la login, ca acel cookie să ajungă la
+ * browser prin Next, nu doar la fetch-ul de pe server. */
+export async function verifyRegistrationCode(phone: string, code: string): Promise<VerifyCodeResult> {
+  try {
+    await apiAuthRequest("/auth/register/verify", { phone, code });
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof ApiError) return { ok: false, message: err.message };
+    throw err;
+  }
+}
+
+export type ResendCodeResult = { ok: true } | { ok: false; message: string };
+
+export async function resendRegistrationCode(phone: string): Promise<ResendCodeResult> {
+  try {
+    await apiPost("/auth/register/resend", { phone });
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof ApiError) return { ok: false, message: err.message };
     throw err;
   }
 }
