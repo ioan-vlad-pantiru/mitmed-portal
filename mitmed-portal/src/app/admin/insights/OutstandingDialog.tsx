@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { getOutstandingPayments, type OutstandingPayment } from "@/actions/insights";
-import { markPaymentPaid } from "@/actions/payments";
+import { MarkPaidControl } from "@/components/MarkPaidControl";
+import { CorrectPaymentControl } from "@/components/CorrectPaymentControl";
 import { Dialog } from "@/components/ui/Dialog";
-import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 
 const STATUS_LABEL: Record<OutstandingPayment["status"], string> = {
@@ -17,26 +17,17 @@ export function OutstandingTrigger({ totalLabel }: { totalLabel: string }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [payments, setPayments] = useState<OutstandingPayment[] | null>(null);
-  const [payingId, setPayingId] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
+
+  function refetch() {
+    setLoading(true);
+    getOutstandingPayments()
+      .then(setPayments)
+      .finally(() => setLoading(false));
+  }
 
   function handleOpen() {
     setOpen(true);
-    if (payments === null) {
-      setLoading(true);
-      getOutstandingPayments()
-        .then(setPayments)
-        .finally(() => setLoading(false));
-    }
-  }
-
-  function handlePay(paymentId: string, clientId: string) {
-    setPayingId(paymentId);
-    startTransition(async () => {
-      await markPaymentPaid(paymentId, clientId);
-      setPayments((prev) => prev?.filter((p) => p.id !== paymentId) ?? null);
-      setPayingId(null);
-    });
+    if (payments === null) refetch();
   }
 
   return (
@@ -66,12 +57,12 @@ export function OutstandingTrigger({ totalLabel }: { totalLabel: string }) {
         )}
         {!loading && payments && payments.length > 0 && (
           <div className="max-h-[60vh] overflow-auto">
-            <table className="w-full min-w-[520px] text-sm">
+            <table className="w-full min-w-[600px] text-sm">
               <thead className="sticky top-0 border-b border-zinc-100 bg-white text-left text-xs font-medium uppercase tracking-wide text-zinc-400">
                 <tr>
                   <th className="py-2 pr-3">Client</th>
                   <th className="py-2 pr-3">Terapie</th>
-                  <th className="py-2 pr-3">Sumă</th>
+                  <th className="py-2 pr-3">Rest de plată</th>
                   <th className="py-2 pr-3">Status</th>
                   <th className="py-2 pr-3" />
                 </tr>
@@ -85,21 +76,36 @@ export function OutstandingTrigger({ totalLabel }: { totalLabel: string }) {
                       </Link>
                     </td>
                     <td className="py-2 pr-3 text-zinc-600">{p.therapy_name}</td>
-                    <td className="mm-numeric py-2 pr-3 font-semibold text-zinc-900">{p.final_price} RON</td>
+                    <td className="mm-numeric py-2 pr-3 font-semibold text-zinc-900">
+                      {p.remaining} RON
+                      {p.status === "PARTIAL" && (
+                        <span className="mm-numeric block text-xs font-normal text-zinc-400">
+                          din {p.final_price} RON ({p.amount_paid} încasați)
+                        </span>
+                      )}
+                    </td>
                     <td className="py-2 pr-3">
                       <Badge variant={p.status === "PARTIAL" ? "warning" : "danger"}>
                         {STATUS_LABEL[p.status]}
                       </Badge>
                     </td>
-                    <td className="py-2 pr-3 text-right">
-                      <Button
-                        variant="success"
-                        className="text-xs"
-                        disabled={isPending && payingId === p.id}
-                        onClick={() => handlePay(p.id, p.client_id)}
-                      >
-                        {isPending && payingId === p.id ? "Se salvează…" : "Marchează plătit"}
-                      </Button>
+                    <td className="py-2 pr-3">
+                      <div className="flex flex-col items-end gap-1">
+                        <MarkPaidControl
+                          target={{ paymentId: p.id }}
+                          clientId={p.client_id}
+                          remaining={Number(p.remaining)}
+                          onPaid={refetch}
+                        />
+                        {Number(p.amount_paid) > 0 && !p.paid_via_payu && (
+                          <CorrectPaymentControl
+                            target={{ paymentId: p.id }}
+                            clientId={p.client_id}
+                            currentAmountPaid={Number(p.amount_paid)}
+                            onCorrected={refetch}
+                          />
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

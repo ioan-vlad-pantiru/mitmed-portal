@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session as DBSession, joinedload
 
 from app.audit import log_audit
@@ -39,7 +39,33 @@ class PaymentIn(BaseModel):
     package_id: str | None = None
     coupon_code: str | None = None
     method: str | None = None
-    mark_paid: bool = False
+    # Cât se încasează chiar acum, la creare — None/0 înseamnă neîncasat încă.
+    # O sumă sub prețul final înseamnă plată parțială (status PARTIAL); restul
+    # se poate încasa mai târziu prin /mark-paid sau online (PayU).
+    amount_paid: float | None = Field(default=None, ge=0)
+
+
+class MarkPaidIn(BaseModel):
+    # None înseamnă "încasează tot restul" (comportamentul vechi, cel mai
+    # comun caz din UI — un singur buton "Marchează plătit"). O sumă explicită
+    # înregistrează o încasare parțială suplimentară, peste ce era deja plătit.
+    amount: float | None = Field(default=None, gt=0)
+
+
+class CorrectAmountPaidIn(BaseModel):
+    # Nu se ADAUGĂ, ca la /mark-paid — înlocuiește direct suma încasată
+    # (0 = "de fapt n-a fost plătit, anulează încasarea"). Pentru corectarea
+    # unei greșeli de la recepție (sumă greșită, click din greșeală), nu
+    # pentru rambursări reale de card — vezi verificarea method=="CARD_ONLINE" mai jos.
+    amount_paid: float = Field(ge=0)
+
+
+def _status_for_amount(amount_paid: Decimal, final_price: Decimal) -> PaymentStatus:
+    if amount_paid <= 0:
+        return PaymentStatus.NEPLATIT
+    if amount_paid >= final_price:
+        return PaymentStatus.PLATIT
+    return PaymentStatus.PARTIAL
 
 
 def _find_coupon(db: DBSession, code: str | None) -> Coupon | None:
@@ -54,7 +80,7 @@ def _find_coupon(db: DBSession, code: str | None) -> Coupon | None:
 
 
 def _create_package_payments(
-    db: DBSession, *, client_id: str, package: TherapyPackage, method: str | None, mark_paid: bool
+    db: DBSession, *, client_id: str, package: TherapyPackage, method: str | None, amount_paid: float | None
 ) -> list[Payment]:
     """O achiziție de pachet = câte un Payment per terapie inclusă, toate cu
     același package_purchase_id (grupare în UI) — nu o entitate de plată nouă,
@@ -68,22 +94,28 @@ def _create_package_payments(
     # Prețul fix al pachetului se împarte proporțional cu "valoarea" fiecărei
     # terapii incluse (preț de listă × nr. ședințe), ca fiecare Payment rezultat
     # să aibă un final_price plauzibil — relevant pentru /insights (venit pe
-    # terapie) și pentru export-ul CSV de contabilitate.
+    # terapie) și pentru export-ul CSV de contabilitate. O plată parțială la
+    # cumpărare se împarte cu aceleași ponderi, ca fiecare linie să rămână
+    # proporțional achitată — nu doar prima linie plătită integral și restul deloc.
     weights = [(item, float(item.therapy.price) * item.sessions_included) for item in package.items]
     total_weight = sum(w for _, w in weights) or 1
 
     purchase_id = gen_id()
-    status = PaymentStatus.PLATIT if mark_paid else PaymentStatus.NEPLATIT
-    paid_at = datetime.now(timezone.utc) if mark_paid else None
+    total_price = float(package.price)
+    requested_paid = min(max(amount_paid or 0, 0), total_price)
+    now = datetime.now(timezone.utc) if requested_paid > 0 else None
 
     payments: list[Payment] = []
-    allocated = 0.0
+    allocated_price = 0.0
+    allocated_paid = 0.0
     for idx, (item, weight) in enumerate(weights):
         is_last = idx == len(weights) - 1
         # Restul (nu proporția) pe ultima linie, ca suma exactă a rândurilor
-        # să dea mereu package.price, indiferent de rotunjiri.
-        share = float(package.price) - allocated if is_last else round(float(package.price) * weight / total_weight, 2)
-        allocated += share
+        # să dea mereu package.price/suma încasată, indiferent de rotunjiri.
+        share = total_price - allocated_price if is_last else round(total_price * weight / total_weight, 2)
+        allocated_price += share
+        paid_share = requested_paid - allocated_paid if is_last else round(requested_paid * weight / total_weight, 2)
+        allocated_paid += paid_share
 
         payments.append(
             Payment(
@@ -94,9 +126,10 @@ def _create_package_payments(
                 base_price=share,
                 discount_amount=0,
                 final_price=share,
+                amount_paid=paid_share,
                 method=method,
-                status=status,
-                paid_at=paid_at,
+                status=_status_for_amount(Decimal(str(paid_share)), Decimal(str(share))),
+                paid_at=now if paid_share > 0 else None,
                 package_total_sessions=item.sessions_included,
             )
         )
@@ -121,7 +154,7 @@ def create_payment(
         if not package:
             raise HTTPException(status_code=422, detail="Pachet invalid.")
         payments = _create_package_payments(
-            db, client_id=payload.client_id, package=package, method=payload.method, mark_paid=payload.mark_paid
+            db, client_id=payload.client_id, package=package, method=payload.method, amount_paid=payload.amount_paid
         )
         db.commit()
         for p in payments:
@@ -162,6 +195,9 @@ def create_payment(
         except CouponError as err:
             raise HTTPException(status_code=422, detail=str(err)) from err
 
+    amount_paid = Decimal(str(min(max(payload.amount_paid or 0, 0), float(final_price))))
+    status = _status_for_amount(amount_paid, final_price)
+
     # O terapie cumpărată individual e mereu o ședință unică — package_total_sessions
     # rămâne null. Orice "cumpăr N ședințe" trece prin /admin/pachete (vezi
     # _create_package_payments mai sus), care setează explicit acest câmp.
@@ -173,9 +209,10 @@ def create_payment(
         base_price=base_price,
         discount_amount=discount_amount,
         final_price=final_price,
+        amount_paid=amount_paid,
         method=payload.method,
-        status=PaymentStatus.PLATIT if payload.mark_paid else PaymentStatus.NEPLATIT,
-        paid_at=datetime.now(timezone.utc) if payload.mark_paid else None,
+        status=status,
+        paid_at=datetime.now(timezone.utc) if amount_paid > 0 else None,
     )
     db.add(payment)
 
@@ -185,7 +222,9 @@ def create_payment(
     db.commit()
     db.refresh(payment)
 
-    if payload.mark_paid:
+    # Ștampila de fidelitate contează doar o ședință achitată INTEGRAL — o
+    # plată parțială nu contribuie încă la programul de reduceri.
+    if status == PaymentStatus.PLATIT:
         register_paid_session(db, payment)
 
     log_audit(
@@ -201,16 +240,184 @@ def create_payment(
 
 @router.post("/{payment_id}/mark-paid")
 def mark_payment_paid(
-    payment_id: str, db: DBSession = Depends(get_db), actor: User = Depends(require_roles(Role.ADMIN, Role.RECEPTIE))
+    payment_id: str,
+    payload: MarkPaidIn | None = None,
+    db: DBSession = Depends(get_db),
+    actor: User = Depends(require_roles(Role.ADMIN, Role.RECEPTIE)),
 ) -> dict:
+    """Înregistrează o încasare — implicit tot restul (un singur buton
+    "Marchează plătit"), sau doar o sumă explicită (plată parțială/încasare
+    suplimentară peste una parțială deja existentă). Nu poate depăși restul
+    de plată; nu poate fi apelat pe o plată deja achitată integral."""
     payment = db.get(Payment, payment_id)
     if not payment:
         raise HTTPException(status_code=404, detail="Plată inexistentă.")
-    payment.status = PaymentStatus.PLATIT
+    if payment.status == PaymentStatus.PLATIT:
+        raise HTTPException(status_code=422, detail="Această plată a fost deja achitată integral.")
+
+    remaining = Decimal(payment.final_price) - Decimal(payment.amount_paid)
+    amount = Decimal(str(payload.amount)) if payload and payload.amount is not None else remaining
+    if amount <= 0:
+        raise HTTPException(status_code=422, detail="Suma încasată trebuie să fie pozitivă.")
+    amount = min(amount, remaining)
+
+    payment.amount_paid = Decimal(payment.amount_paid) + amount
+    payment.status = _status_for_amount(payment.amount_paid, payment.final_price)
     payment.paid_at = datetime.now(timezone.utc)
     db.commit()
-    register_paid_session(db, payment)
-    log_audit(db, actor_id=actor.id, action="payment.mark_paid", target_type="Payment", target_id=payment_id)
+
+    if payment.status == PaymentStatus.PLATIT:
+        register_paid_session(db, payment)
+    log_audit(
+        db,
+        actor_id=actor.id,
+        action="payment.mark_paid",
+        target_type="Payment",
+        target_id=payment_id,
+        metadata={"amount": str(amount), "resulting_status": payment.status.value},
+    )
+    return {"ok": True}
+
+
+@router.post("/package/{package_purchase_id}/mark-paid")
+def mark_package_paid(
+    package_purchase_id: str,
+    payload: MarkPaidIn | None = None,
+    db: DBSession = Depends(get_db),
+    actor: User = Depends(require_roles(Role.ADMIN, Role.RECEPTIE)),
+) -> dict:
+    """Ca /payments/{id}/mark-paid, dar pentru o achiziție de pachet întreagă
+    — o singură sumă încasată, împărțită proporțional pe restul fiecărei
+    linii neachitate (nu cu prețul total, cu ce mai are fiecare linie de
+    plată), la fel cum /payments/{id}/payu-checkout tratează deja pachetul
+    ca o singură plată de completat, nu terapie cu terapie."""
+    lines = db.query(Payment).filter(Payment.package_purchase_id == package_purchase_id).all()
+    if not lines:
+        raise HTTPException(status_code=404, detail="Achiziție de pachet inexistentă.")
+
+    outstanding = [p for p in lines if p.status != PaymentStatus.PLATIT]
+    if not outstanding:
+        raise HTTPException(status_code=422, detail="Acest pachet a fost deja achitat integral.")
+
+    remaining_by_line = [(p, Decimal(p.final_price) - Decimal(p.amount_paid)) for p in outstanding]
+    total_remaining = sum((r for _, r in remaining_by_line), Decimal("0"))
+
+    amount = Decimal(str(payload.amount)) if payload and payload.amount is not None else total_remaining
+    if amount <= 0:
+        raise HTTPException(status_code=422, detail="Suma încasată trebuie să fie pozitivă.")
+    amount = min(amount, total_remaining)
+
+    now = datetime.now(timezone.utc)
+    allocated = Decimal("0")
+    for idx, (p, line_remaining) in enumerate(remaining_by_line):
+        is_last = idx == len(remaining_by_line) - 1
+        share = amount - allocated if is_last else (amount * line_remaining / total_remaining).quantize(Decimal("0.01"))
+        allocated += share
+        p.amount_paid = Decimal(p.amount_paid) + share
+        p.status = _status_for_amount(p.amount_paid, p.final_price)
+        p.paid_at = now
+    db.commit()
+
+    log_audit(
+        db,
+        actor_id=actor.id,
+        action="payment.mark_package_paid",
+        target_type="Payment",
+        target_id=package_purchase_id,
+        metadata={"amount": str(amount)},
+    )
+    return {"ok": True}
+
+
+@router.post("/{payment_id}/correct-amount-paid")
+def correct_payment_amount_paid(
+    payment_id: str,
+    payload: CorrectAmountPaidIn,
+    db: DBSession = Depends(get_db),
+    actor: User = Depends(require_roles(Role.ADMIN, Role.RECEPTIE)),
+) -> dict:
+    """Corectează o greșeală de încasare la recepție (sumă greșită, click din
+    greșeală pe "Marchează plătit") — spre deosebire de /mark-paid, care doar
+    ADAUGĂ, asta ÎNLOCUIEȘTE suma încasată cu ce era corect de fapt (0 =
+    anulează complet încasarea). Refuzată pentru o plată confirmată prin PayU
+    — acolo banii au chiar circulat, o corecție locală n-ar anula plata reală,
+    doar ar ascunde-o; o rambursare reală trebuie făcută prin PayU."""
+    payment = db.get(Payment, payment_id)
+    if not payment:
+        raise HTTPException(status_code=404, detail="Plată inexistentă.")
+    # method == "CARD_ONLINE" se setează DOAR la confirmarea reală din webhook
+    # (nu la inițierea unui checkout, care doar atașează payu_order_id) — deci
+    # e semnalul corect pentru "banii chiar au ajuns prin PayU".
+    if payment.method == "CARD_ONLINE":
+        raise HTTPException(
+            status_code=422,
+            detail="Această plată a fost confirmată online prin PayU — nu poate fi corectată manual. Pentru o "
+            "rambursare, e nevoie de un proces PayU real.",
+        )
+
+    new_amount = min(Decimal(str(payload.amount_paid)), Decimal(payment.final_price))
+    old_status = payment.status
+    payment.amount_paid = new_amount
+    payment.status = _status_for_amount(new_amount, payment.final_price)
+    payment.paid_at = datetime.now(timezone.utc) if new_amount > 0 else None
+    db.commit()
+
+    log_audit(
+        db,
+        actor_id=actor.id,
+        action="payment.correct_amount_paid",
+        target_type="Payment",
+        target_id=payment_id,
+        metadata={"old_status": old_status.value, "new_amount": str(new_amount), "new_status": payment.status.value},
+    )
+    return {"ok": True}
+
+
+@router.post("/package/{package_purchase_id}/correct-amount-paid")
+def correct_package_amount_paid(
+    package_purchase_id: str,
+    payload: CorrectAmountPaidIn,
+    db: DBSession = Depends(get_db),
+    actor: User = Depends(require_roles(Role.ADMIN, Role.RECEPTIE)),
+) -> dict:
+    """Ca mai sus, dar pentru o achiziție de pachet întreagă — suma nouă totală
+    se redistribuie proporțional cu prețul fiecărei linii (ca la creare, nu cu
+    ce mai rămăsese), fiindcă înlocuiește, nu completează."""
+    lines = db.query(Payment).filter(Payment.package_purchase_id == package_purchase_id).all()
+    if not lines:
+        raise HTTPException(status_code=404, detail="Achiziție de pachet inexistentă.")
+    if any(p.method == "CARD_ONLINE" for p in lines):
+        raise HTTPException(
+            status_code=422,
+            detail="Acest pachet are cel puțin o linie confirmată online prin PayU — nu poate fi corectat manual.",
+        )
+
+    total_price = sum((Decimal(p.final_price) for p in lines), Decimal("0"))
+    new_total = min(Decimal(str(payload.amount_paid)), total_price)
+    now = datetime.now(timezone.utc) if new_total > 0 else None
+
+    allocated = Decimal("0")
+    for idx, p in enumerate(lines):
+        is_last = idx == len(lines) - 1
+        share = (
+            new_total - allocated
+            if is_last
+            else (new_total * Decimal(p.final_price) / total_price).quantize(Decimal("0.01"))
+        )
+        allocated += share
+        p.amount_paid = share
+        p.status = _status_for_amount(share, p.final_price)
+        p.paid_at = now
+    db.commit()
+
+    log_audit(
+        db,
+        actor_id=actor.id,
+        action="payment.correct_package_amount_paid",
+        target_type="Payment",
+        target_id=package_purchase_id,
+        metadata={"new_total": str(new_total)},
+    )
     return {"ok": True}
 
 
@@ -262,7 +469,10 @@ def create_payu_checkout(
     if not outstanding:
         raise HTTPException(status_code=422, detail="Această plată a fost deja achitată.")
 
-    total_amount_bani = sum(int(round(float(p.final_price) * 100)) for p in outstanding)
+    # Suma rămasă de plată, nu prețul integral — o linie parțial achitată
+    # (ex. plătită parțial cash la recepție) se completează online doar cu
+    # restul, nu se recere tot de la capăt.
+    total_amount_bani = sum(int(round((float(p.final_price) - float(p.amount_paid)) * 100)) for p in outstanding)
     buyer_email = payment.client.user.email if payment.client and payment.client.user else None
 
     try:
@@ -355,7 +565,20 @@ def export_payments_csv(
     buffer = io.StringIO()
     writer = csv.writer(buffer)
     writer.writerow(
-        ["Data", "Client", "Terapie", "Pret de baza", "Reducere", "Cupon", "Total", "Metoda", "Status", "Platit la"]
+        [
+            "Data",
+            "Client",
+            "Terapie",
+            "Pret de baza",
+            "Reducere",
+            "Cupon",
+            "Total",
+            "Incasat",
+            "Rest de plata",
+            "Metoda",
+            "Status",
+            "Platit la",
+        ]
     )
     for p in payments:
         writer.writerow(
@@ -367,6 +590,8 @@ def export_payments_csv(
                 p.discount_amount,
                 p.coupon.code if p.coupon else "",
                 p.final_price,
+                p.amount_paid,
+                p.final_price - p.amount_paid,
                 p.method or "",
                 p.status.value,
                 p.paid_at.strftime("%Y-%m-%d %H:%M") if p.paid_at else "",

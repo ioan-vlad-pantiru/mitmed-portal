@@ -309,6 +309,12 @@ class Payment(Base):
     base_price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     discount_amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
     final_price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    # Cât s-a încasat efectiv până acum — poate fi mai mic decât final_price
+    # (plată parțială) sau egal cu el (achitat integral). status e derivat
+    # din compararea celor două, vezi routers/payments.py:_status_for_amount.
+    # Nu ținem un istoric al încasărilor individuale (doar suma cumulată) —
+    # suficient pentru "cât mai are de plată", nu un registru contabil.
+    amount_paid: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
     status: Mapped[PaymentStatus] = mapped_column(
         SAEnum(PaymentStatus, name="payment_status"), nullable=False, default=PaymentStatus.NEPLATIT
     )

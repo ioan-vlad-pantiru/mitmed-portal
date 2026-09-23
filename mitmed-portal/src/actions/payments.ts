@@ -16,7 +16,8 @@ export async function createPayment(
   const clientId = String(formData.get("clientId") ?? "");
   const mode = String(formData.get("saleMode") ?? "therapy");
   const method = String(formData.get("method") ?? "") || null;
-  const markPaid = Boolean(formData.get("markPaid"));
+  const amountPaidRaw = String(formData.get("amountPaid") ?? "").trim();
+  const amountPaid = amountPaidRaw ? Number(amountPaidRaw) : null;
 
   const payload =
     mode === "package"
@@ -24,14 +25,14 @@ export async function createPayment(
           client_id: clientId,
           package_id: String(formData.get("packageId") ?? ""),
           method,
-          mark_paid: markPaid,
+          amount_paid: amountPaid,
         }
       : {
           client_id: clientId,
           therapy_id: String(formData.get("therapyId") ?? ""),
           coupon_code: String(formData.get("couponCode") ?? "") || null,
           method,
-          mark_paid: markPaid,
+          amount_paid: amountPaid,
         };
 
   try {
@@ -45,11 +46,77 @@ export async function createPayment(
   return undefined;
 }
 
-export async function markPaymentPaid(paymentId: string, clientId: string) {
+export type MarkPaidResult = { ok: true } | { ok: false; message: string };
+
+/** Înregistrează o încasare pentru o plată existentă — fără `amount`,
+ * încasează tot restul (achitare integrală); cu `amount`, doar atât
+ * (încasare parțială, se poate apela din nou mai târziu pentru rest). */
+export async function markPaymentPaid(paymentId: string, clientId: string, amount?: number): Promise<MarkPaidResult> {
   await requireRole(Role.ADMIN, Role.RECEPTIE);
-  await apiPost(`/payments/${paymentId}/mark-paid`);
+  try {
+    await apiPost(`/payments/${paymentId}/mark-paid`, amount ? { amount } : {});
+  } catch (err) {
+    if (err instanceof ApiError) return { ok: false, message: err.message };
+    throw err;
+  }
   revalidatePath(`/admin/clienti/${clientId}`);
   revalidatePath("/admin/insights");
+  return { ok: true };
+}
+
+/** La fel ca markPaymentPaid, dar pentru o achiziție de pachet întreagă —
+ * suma se împarte proporțional pe restul fiecărei terapii incluse, nu se
+ * încasează linie cu linie. */
+export async function markPackagePaid(
+  packagePurchaseId: string,
+  clientId: string,
+  amount?: number
+): Promise<MarkPaidResult> {
+  await requireRole(Role.ADMIN, Role.RECEPTIE);
+  try {
+    await apiPost(`/payments/package/${packagePurchaseId}/mark-paid`, amount ? { amount } : {});
+  } catch (err) {
+    if (err instanceof ApiError) return { ok: false, message: err.message };
+    throw err;
+  }
+  revalidatePath(`/admin/clienti/${clientId}`);
+  revalidatePath("/admin/insights");
+  return { ok: true };
+}
+
+/** Corectează o greșeală de încasare — spre deosebire de markPaymentPaid,
+ * care ADAUGĂ, asta ÎNLOCUIEȘTE suma încasată cu `amount` (0 = anulează
+ * complet încasarea). Refuzat de backend pentru o plată confirmată prin
+ * PayU — acolo banii chiar au circulat. */
+export async function correctAmountPaid(paymentId: string, clientId: string, amount: number): Promise<MarkPaidResult> {
+  await requireRole(Role.ADMIN, Role.RECEPTIE);
+  try {
+    await apiPost(`/payments/${paymentId}/correct-amount-paid`, { amount_paid: amount });
+  } catch (err) {
+    if (err instanceof ApiError) return { ok: false, message: err.message };
+    throw err;
+  }
+  revalidatePath(`/admin/clienti/${clientId}`);
+  revalidatePath("/admin/insights");
+  return { ok: true };
+}
+
+/** Ca mai sus, pentru o achiziție de pachet întreagă. */
+export async function correctPackageAmountPaid(
+  packagePurchaseId: string,
+  clientId: string,
+  amount: number
+): Promise<MarkPaidResult> {
+  await requireRole(Role.ADMIN, Role.RECEPTIE);
+  try {
+    await apiPost(`/payments/package/${packagePurchaseId}/correct-amount-paid`, { amount_paid: amount });
+  } catch (err) {
+    if (err instanceof ApiError) return { ok: false, message: err.message };
+    throw err;
+  }
+  revalidatePath(`/admin/clienti/${clientId}`);
+  revalidatePath("/admin/insights");
+  return { ok: true };
 }
 
 export type PayuCheckoutResult = { redirectUrl: string } | { message: string };

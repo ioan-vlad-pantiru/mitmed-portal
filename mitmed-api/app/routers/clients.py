@@ -581,6 +581,12 @@ def _serialize_client_detail(client: ClientProfile) -> dict:
                 "base_price": str(p.base_price),
                 "discount_amount": str(p.discount_amount),
                 "final_price": str(p.final_price),
+                "amount_paid": str(p.amount_paid),
+                # Ca frontend-ul să știe când poate oferi "corectează suma
+                # încasată" — nu și pentru o plată confirmată real prin PayU.
+                # method == "CARD_ONLINE" se setează doar la confirmarea reală
+                # (webhook), nu la simpla inițiere a unui checkout.
+                "paid_via_payu": p.method == "CARD_ONLINE",
                 "status": p.status,
                 "therapy": {"name": p.therapy.name},
                 "coupon": {"code": p.coupon.code} if p.coupon else None,

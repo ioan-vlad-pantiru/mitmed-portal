@@ -19,6 +19,8 @@ import { AppointmentForm } from "./AppointmentForm";
 import { CancelAppointmentButton } from "./CancelAppointmentButton";
 import { ResetPasswordButton } from "./ResetPasswordButton";
 import { Badge } from "@/components/ui/Badge";
+import { MarkPaidControl } from "@/components/MarkPaidControl";
+import { CorrectPaymentControl } from "@/components/CorrectPaymentControl";
 import { PackageCheck } from "lucide-react";
 
 type PaymentStatus = "NEPLATIT" | "PARTIAL" | "PLATIT";
@@ -83,6 +85,8 @@ type ClientDetail = {
     base_price: string;
     discount_amount: string;
     final_price: string;
+    amount_paid: string;
+    paid_via_payu: boolean;
     status: string;
     therapy: { name: string };
     coupon: { code: string } | null;
@@ -160,26 +164,30 @@ export default async function ClientDetailPage({ params, searchParams }: { param
   const packageGroups = Object.values(
     client.payments
       .filter((p) => p.package_purchase_id)
-      .reduce<Record<string, { purchaseId: string; packageName: string; createdAt: string; status: string; total: number; items: typeof client.payments }>>(
-        (acc, p) => {
-          const key = p.package_purchase_id as string;
-          if (!acc[key]) {
-            acc[key] = {
-              purchaseId: key,
-              packageName: p.package_name ?? "Pachet",
-              createdAt: p.created_at,
-              status: p.status,
-              total: 0,
-              items: [],
-            };
-          }
-          acc[key].total += Number(p.final_price);
-          acc[key].items.push(p);
-          return acc;
-        },
-        {}
-      )
-  );
+      .reduce<
+        Record<
+          string,
+          { purchaseId: string; packageName: string; createdAt: string; total: number; totalPaid: number; items: typeof client.payments }
+        >
+      >((acc, p) => {
+        const key = p.package_purchase_id as string;
+        if (!acc[key]) {
+          acc[key] = { purchaseId: key, packageName: p.package_name ?? "Pachet", createdAt: p.created_at, total: 0, totalPaid: 0, items: [] };
+        }
+        acc[key].total += Number(p.final_price);
+        acc[key].totalPaid += Number(p.amount_paid);
+        acc[key].items.push(p);
+        return acc;
+      }, {})
+  ).map((g) => ({
+    ...g,
+    // Derivat din sumele reale, nu din statusul ultimei linii — o achiziție
+    // cu terapii plătite diferit (ex. una integral, alta parțial) tot trebuie
+    // să apară corect ca parțial achitată, nu ca oricare status a "câștigat" ultimul.
+    status: g.totalPaid <= 0 ? "NEPLATIT" : g.totalPaid >= g.total ? "PLATIT" : "PARTIAL",
+    remaining: g.total - g.totalPaid,
+    paidViaPayu: g.items.some((i) => i.paid_via_payu),
+  }));
 
   return (
     <div className="space-y-8">
@@ -195,7 +203,7 @@ export default async function ClientDetailPage({ params, searchParams }: { param
           <ResetPasswordButton userId={client.user.id} />
         </div>
 
-        <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-sm text-zinc-600 sm:grid-cols-4">
+        <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 break-words text-sm text-zinc-600 sm:grid-cols-4">
           <div>
             <dt className="text-zinc-400">Email</dt>
             <dd>{client.user.email ?? "—"}</dd>
@@ -276,7 +284,7 @@ export default async function ClientDetailPage({ params, searchParams }: { param
             </h2>
             {!hasMedicalHistory && <Badge variant="neutral">Necompletat</Badge>}
           </div>
-          <dl className="mt-1.5 grid grid-cols-2 gap-x-6 gap-y-1 text-sm text-zinc-600 sm:grid-cols-4">
+          <dl className="mt-1.5 grid grid-cols-2 gap-x-6 gap-y-1 break-words text-sm text-zinc-600 sm:grid-cols-4">
             <ProfileDetail label="Alergii" value={client.medical_history?.allergies} />
             <ProfileDetail label="Afecțiuni" value={client.medical_history?.conditions} />
             <ProfileDetail label="Medicamente" value={client.medical_history?.medications} />
@@ -290,7 +298,7 @@ export default async function ClientDetailPage({ params, searchParams }: { param
             <h2 className="text-xs font-medium uppercase tracking-wide text-zinc-400">Profil și preferințe</h2>
             {!hasProfileData && <Badge variant="neutral">Necompletat</Badge>}
           </div>
-          <dl className="mt-1.5 grid grid-cols-2 gap-x-6 gap-y-1 text-sm text-zinc-600 sm:grid-cols-4">
+          <dl className="mt-1.5 grid grid-cols-2 gap-x-6 gap-y-1 break-words text-sm text-zinc-600 sm:grid-cols-4">
             <ProfileDetail label="Gen" value={client.profile_data?.gender} />
             <ProfileDetail label="Localitate" value={[client.profile_data?.city, client.profile_data?.county].filter(Boolean).join(", ")} />
             <ProfileDetail label="Adresă" value={client.profile_data?.address} />
@@ -360,6 +368,9 @@ export default async function ClientDetailPage({ params, searchParams }: { param
                   </span>
                   <span className="text-zinc-500">
                     {new Date(g.createdAt).toLocaleDateString("ro-RO")} · <strong>{g.total.toFixed(2)} RON</strong>
+                    {g.status === "PARTIAL" && (
+                      <span className="ml-1 text-xs text-zinc-400">({g.totalPaid.toFixed(2)} încasați)</span>
+                    )}
                   </span>
                 </div>
                 <ul className="mt-2 divide-y divide-zinc-100 text-sm text-zinc-600">
@@ -372,6 +383,24 @@ export default async function ClientDetailPage({ params, searchParams }: { param
                     </li>
                   ))}
                 </ul>
+                {(g.status !== "PLATIT" || (g.totalPaid > 0 && !g.paidViaPayu)) && (
+                  <div className="mt-3 flex flex-col items-end gap-1.5 border-t border-zinc-100 pt-3">
+                    {g.status !== "PLATIT" && (
+                      <MarkPaidControl
+                        target={{ packagePurchaseId: g.purchaseId }}
+                        clientId={client.id}
+                        remaining={g.remaining}
+                      />
+                    )}
+                    {g.totalPaid > 0 && !g.paidViaPayu && (
+                      <CorrectPaymentControl
+                        target={{ packagePurchaseId: g.purchaseId }}
+                        clientId={client.id}
+                        currentAmountPaid={g.totalPaid}
+                      />
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -389,30 +418,53 @@ export default async function ClientDetailPage({ params, searchParams }: { param
                   <th className="px-4 py-2.5">Total</th>
                   <th className="px-4 py-2.5">Pachet</th>
                   <th className="px-4 py-2.5">Status</th>
+                  <th className="px-4 py-2" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
-                {singlePayments.map((p) => (
-                  <tr key={p.id} className="transition-colors hover:bg-zinc-50/70">
-                    <td className="px-4 py-2 text-zinc-600">{new Date(p.created_at).toLocaleDateString("ro-RO")}</td>
-                    <td className="px-4 py-2">{p.therapy.name}</td>
-                    <td className="px-4 py-2">{p.base_price} RON</td>
-                    <td className="px-4 py-2">
-                      {p.discount_amount !== "0" && p.discount_amount !== "0.00" ? `-${p.discount_amount} RON` : "—"}
-                      {p.coupon ? ` (${p.coupon.code})` : ""}
-                    </td>
-                    <td className="px-4 py-2.5">{p.final_price} RON</td>
-                    <td className="px-4 py-2 text-zinc-600">
-                      {p.package_total_sessions
-                        ? `${p.sessions_used}/${p.package_total_sessions} folosite`
-                        : "—"}
-                    </td>
-                    <td className="px-4 py-2"><PaymentStatusBadge status={p.status} /></td>
-                  </tr>
-                ))}
+                {singlePayments.map((p) => {
+                  const remaining = Number(p.final_price) - Number(p.amount_paid);
+                  return (
+                    <tr key={p.id} className="transition-colors hover:bg-zinc-50/70">
+                      <td className="px-4 py-2 text-zinc-600">{new Date(p.created_at).toLocaleDateString("ro-RO")}</td>
+                      <td className="px-4 py-2">{p.therapy.name}</td>
+                      <td className="px-4 py-2">{p.base_price} RON</td>
+                      <td className="px-4 py-2">
+                        {p.discount_amount !== "0" && p.discount_amount !== "0.00" ? `-${p.discount_amount} RON` : "—"}
+                        {p.coupon ? ` (${p.coupon.code})` : ""}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {p.final_price} RON
+                        {p.status === "PARTIAL" && (
+                          <span className="block text-xs font-normal text-zinc-400">{p.amount_paid} încasați</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-zinc-600">
+                        {p.package_total_sessions
+                          ? `${p.sessions_used}/${p.package_total_sessions} folosite`
+                          : "—"}
+                      </td>
+                      <td className="px-4 py-2"><PaymentStatusBadge status={p.status} /></td>
+                      <td className="px-4 py-2">
+                        <div className="flex flex-col items-end gap-1">
+                          {p.status !== "PLATIT" && (
+                            <MarkPaidControl target={{ paymentId: p.id }} clientId={client.id} remaining={remaining} />
+                          )}
+                          {Number(p.amount_paid) > 0 && !p.paid_via_payu && (
+                            <CorrectPaymentControl
+                              target={{ paymentId: p.id }}
+                              clientId={client.id}
+                              currentAmountPaid={Number(p.amount_paid)}
+                            />
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
                 {singlePayments.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-4 py-6 text-center text-zinc-400">
+                    <td colSpan={8} className="px-4 py-6 text-center text-zinc-400">
                       Nicio plată individuală încă.
                     </td>
                   </tr>

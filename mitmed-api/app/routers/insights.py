@@ -28,9 +28,12 @@ def get_therapy_insights(
 ) -> list[dict]:
     therapies = db.query(Therapy).order_by(Therapy.name.asc()).all()
 
+    # Venitul e ce s-a încasat efectiv (amount_paid), nu doar liniile ajunse
+    # deja PLATIT — o plată parțială a adus deja bani reali, care nu trebuie
+    # să lipsească din raport doar pentru că nu s-a achitat integral încă.
     revenue_rows = (
-        db.query(Payment.therapy_id, func.sum(Payment.final_price))
-        .filter(Payment.status == PaymentStatus.PLATIT)
+        db.query(Payment.therapy_id, func.sum(Payment.amount_paid))
+        .filter(Payment.amount_paid > 0)
         .group_by(Payment.therapy_id)
         .all()
     )
@@ -46,7 +49,7 @@ def get_therapy_insights(
 
     clients_rows = (
         db.query(Payment.therapy_id, Payment.client_id)
-        .filter(Payment.status == PaymentStatus.PLATIT)
+        .filter(Payment.amount_paid > 0)
         .distinct()
         .all()
     )
@@ -88,12 +91,14 @@ def get_overall_insights(
     six_months_start = datetime(first_year, first_month, 1, tzinfo=timezone.utc)
 
     revenue_this_month = (
-        db.query(func.coalesce(func.sum(Payment.final_price), 0))
-        .filter(Payment.status == PaymentStatus.PLATIT, Payment.paid_at >= month_start)
+        db.query(func.coalesce(func.sum(Payment.amount_paid), 0))
+        .filter(Payment.amount_paid > 0, Payment.paid_at >= month_start)
         .scalar()
     )
+    # Ce mai e de încasat — restul, nu prețul integral, pentru liniile deja
+    # parțial achitate.
     outstanding = (
-        db.query(func.coalesce(func.sum(Payment.final_price), 0))
+        db.query(func.coalesce(func.sum(Payment.final_price - Payment.amount_paid), 0))
         .filter(Payment.status.in_([PaymentStatus.NEPLATIT, PaymentStatus.PARTIAL]))
         .scalar()
     )
@@ -119,15 +124,15 @@ def get_overall_insights(
     returning_clients = sum(1 for _client_id, visits in completed_client_rows if visits >= 2)
     monthly_revenue_map = {f"{year}-{month:02d}": 0.0 for year, month in month_keys}
     paid_rows = (
-        db.query(Payment.paid_at, Payment.final_price)
-        .filter(Payment.status == PaymentStatus.PLATIT, Payment.paid_at >= six_months_start)
+        db.query(Payment.paid_at, Payment.amount_paid)
+        .filter(Payment.amount_paid > 0, Payment.paid_at >= six_months_start)
         .all()
     )
-    for paid_at, final_price in paid_rows:
+    for paid_at, amount_paid in paid_rows:
         if paid_at:
             key = f"{paid_at.year}-{paid_at.month:02d}"
             if key in monthly_revenue_map:
-                monthly_revenue_map[key] += float(final_price)
+                monthly_revenue_map[key] += float(amount_paid)
 
     return {
         "revenue_this_month": str(revenue_this_month),
@@ -164,6 +169,9 @@ def get_outstanding_payments(
             "client_name": p.client.full_name,
             "therapy_name": p.therapy.name,
             "final_price": str(p.final_price),
+            "amount_paid": str(p.amount_paid),
+            "remaining": str(p.final_price - p.amount_paid),
+            "paid_via_payu": p.method == "CARD_ONLINE",
             "status": p.status.value,
             "created_at": p.created_at.isoformat(),
         }

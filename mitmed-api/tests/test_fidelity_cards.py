@@ -144,7 +144,7 @@ def test_discount_applies_automatically_at_the_right_session(client, make_admin_
 
     final_prices = []
     for _ in range(7):
-        resp = client.post("/payments", json={"client_id": profile.id, "therapy_id": therapy.id, "mark_paid": True})
+        resp = client.post("/payments", json={"client_id": profile.id, "therapy_id": therapy.id, "amount_paid": 999999})
         assert resp.status_code == 200, resp.text
         payment_id = resp.json()["id"]
         # Prețul e vizibil în istoricul plăților clientului.
@@ -185,7 +185,7 @@ def test_explicit_coupon_takes_priority_over_fidelity_discount(client, make_admi
 
     resp = client.post(
         "/payments",
-        json={"client_id": profile.id, "therapy_id": therapy.id, "coupon_code": "REDUCERE10", "mark_paid": True},
+        json={"client_id": profile.id, "therapy_id": therapy.id, "coupon_code": "REDUCERE10", "amount_paid": 999999},
     )
     assert resp.status_code == 200, resp.text
     detail = client.get(f"/clients/{profile.id}").json()
@@ -202,7 +202,7 @@ def test_unpaid_payment_does_not_advance_cycle(client, make_admin_user, make_cli
     type_id = client.get("/fidelity-cards/types").json()[0]["id"]
     client.post(f"/clients/{profile.id}/fidelity-cards", json={"card_type_id": type_id})
 
-    client.post("/payments", json={"client_id": profile.id, "therapy_id": therapy.id, "mark_paid": False})
+    client.post("/payments", json={"client_id": profile.id, "therapy_id": therapy.id})
 
     card = client.get(f"/clients/{profile.id}/fidelity-cards").json()[0]
     assert card["stamps"] == 0
@@ -218,7 +218,7 @@ def test_mark_paid_later_also_advances_cycle(client, make_admin_user, make_clien
     client.post(f"/clients/{profile.id}/fidelity-cards", json={"card_type_id": type_id})
 
     payment_id = client.post(
-        "/payments", json={"client_id": profile.id, "therapy_id": therapy.id, "mark_paid": False}
+        "/payments", json={"client_id": profile.id, "therapy_id": therapy.id}
     ).json()["id"]
     client.post(f"/payments/{payment_id}/mark-paid")
 
@@ -244,7 +244,7 @@ def test_package_payment_does_not_advance_cycle(client, make_admin_user, make_cl
     assert package_resp.status_code == 200, package_resp.text
     package_id = package_resp.json()["id"]
 
-    client.post("/payments", json={"client_id": profile.id, "package_id": package_id, "mark_paid": True})
+    client.post("/payments", json={"client_id": profile.id, "package_id": package_id, "amount_paid": 999999})
 
     card = client.get(f"/clients/{profile.id}/fidelity-cards").json()[0]
     assert card["stamps"] == 0

@@ -32,6 +32,9 @@ export type OutstandingPayment = {
   client_name: string;
   therapy_name: string;
   final_price: string;
+  amount_paid: string;
+  remaining: string;
+  paid_via_payu: boolean;
   status: "NEPLATIT" | "PARTIAL";
   created_at: string;
 };

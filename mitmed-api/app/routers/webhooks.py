@@ -44,6 +44,10 @@ async def payu_notify(request: Request, db: DBSession = Depends(get_db)) -> dict
         )
         now = datetime.now(timezone.utc)
         for p in payments:
+            # Comanda PayU a fost inițiată exact pentru restul de plată (vezi
+            # create_payu_checkout) — confirmarea ei stinge tot ce mai rămăsese,
+            # indiferent dacă linia era neatinsă sau deja parțial achitată.
+            p.amount_paid = p.final_price
             p.status = PaymentStatus.PLATIT
             p.paid_at = now
             p.method = "CARD_ONLINE"

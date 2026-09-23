@@ -43,6 +43,7 @@ export function PaymentForm({
   const [packageId, setPackageId] = useState(packages[0]?.id ?? "");
   const [couponCode, setCouponCode] = useState("");
   const [couponMode, setCouponMode] = useState<string>(NONE_OPTION); // coupon id, MANUAL_OPTION, or NONE_OPTION
+  const [amountPaid, setAmountPaid] = useState("");
   const [preview, setPreview] = useState<{
     base_price: string;
     discount_amount: string;
@@ -113,6 +114,10 @@ export function PaymentForm({
   }
 
   const selectedPackage = packages.find((p) => p.id === packageId);
+  const fullPrice =
+    saleMode === "package"
+      ? Number(selectedPackage?.price ?? 0)
+      : Number(preview?.final_price ?? therapies.find((t) => t.id === therapyId)?.price ?? 0);
 
   function handleTherapyChange(nextTherapyId: string) {
     setTherapyId(nextTherapyId);
@@ -261,10 +266,34 @@ export function PaymentForm({
             <option value="transfer">Transfer</option>
           </Select>
         </div>
-        <label className="mt-6 flex items-center gap-2 text-sm text-zinc-700">
-          <input type="checkbox" name="markPaid" value="1" />
-          Marchează ca plătită acum
-        </label>
+        <div>
+          <label className="block text-xs font-medium text-zinc-700">Sumă încasată acum (opțional)</label>
+          <div className="mt-1 flex items-center gap-2">
+            <Input
+              name="amountPaid"
+              type="number"
+              min={0}
+              step="0.01"
+              value={amountPaid}
+              onChange={(e) => setAmountPaid(e.target.value)}
+              placeholder="0"
+              className="max-w-[130px]"
+            />
+            {fullPrice > 0 && (
+              <button
+                type="button"
+                onClick={() => setAmountPaid(fullPrice.toFixed(2))}
+                className="text-xs font-medium text-[var(--mitmed-teal)] hover:underline"
+              >
+                Integral ({fullPrice.toFixed(2)} RON)
+              </button>
+            )}
+          </div>
+          <p className="mt-1 text-xs text-zinc-400">
+            Lasă gol pentru neîncasat — o sumă mai mică decât totalul înregistrează o plată parțială, restul rămâne
+            de încasat mai târziu.
+          </p>
+        </div>
       </div>
 
       {state?.message && <p className="text-sm text-red-600">{state.message}</p>}
