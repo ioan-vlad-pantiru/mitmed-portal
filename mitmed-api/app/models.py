@@ -129,6 +129,9 @@ class ClientProfile(Base):
     full_name: Mapped[str] = mapped_column(String, nullable=False)
     phone: Mapped[str | None] = mapped_column(String)
     birth_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Cod numeric personal — identificatorul pacientului pe fișa medicală.
+    # Completat doar de personal (admin/recepție), validat la salvare.
+    cnp: Mapped[str | None] = mapped_column(String(13))
     emergency_contact_name: Mapped[str | None] = mapped_column(String)
     emergency_contact_phone: Mapped[str | None] = mapped_column(String)
     notes: Mapped[str | None] = mapped_column(String)

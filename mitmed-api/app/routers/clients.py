@@ -54,6 +54,21 @@ class NotesRequest(BaseModel):
     notes: str
 
 
+class CnpRequest(BaseModel):
+    cnp: str | None = None
+
+
+# Ponderile oficiale pentru cifra de control a CNP-ului.
+_CNP_WEIGHTS = (2, 7, 9, 1, 4, 6, 3, 5, 8, 2, 7, 9)
+
+
+def _is_valid_cnp(cnp: str) -> bool:
+    if len(cnp) != 13 or not cnp.isdigit() or cnp[0] == "0":
+        return False
+    control = sum(int(d) * w for d, w in zip(cnp, _CNP_WEIGHTS)) % 11
+    return int(cnp[12]) == (1 if control == 10 else control)
+
+
 class MedicalHistoryRequest(BaseModel):
     allergies: str | None = None
     conditions: str | None = None
@@ -337,6 +352,7 @@ def complete_erasure_request(
     user.status = AccountStatus.SUSPENDED
     client.full_name = "Client șters (cerere GDPR)"
     client.phone = None
+    client.cnp = None
     client.emergency_contact_name = None
     client.emergency_contact_phone = None
     client.medical_history = None
@@ -456,6 +472,25 @@ def update_client_notes(
     return {"ok": True}
 
 
+@router.patch("/clients/{client_id}/cnp")
+def update_client_cnp(
+    client_id: str,
+    payload: CnpRequest,
+    db: DBSession = Depends(get_db),
+    actor: User = Depends(require_roles(Role.ADMIN, Role.RECEPTIE)),
+) -> dict:
+    client = db.get(ClientProfile, client_id)
+    if not client:
+        raise HTTPException(status_code=404, detail="Client inexistent.")
+    cnp = (payload.cnp or "").strip() or None
+    if cnp and not _is_valid_cnp(cnp):
+        raise HTTPException(status_code=422, detail="CNP invalid — verifică cele 13 cifre.")
+    client.cnp = cnp
+    db.commit()
+    log_audit(db, actor_id=actor.id, action="client.update_cnp", target_type="ClientProfile", target_id=client_id)
+    return {"ok": True}
+
+
 @router.get("/dashboard/stats")
 def get_dashboard_stats(
     db: DBSession = Depends(get_db), _user: User = Depends(require_roles(Role.ADMIN, Role.RECEPTIE))
@@ -475,6 +510,7 @@ def _serialize_client_detail(client: ClientProfile) -> dict:
         "full_name": client.full_name,
         "phone": client.phone,
         "birth_date": client.birth_date,
+        "cnp": client.cnp,
         "emergency_contact_name": client.emergency_contact_name,
         "emergency_contact_phone": client.emergency_contact_phone,
         "notes": client.notes,

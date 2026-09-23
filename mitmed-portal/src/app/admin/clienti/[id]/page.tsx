@@ -6,6 +6,7 @@ import { listPackages } from "@/actions/packages";
 import { getClientConsents, listActiveConsentTemplates } from "@/actions/consents";
 import Link from "next/link";
 import { MedicalRecordForm } from "./MedicalRecordForm";
+import { CnpForm } from "./CnpForm";
 import { MedicalRecordsPanel } from "./MedicalRecordsPanel";
 import { PatientDocumentsPanel } from "./PatientDocumentsPanel";
 import { PaymentForm } from "./PaymentForm";
@@ -28,6 +29,7 @@ type ClientDetail = {
   full_name: string;
   phone: string | null;
   birth_date: string | null;
+  cnp: string | null;
   emergency_contact_name: string | null;
   emergency_contact_phone: string | null;
   notes: string | null;
@@ -161,6 +163,10 @@ export default async function ClientDetailPage({ params, searchParams }: { param
             <dd>{client.phone ?? "—"}</dd>
           </div>
           <div>
+            <dt className="text-zinc-400">CNP</dt>
+            <dd className="tabular-nums">{client.cnp ?? "—"}</dd>
+          </div>
+          <div>
             <dt className="text-zinc-400">Status cont</dt>
             <dd>{client.user.status}</dd>
           </div>
@@ -249,6 +255,7 @@ export default async function ClientDetailPage({ params, searchParams }: { param
 
       {activeTab === "dosar" && <section>
         <h2 className="text-base font-semibold text-zinc-900">Fișă medicală</h2>
+        <CnpForm clientId={client.id} cnp={client.cnp} />
         <div className="mt-3">
           <MedicalRecordsPanel records={client.medical_records} />
         </div>

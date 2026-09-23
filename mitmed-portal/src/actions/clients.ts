@@ -114,6 +114,27 @@ export async function updateClientNotes(clientProfileId: string, notes: string) 
   revalidatePath(`/admin/clienti/${clientProfileId}`);
 }
 
+export type CnpFormState = { message?: string; success?: boolean } | undefined;
+
+/** CNP-ul pacientului pe fișa medicală — completat doar de personal. */
+export async function updateClientCnp(
+  clientProfileId: string,
+  _state: CnpFormState,
+  formData: FormData
+): Promise<CnpFormState> {
+  await requireRole(Role.ADMIN, Role.RECEPTIE);
+  const cnp = String(formData.get("cnp") ?? "").trim();
+  if (cnp && !/^\d{13}$/.test(cnp)) return { message: "CNP-ul are exact 13 cifre." };
+  try {
+    await apiPatch(`/clients/${clientProfileId}/cnp`, { cnp: cnp || null });
+  } catch (err) {
+    if (err instanceof ApiError) return { message: err.message };
+    throw err;
+  }
+  revalidatePath(`/admin/clienti/${clientProfileId}`);
+  return { success: true, message: "CNP salvat." };
+}
+
 export type MedicalHistoryFormState = { message?: string; success?: boolean } | undefined;
 export type ProfileFormState = { message?: string; success?: boolean } | undefined;
 
