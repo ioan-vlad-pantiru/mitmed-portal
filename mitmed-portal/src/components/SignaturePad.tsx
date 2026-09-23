@@ -4,7 +4,16 @@ import { useRef, useState } from "react";
 
 /** Semnătură pe canvas, stilizată ca o linie de semnat pe un document real —
  * desen liber cu mouse/touch, exportat ca PNG base64. */
-export function SignaturePad({ onChange }: { onChange: (dataUrl: string | null) => void }) {
+export function SignaturePad({
+  onChange,
+  width = 500,
+  height = 130,
+}: {
+  onChange: (dataUrl: string | null) => void;
+  /** Rezoluția internă de desen; în modal se folosește o suprafață mai mare. */
+  width?: number;
+  height?: number;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
   const [hasDrawn, setHasDrawn] = useState(false);
@@ -25,6 +34,9 @@ export function SignaturePad({ onChange }: { onChange: (dataUrl: string | null) 
     const ctx = canvasRef.current?.getContext("2d");
     if (!ctx) return;
     drawing.current = true;
+    // Captura păstrează trăsătura activă și dacă degetul/mouse-ul iese puțin
+    // din canvas — altfel semnătura se rupe la margini.
+    e.currentTarget.setPointerCapture(e.pointerId);
     const { x, y } = getPos(e);
     ctx.beginPath();
     ctx.moveTo(x, y);
@@ -35,7 +47,7 @@ export function SignaturePad({ onChange }: { onChange: (dataUrl: string | null) 
     const ctx = canvasRef.current?.getContext("2d");
     if (!ctx) return;
     const { x, y } = getPos(e);
-    ctx.lineWidth = 2;
+    ctx.lineWidth = Math.max(2, width / 250);
     ctx.lineCap = "round";
     ctx.strokeStyle = "#242424";
     ctx.lineTo(x, y);
@@ -44,6 +56,7 @@ export function SignaturePad({ onChange }: { onChange: (dataUrl: string | null) 
   }
 
   function finishStroke() {
+    if (!drawing.current) return;
     drawing.current = false;
     const canvas = canvasRef.current;
     if (canvas && hasDrawn) onChange(canvas.toDataURL("image/png"));
@@ -61,12 +74,12 @@ export function SignaturePad({ onChange }: { onChange: (dataUrl: string | null) 
     <div className="relative">
       <canvas
         ref={canvasRef}
-        width={500}
-        height={130}
+        width={width}
+        height={height}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={finishStroke}
-        onPointerLeave={finishStroke}
+        onPointerCancel={finishStroke}
         className="relative z-10 w-full touch-none"
       />
       {/* Linia de semnat, ca pe un document tipărit */}

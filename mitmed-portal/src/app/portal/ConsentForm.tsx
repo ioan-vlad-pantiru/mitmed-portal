@@ -3,6 +3,7 @@
 import { useActionState, useMemo, useState } from "react";
 import { signConsent, type ConsentType } from "@/actions/consents";
 import { SignaturePad } from "@/components/SignaturePad";
+import { Dialog } from "@/components/ui/Dialog";
 
 export function ConsentForm({
   type,
@@ -18,6 +19,20 @@ export function ConsentForm({
   const boundSign = signConsent.bind(null, type);
   const [state, action, pending] = useActionState(boundSign, undefined);
   const [signature, setSignature] = useState<string | null>(null);
+  // Semnătura se desenează într-un modal mare (mai ușor pe telefon); abia la
+  // "Confirmă" trece din ciornă în formular.
+  const [signing, setSigning] = useState(false);
+  const [draft, setDraft] = useState<string | null>(null);
+
+  function openSigning() {
+    setDraft(null);
+    setSigning(true);
+  }
+
+  function confirmSignature() {
+    setSignature(draft);
+    setSigning(false);
+  }
   const today = useMemo(() => new Date().toLocaleDateString("ro-RO"), []);
 
   if (state?.success) {
@@ -59,9 +74,30 @@ export function ConsentForm({
         <div className="border-t border-zinc-100 bg-zinc-50/60 px-6 py-6 sm:px-8">
           <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">Semnătura</p>
           <input type="hidden" name="signature" value={signature ?? ""} />
-          <div className="mt-2 max-w-sm">
-            <SignaturePad onChange={setSignature} />
-          </div>
+          <button
+            type="button"
+            onClick={openSigning}
+            className="group mt-2 flex h-32 w-full max-w-sm items-center justify-center rounded-lg border border-dashed border-zinc-300 bg-white transition-colors hover:border-[var(--mitmed-teal)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mitmed-sky)]"
+            aria-label={signature ? "Modifică semnătura" : "Semnează documentul"}
+          >
+            {signature ? (
+              // eslint-disable-next-line @next/next/no-img-element -- data URL locală, nu imagine optimizabilă
+              <img src={signature} alt="Semnătura ta" className="h-full w-full object-contain p-2" />
+            ) : (
+              <span className="text-sm font-medium text-[var(--mitmed-teal)] group-hover:underline">
+                Apasă aici pentru a semna ✍️
+              </span>
+            )}
+          </button>
+          {signature && (
+            <button
+              type="button"
+              onClick={openSigning}
+              className="mt-1 text-xs text-zinc-500 hover:text-zinc-700 hover:underline"
+            >
+              Modifică semnătura
+            </button>
+          )}
           <div className="mt-2 flex max-w-sm justify-between text-xs text-zinc-400">
             <span>{clientName}</span>
             <span>{today}</span>
@@ -69,6 +105,39 @@ export function ConsentForm({
         </div>
 
         {state?.message && <p className="px-6 pb-2 text-sm text-red-600 sm:px-8">{state.message}</p>}
+
+        <Dialog
+          open={signing}
+          onOpenChange={setSigning}
+          title="Semnătura ta"
+          description="Semnează cu degetul sau cu mouse-ul în spațiul de mai jos."
+          size="lg"
+        >
+          <div className="rounded-lg border border-zinc-200 bg-zinc-50/60 p-3">
+            <SignaturePad onChange={setDraft} width={900} height={320} />
+          </div>
+          <div className="mt-2 flex justify-between text-xs text-zinc-400">
+            <span>{clientName}</span>
+            <span>{today}</span>
+          </div>
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setSigning(false)}
+              className="rounded-md px-4 py-2 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-100"
+            >
+              Anulează
+            </button>
+            <button
+              type="button"
+              onClick={confirmSignature}
+              disabled={!draft}
+              className="rounded-md bg-[var(--mitmed-teal)] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[var(--mitmed-teal-deep)] disabled:opacity-50"
+            >
+              Confirmă semnătura
+            </button>
+          </div>
+        </Dialog>
 
         <div className="border-t border-zinc-100 px-6 py-4 sm:px-8">
           <button
