@@ -19,6 +19,7 @@ export type ClientProfileData = {
   activity_level?: string;
   primary_goal?: string;
   secondary_goal?: string;
+  interest?: string;
   communication_consent?: boolean;
 } | null;
 
@@ -110,6 +111,17 @@ export function ProfileForm({ initial, birthDate }: { initial: ClientProfileData
             </Select>
           </Field>
           <Field label="Alt obiectiv / detalii"><Input name="secondaryGoal" defaultValue={initial?.secondary_goal} /></Field>
+          <Field label="Ce te interesează cel mai mult?">
+            <Select name="interest" defaultValue={initial?.interest ?? ""}>
+              <option value="">Alege opțional</option>
+              <option value="REDUCERE_DURERE">Reducere durere</option>
+              <option value="RECUPERARE_POSTOPERATORIE">Recuperare post-operatorie</option>
+              <option value="TERAPIE_SPORTIVA">Terapie sportivă</option>
+              <option value="WELLNESS_RELAXARE">Wellness / relaxare</option>
+              <option value="PREVENTIE">Prevenție</option>
+              <option value="ALTELE">Altele</option>
+            </Select>
+          </Field>
         </div>
       </fieldset>
 

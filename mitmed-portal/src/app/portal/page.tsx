@@ -43,6 +43,7 @@ export default async function PortalPage() {
       appointment_id: string | null;
     }[];
     medical_records: { id: string; session_date: string; diagnosis: string | null; therapy: { name: string } | null }[];
+    profile_data: Record<string, unknown> | null;
   };
   const upcoming = client.appointments.filter((item) => ACTIVE_STATUSES.has(item.status) && new Date(item.starts_at).getTime() >= currentTime).sort((a, b) => +new Date(a.starts_at) - +new Date(b.starts_at));
   const next = upcoming[0];
@@ -59,9 +60,19 @@ export default async function PortalPage() {
   // care filtrează exact așa lista pentru rolul CLIENT).
   const isConsultationOnly = therapies.length > 0 && therapies.every((t) => t.is_consultation);
   const isFirstVisit = client.medical_records.length === 0;
+  const profileIncomplete = !client.profile_data || Object.keys(client.profile_data).length === 0;
 
   return <div className="portal-page portal-home">
     <section className="portal-intro"><p>Salut, {client.full_name.split(" ")[0]}.</p><h1>Bine ai revenit.</h1><span>Ai aici doar lucrurile care contează acum.</span></section>
+    {profileIncomplete && (
+      <section className="portal-profile-nudge">
+        <div>
+          <p className="portal-profile-nudge-title">Completează-ți profilul</p>
+          <span>Câteva detalii despre tine ne ajută să îți oferim o experiență mai bună și o comunicare potrivită.</span>
+        </div>
+        <Link href="/portal/profil" className="portal-hero-link">Completează profilul <ChevronRight size={16} /></Link>
+      </section>
+    )}
     <section className="portal-next-appointment">{next ? <><div className="portal-appointment-mark"><CalendarDays size={23} /></div><div><p className="portal-hero-label">Următoarea programare</p><h2>{daysUntilLabel(new Date(next.starts_at))}</h2><p className="portal-appointment-detail">{new Date(next.starts_at).toLocaleTimeString("ro-RO", { hour: "2-digit", minute: "2-digit" })} · {next.therapy.name}</p></div><div className="portal-next-appointment-actions">{nextUnpaidPaymentId && <PayOnlineButton paymentId={nextUnpaidPaymentId} className="portal-pay-btn portal-pay-btn-hero" />}<CancelOwnAppointmentButton appointmentId={next.id} startsAt={next.starts_at} /></div></> : isConsultationOnly ? <><div className="portal-appointment-mark"><HeartPulse size={23} /></div><div><p className="portal-hero-label">{isFirstVisit ? "Prima ta vizită" : "Programarea ta"}</p><h2>Începe cu o consultație.</h2><p className="portal-appointment-detail">Înainte de orice altă terapie, trebuie să te programezi la o consultație — abia după aceea medicul îți deblochează restul serviciilor.</p></div><Link href="/portal/programari" className="portal-hero-link">Programează consultația <ChevronRight size={17} /></Link></> : <><div className="portal-appointment-mark"><HeartPulse size={23} /></div><div><p className="portal-hero-label">Programarea ta</p><h2>Gata când ești și tu.</h2><p className="portal-appointment-detail">Alege terapia și ora care ți se potrivesc.</p></div><Link href="/portal/programari" className="portal-hero-link">Programează <ChevronRight size={17} /></Link></>}</section>
     <section className="portal-home-actions" aria-label="Acces rapid">
       <Link href="/portal/programari"><CalendarDays /><span><strong>Programări</strong><small>{upcoming.length ? `${upcoming.length} viitoare` : "Alege o nouă dată"}</small></span><ChevronRight /></Link>

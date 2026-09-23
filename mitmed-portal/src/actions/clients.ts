@@ -219,6 +219,7 @@ export async function updateOwnProfileData(
       activity_level: optionalValue(formData, "activityLevel"),
       primary_goal: optionalValue(formData, "primaryGoal"),
       secondary_goal: optionalValue(formData, "secondaryGoal"),
+      interest: optionalValue(formData, "interest"),
       communication_consent: formData.get("communicationConsent") === "on",
     });
   } catch (err) {

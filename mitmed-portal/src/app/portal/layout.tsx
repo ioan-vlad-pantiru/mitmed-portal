@@ -2,10 +2,15 @@ import { requireRole } from "@/lib/authSession";
 import { Role } from "@/lib/enums";
 import { logout } from "@/actions/auth";
 import { Logo } from "@/components/Logo";
+import { getOwnClientData } from "@/actions/clients";
 import { PortalNavigation } from "./PortalNavigation";
+import { ProfileCompletionPrompt } from "./ProfileCompletionPrompt";
 
 export default async function PortalLayout({ children }: { children: React.ReactNode }) {
   await requireRole(Role.CLIENT);
+  const raw = await getOwnClientData();
+  const profileData = (raw as { profile_data: Record<string, unknown> | null } | null)?.profile_data;
+  const profileIncomplete = !profileData || Object.keys(profileData).length === 0;
 
   return (
     <div className="portal-shell">
@@ -21,6 +26,7 @@ export default async function PortalLayout({ children }: { children: React.React
         </form>
       </header>
       <div className="portal-app-shell"><PortalNavigation /><main className="w-full min-w-0 px-4 py-8 sm:px-6 lg:px-10 lg:py-12">{children}</main></div>
+      <ProfileCompletionPrompt incomplete={profileIncomplete} />
     </div>
   );
 }

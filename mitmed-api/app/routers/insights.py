@@ -222,6 +222,7 @@ def get_client_insights(
         "referral_sources": _visible_distribution([str(data.get("referral_source", "")) for data in profile_data]),
         "activity_levels": _visible_distribution([str(data.get("activity_level", "")) for data in profile_data]),
         "primary_goals": _visible_distribution([str(data.get("primary_goal", "")) for data in profile_data]),
+        "interests": _visible_distribution([str(data.get("interest", "")) for data in profile_data]),
         "occupation_categories": _visible_distribution(
             [str(data.get("occupation_category", "")) for data in profile_data]
         ),

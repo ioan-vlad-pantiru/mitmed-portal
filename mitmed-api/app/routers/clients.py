@@ -101,6 +101,11 @@ class ClientProfileDataRequest(BaseModel):
         "DURERE", "MOBILITATE", "RECUPERARE", "PREVENȚIE", "PERFORMANȚĂ", "STARE_DE_BINE", "ALTELE"
     ] | None = None
     secondary_goal: str | None = Field(default=None, max_length=150)
+    # Ce anume îl interesează pe client din oferta clinicii — distinct de
+    # `primary_goal` (rezultatul urmărit); folosit pentru insights admin.
+    interest: Literal[
+        "REDUCERE_DURERE", "RECUPERARE_POSTOPERATORIE", "TERAPIE_SPORTIVA", "WELLNESS_RELAXARE", "PREVENTIE", "ALTELE"
+    ] | None = None
     communication_consent: bool = False
 
 

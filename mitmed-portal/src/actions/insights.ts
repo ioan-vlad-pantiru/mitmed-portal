@@ -47,6 +47,7 @@ export type ClientInsights = {
   referral_sources: Distribution[];
   activity_levels: Distribution[];
   primary_goals: Distribution[];
+  interests: Distribution[];
   occupation_categories: Distribution[];
 };
 

@@ -185,6 +185,7 @@ export default async function InsightsPage() {
           <DistributionPanel title="Grupe de vârstă" data={clientInsights.age_groups} />
           <DistributionPanel title="Cum au aflat de noi" data={clientInsights.referral_sources} />
           <DistributionPanel title="Obiectiv principal" data={clientInsights.primary_goals} />
+          <DistributionPanel title="Ce îi interesează" data={clientInsights.interests} />
           <DistributionPanel title="Nivel de activitate" data={clientInsights.activity_levels} />
           <DistributionPanel title="Tip de activitate profesională" data={clientInsights.occupation_categories} />
           <DistributionPanel title="Localități frecvente" data={clientInsights.cities} />
@@ -200,6 +201,8 @@ const profileLabels: Record<string, string> = {
   RECUPERARE: "Recuperare", PREVENȚIE: "Prevenție", PERFORMANȚĂ: "Performanță", STARE_DE_BINE: "Stare de bine",
   SCĂZUT: "Scăzut", MODERAT: "Moderat", RIDICAT: "Ridicat", SEDENTAR: "Preponderent sedentară", ACTIV: "Activă",
   MUNCA_FIZICA: "Muncă fizică", PENSIONAR: "Pensionar", ELEV_STUDENT: "Elev / student",
+  REDUCERE_DURERE: "Reducere durere", RECUPERARE_POSTOPERATORIE: "Recuperare post-operatorie",
+  TERAPIE_SPORTIVA: "Terapie sportivă", WELLNESS_RELAXARE: "Wellness / relaxare", PREVENTIE: "Prevenție",
 };
 
 function DistributionPanel({ title, data }: { title: string; data: Distribution[] }) {
