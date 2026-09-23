@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { IconChevronLeft, IconChevronRight } from "@/components/icons";
+import { CalendarNowLine } from "@/components/CalendarNowLine";
 
 const DAY_NAMES = ["Luni", "Marți", "Miercuri", "Joi", "Vineri"];
 const DAY_START_HOUR = 9;
@@ -180,6 +181,7 @@ export function WeekCalendar({
                 >
                   Pauză
                 </div>
+                <CalendarNowLine day={day} dayStartHour={DAY_START_HOUR} dayEndHour={DAY_END_HOUR} hourPx={HOUR_PX} />
 
                 {dayAppointments.map((a) => {
                   const start = new Date(a.startsAt);
