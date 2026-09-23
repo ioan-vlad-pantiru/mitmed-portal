@@ -28,6 +28,7 @@ import {
   Upload,
   Clock3,
   Plane,
+  Gift,
   type LucideIcon,
 } from "lucide-react";
 
@@ -64,3 +65,4 @@ export const IconDownload = wrap(Download);
 export const IconUpload = wrap(Upload);
 export const IconClock = wrap(Clock3);
 export const IconVacation = wrap(Plane);
+export const IconGift = wrap(Gift);

@@ -43,9 +43,13 @@ export function PaymentForm({
   const [packageId, setPackageId] = useState(packages[0]?.id ?? "");
   const [couponCode, setCouponCode] = useState("");
   const [couponMode, setCouponMode] = useState<string>(NONE_OPTION); // coupon id, MANUAL_OPTION, or NONE_OPTION
-  const [preview, setPreview] = useState<{ base_price: string; discount_amount: string; final_price: string } | null>(
-    null
-  );
+  const [preview, setPreview] = useState<{
+    base_price: string;
+    discount_amount: string;
+    final_price: string;
+    fidelity_card_name?: string;
+    fidelity_discount_percent?: string;
+  } | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [isPreviewing, startPreview] = useTransition();
 
@@ -76,7 +80,7 @@ export function PaymentForm({
   function refreshPreview(nextTherapyId: string, nextCoupon: string) {
     if (!nextTherapyId) return;
     startPreview(async () => {
-      const result = await previewPrice(nextTherapyId, nextCoupon || undefined);
+      const result = await previewPrice(nextTherapyId, nextCoupon || undefined, clientId);
       if (result.error || !result.base_price || !result.discount_amount || !result.final_price) {
         setPreviewError(result.error ?? null);
         setPreview(null);
@@ -86,6 +90,8 @@ export function PaymentForm({
           base_price: result.base_price,
           discount_amount: result.discount_amount,
           final_price: result.final_price,
+          fidelity_card_name: result.fidelity_card_name,
+          fidelity_discount_percent: result.fidelity_discount_percent,
         });
       }
     });
@@ -231,10 +237,17 @@ export function PaymentForm({
           {isPreviewing && <p className="text-sm text-zinc-400">Se calculează…</p>}
           {previewError && <p className="text-sm text-red-600">{previewError}</p>}
           {preview && !previewError && (
-            <p className="text-sm text-zinc-700">
-              Preț bază: {preview.base_price} RON · Reducere: {preview.discount_amount} RON ·{" "}
-              <strong>Total: {preview.final_price} RON</strong>
-            </p>
+            <div className="space-y-1">
+              {preview.fidelity_card_name && (
+                <p className="text-sm font-medium text-emerald-700">
+                  Reducere automată de fidelitate: -{Number(preview.fidelity_discount_percent)}% ({preview.fidelity_card_name})
+                </p>
+              )}
+              <p className="text-sm text-zinc-700">
+                Preț bază: {preview.base_price} RON · Reducere: {preview.discount_amount} RON ·{" "}
+                <strong>Total: {preview.final_price} RON</strong>
+              </p>
+            </div>
           )}
         </>
       )}

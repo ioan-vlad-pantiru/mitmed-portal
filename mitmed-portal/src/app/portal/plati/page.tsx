@@ -1,5 +1,6 @@
-import { CreditCard, PackageCheck } from "lucide-react";
+import { CreditCard, Gift, PackageCheck } from "lucide-react";
 import { getOwnClientData } from "@/actions/clients";
+import { listOwnFidelityCards } from "@/actions/fidelity";
 import { PayOnlineButton } from "@/components/PayOnlineButton";
 
 type PaymentStatus = "NEPLATIT" | "PARTIAL" | "PLATIT";
@@ -20,7 +21,7 @@ const STATUS_LABEL: Record<PaymentStatus, string> = { PLATIT: "Achitat", PARTIAL
 const STATUS_VARIANT: Record<PaymentStatus, string> = { PLATIT: "paid", PARTIAL: "partial", NEPLATIT: "unpaid" };
 
 export default async function PaymentsPage() {
-  const raw = await getOwnClientData();
+  const [raw, fidelityCards] = await Promise.all([getOwnClientData(), listOwnFidelityCards()]);
   const client = raw as { payments: Payment[] };
   const packages = client.payments.filter((item) => item.package_total_sessions);
 
@@ -70,6 +71,54 @@ export default async function PaymentsPage() {
           <p className="portal-quiet">Nu ai pachete active în acest moment.</p>
         )}
       </section>
+
+      {fidelityCards.length > 0 && (
+        <section className="portal-feature-panel">
+          <div className="portal-panel-title">
+            <Gift />
+            <h2>Cardurile mele de fidelitate</h2>
+          </div>
+          <div className="portal-package-grid">
+            {fidelityCards.map((card) => {
+              const position = card.cycle_length > 0 ? (card.stamps % card.cycle_length) + 1 : card.stamps + 1;
+              const progress = card.cycle_length > 0 ? Math.min(100, (position / card.cycle_length) * 100) : 0;
+              const program = card.tiers
+                .slice()
+                .sort((a, b) => a.session_number - b.session_number)
+                .map((t) => `a ${t.session_number}-a -${Number(t.discount_percent)}%`)
+                .join(", ");
+              return (
+                <div key={card.id}>
+                  <div className="portal-package-head">
+                    <span className="portal-package-icon">
+                      <Gift size={16} />
+                    </span>
+                    <div>
+                      <strong>{card.card_type_name}</strong>
+                      <span>{card.therapy_name}</span>
+                    </div>
+                  </div>
+                  {card.next_discount_percent && (
+                    <p className="mt-1 text-sm font-medium text-emerald-700">
+                      Următoarea ședință are -{Number(card.next_discount_percent)}%!
+                    </p>
+                  )}
+                  <div className="portal-package-progress-row">
+                    <span>
+                      Ședința {position} din {card.cycle_length}
+                    </span>
+                    <b>{Math.round(progress)}%</b>
+                  </div>
+                  <div className="portal-package-track">
+                    <i style={{ width: `${progress}%` }} />
+                  </div>
+                  <p className="mt-1 text-xs text-zinc-400">Program: {program}</p>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       <section className="portal-feature-panel">
         <div className="portal-panel-title">

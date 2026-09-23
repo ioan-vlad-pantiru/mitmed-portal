@@ -1,6 +1,7 @@
 import csv
 import io
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -11,8 +12,20 @@ from app.audit import log_audit
 from app.config import settings
 from app.database import get_db
 from app.deps import require_roles, require_user
-from app.models import ClientProfile, Coupon, PackageItem, PaymentStatus, Payment, Role, Therapy, TherapyPackage, User, gen_id
+from app.models import (
+    ClientProfile,
+    Coupon,
+    PackageItem,
+    PaymentStatus,
+    Payment,
+    Role,
+    Therapy,
+    TherapyPackage,
+    User,
+    gen_id,
+)
 from app.services import payu
+from app.services.fidelity import find_active_card, next_session_discount_percent, register_paid_session
 from app.services.pricing import CouponError, calculate_price
 
 router = APIRouter(prefix="/payments", tags=["payments"])
@@ -131,10 +144,23 @@ def create_payment(
     if payload.coupon_code and not coupon:
         raise HTTPException(status_code=422, detail="Cupon inexistent.")
 
-    try:
-        base_price, discount_amount, final_price = calculate_price(therapy, coupon, payload.therapy_id)
-    except CouponError as err:
-        raise HTTPException(status_code=422, detail=str(err)) from err
+    # Reducerea de fidelitate e complet automată — se aplică singură când
+    # clientul are un card activ pentru terapia aleasă și poziția curentă în
+    # ciclu are o treaptă cu reducere (vezi services/fidelity.py). Un cupon
+    # ales explicit de personal are prioritate — cele două nu se cumulează.
+    fidelity_card = None if coupon else find_active_card(db, client_id=payload.client_id, therapy_id=payload.therapy_id)
+    fidelity_discount = next_session_discount_percent(fidelity_card) if fidelity_card else None
+
+    if fidelity_discount is not None:
+        base_price = Decimal(therapy.price)
+        discount_amount = base_price * fidelity_discount / Decimal(100)
+        final_price = base_price - discount_amount
+    else:
+        fidelity_card = None
+        try:
+            base_price, discount_amount, final_price = calculate_price(therapy, coupon, payload.therapy_id)
+        except CouponError as err:
+            raise HTTPException(status_code=422, detail=str(err)) from err
 
     # O terapie cumpărată individual e mereu o ședință unică — package_total_sessions
     # rămâne null. Orice "cumpăr N ședințe" trece prin /admin/pachete (vezi
@@ -143,6 +169,7 @@ def create_payment(
         client_id=payload.client_id,
         therapy_id=payload.therapy_id,
         coupon_id=coupon.id if coupon else None,
+        fidelity_card_id=fidelity_card.id if fidelity_card else None,
         base_price=base_price,
         discount_amount=discount_amount,
         final_price=final_price,
@@ -157,6 +184,9 @@ def create_payment(
 
     db.commit()
     db.refresh(payment)
+
+    if payload.mark_paid:
+        register_paid_session(db, payment)
 
     log_audit(
         db,
@@ -179,6 +209,7 @@ def mark_payment_paid(
     payment.status = PaymentStatus.PLATIT
     payment.paid_at = datetime.now(timezone.utc)
     db.commit()
+    register_paid_session(db, payment)
     log_audit(db, actor_id=actor.id, action="payment.mark_paid", target_type="Payment", target_id=payment_id)
     return {"ok": True}
 
@@ -267,6 +298,7 @@ def create_payu_checkout(
 def preview_price(
     therapy_id: str,
     coupon_code: str | None = None,
+    client_id: str | None = None,
     db: DBSession = Depends(get_db),
     _actor: User = Depends(require_roles(Role.ADMIN, Role.RECEPTIE)),
 ) -> dict:
@@ -277,6 +309,23 @@ def preview_price(
     coupon = _find_coupon(db, coupon_code)
     if coupon_code and not coupon:
         return {"error": "Cupon inexistent."}
+
+    # Aceeași regulă ca la crearea plății: reducerea de fidelitate e automată
+    # și doar când nu s-a ales explicit un cupon — vezi create_payment.
+    fidelity_card = None if coupon or not client_id else find_active_card(db, client_id=client_id, therapy_id=therapy_id)
+    fidelity_discount = next_session_discount_percent(fidelity_card) if fidelity_card else None
+
+    if fidelity_discount is not None:
+        base_price = Decimal(therapy.price)
+        discount_amount = base_price * fidelity_discount / Decimal(100)
+        final_price = base_price - discount_amount
+        return {
+            "base_price": str(base_price),
+            "discount_amount": str(discount_amount),
+            "final_price": str(final_price),
+            "fidelity_card_name": fidelity_card.card_type.name,
+            "fidelity_discount_percent": str(fidelity_discount),
+        }
 
     try:
         base_price, discount_amount, final_price = calculate_price(therapy, coupon, therapy_id)

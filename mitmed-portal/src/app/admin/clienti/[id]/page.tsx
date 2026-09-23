@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getClientDetail, listClientDocuments } from "@/actions/clients";
 import { listTherapies } from "@/actions/therapies";
 import { listWeekdayHours, listVacations } from "@/actions/clinic";
+import { listClientFidelityCards, listFidelityCardTypes } from "@/actions/fidelity";
 import { listCoupons } from "@/actions/coupons";
 import { listPackages } from "@/actions/packages";
 import { getClientConsents, listActiveConsentTemplates } from "@/actions/consents";
@@ -10,6 +11,7 @@ import { MedicalRecordForm } from "./MedicalRecordForm";
 import { CnpForm } from "./CnpForm";
 import { NotesForm } from "./NotesForm";
 import { UnlockedTherapiesForm } from "./UnlockedTherapiesForm";
+import { FidelityCardsPanel } from "./FidelityCardsPanel";
 import { MedicalRecordsPanel } from "./MedicalRecordsPanel";
 import { PatientDocumentsPanel } from "./PatientDocumentsPanel";
 import { PaymentForm } from "./PaymentForm";
@@ -102,16 +104,19 @@ export default async function ClientDetailPage({ params, searchParams }: { param
   const { id } = await params;
   const { tab } = await searchParams;
   const activeTab = ["profil", "dosar", "plati", "programari"].includes(tab ?? "") ? tab! : "profil";
-  const [clientRaw, therapiesRaw, coupons, packagesRaw, consentTemplates, documents, hours, vacations] = await Promise.all([
-    getClientDetail(id),
-    listTherapies(),
-    listCoupons(),
-    listPackages(),
-    listActiveConsentTemplates(),
-    listClientDocuments(id),
-    listWeekdayHours(),
-    listVacations(),
-  ]);
+  const [clientRaw, therapiesRaw, coupons, packagesRaw, consentTemplates, documents, hours, vacations, fidelityCards, fidelityCardTypes] =
+    await Promise.all([
+      getClientDetail(id),
+      listTherapies(),
+      listCoupons(),
+      listPackages(),
+      listActiveConsentTemplates(),
+      listClientDocuments(id),
+      listWeekdayHours(),
+      listVacations(),
+      listClientFidelityCards(id),
+      listFidelityCardTypes(),
+    ]);
 
   if (!clientRaw) notFound();
   const client = clientRaw as unknown as ClientDetail;
@@ -331,6 +336,7 @@ export default async function ClientDetailPage({ params, searchParams }: { param
           therapies={therapiesRaw.map((t) => ({ id: t.id, name: t.name, is_consultation: t.is_consultation }))}
           unlockedTherapyIds={client.unlocked_therapy_ids}
         />
+        <FidelityCardsPanel clientId={client.id} cards={fidelityCards} cardTypes={fidelityCardTypes} />
         <div className="mt-3">
           <MedicalRecordsPanel records={client.medical_records} />
         </div>

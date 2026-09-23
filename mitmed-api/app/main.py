@@ -16,6 +16,7 @@ from app.routers import (
     clients,
     clinic,
     config_public,
+    fidelity,
     consents,
     coupons,
     insights,
@@ -76,6 +77,7 @@ app.include_router(medical_records.router)
 app.include_router(payments.router)
 app.include_router(appointments.router)
 app.include_router(clinic.router)
+app.include_router(fidelity.router)
 app.include_router(insights.router)
 app.include_router(consents.router)
 app.include_router(public.router)

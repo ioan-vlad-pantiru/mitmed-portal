@@ -74,11 +74,17 @@ export async function exportPaymentsCsv(): Promise<string> {
   return apiGetText("/payments/export");
 }
 
-/** Preview live pentru UI — calculează prețul fără să salveze nimic. */
-export async function previewPrice(therapyId: string, couponCode: string | undefined) {
+/** Preview live pentru UI — calculează prețul fără să salveze nimic. Cu
+ * `clientId`, backend-ul verifică și dacă se aplică automat o reducere de
+ * fidelitate (vezi routers/payments.py:preview_price). */
+export async function previewPrice(therapyId: string, couponCode: string | undefined, clientId?: string) {
   await requireRole(Role.ADMIN, Role.RECEPTIE);
-  return apiGet<{ base_price?: string; discount_amount?: string; final_price?: string; error?: string }>(
-    "/payments/preview",
-    { therapy_id: therapyId, coupon_code: couponCode }
-  );
+  return apiGet<{
+    base_price?: string;
+    discount_amount?: string;
+    final_price?: string;
+    fidelity_card_name?: string;
+    fidelity_discount_percent?: string;
+    error?: string;
+  }>("/payments/preview", { therapy_id: therapyId, coupon_code: couponCode, client_id: clientId });
 }

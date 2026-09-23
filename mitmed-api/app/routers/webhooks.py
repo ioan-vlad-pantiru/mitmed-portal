@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session as DBSession
 from app.database import get_db
 from app.models import Payment, PaymentStatus
 from app.services import payu
+from app.services.fidelity import register_paid_session
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
@@ -48,5 +49,7 @@ async def payu_notify(request: Request, db: DBSession = Depends(get_db)) -> dict
             p.method = "CARD_ONLINE"
             p.payu_order_id = payu_order_id
         db.commit()
+        for p in payments:
+            register_paid_session(db, p)
 
     return {"ok": True}
