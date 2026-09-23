@@ -63,6 +63,9 @@ jobs:
     needs: [portal, api]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://portal.mitmed.ro
     steps:
       - uses: actions/checkout@v4
       - name: Set up SSH
