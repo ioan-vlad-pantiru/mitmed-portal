@@ -50,6 +50,12 @@ class MarkPaidIn(BaseModel):
     # comun caz din UI — un singur buton "Marchează plătit"). O sumă explicită
     # înregistrează o încasare parțială suplimentară, peste ce era deja plătit.
     amount: float | None = Field(default=None, gt=0)
+    # Variantă mixtă — încasarea se împarte explicit parte numerar/parte card
+    # (ex. clientul plătește diferența în două metode la recepție). Exclusiv
+    # cu `amount`; suma lor ia locul lui `amount` mai jos. Cel puțin una
+    # dintre cele două trebuie să fie pozitivă.
+    cash_amount: float | None = Field(default=None, ge=0)
+    card_amount: float | None = Field(default=None, ge=0)
 
 
 class CorrectAmountPaidIn(BaseModel):
@@ -58,6 +64,28 @@ class CorrectAmountPaidIn(BaseModel):
     # unei greșeli de la recepție (sumă greșită, click din greșeală), nu
     # pentru rambursări reale de card — vezi verificarea method=="CARD_ONLINE" mai jos.
     amount_paid: float = Field(ge=0)
+
+
+def _resolve_mark_paid_amount(payload: MarkPaidIn | None) -> tuple[Decimal | None, Decimal, Decimal, str | None]:
+    """Interpretează MarkPaidIn: fie o sumă unică (comportamentul clasic —
+    returnează doar suma, fără metodă), fie o împărțire cash_amount/card_amount
+    (returnează suma lor + cele două componente + metoda rezultată: 'numerar',
+    'card' sau 'MIXED' când ambele sunt pozitive). Cele două forme sunt exclusive."""
+    if not payload:
+        return None, Decimal("0"), Decimal("0"), None
+    has_split = payload.cash_amount is not None or payload.card_amount is not None
+    if payload.amount is not None and has_split:
+        raise HTTPException(status_code=422, detail="Alege fie o sumă unică, fie o împărțire numerar/card — nu ambele.")
+    if has_split:
+        cash = Decimal(str(payload.cash_amount or 0))
+        card = Decimal(str(payload.card_amount or 0))
+        total = cash + card
+        if total <= 0:
+            raise HTTPException(status_code=422, detail="Suma încasată trebuie să fie pozitivă.")
+        method = "MIXED" if cash > 0 and card > 0 else ("card" if card > 0 else "numerar")
+        return total, cash, card, method
+    amount = Decimal(str(payload.amount)) if payload.amount is not None else None
+    return amount, Decimal("0"), Decimal("0"), None
 
 
 def _status_for_amount(amount_paid: Decimal, final_price: Decimal) -> PaymentStatus:
@@ -256,12 +284,24 @@ def mark_payment_paid(
         raise HTTPException(status_code=422, detail="Această plată a fost deja achitată integral.")
 
     remaining = Decimal(payment.final_price) - Decimal(payment.amount_paid)
-    amount = Decimal(str(payload.amount)) if payload and payload.amount is not None else remaining
+    resolved_amount, cash, card, method = _resolve_mark_paid_amount(payload)
+    amount = resolved_amount if resolved_amount is not None else remaining
     if amount <= 0:
         raise HTTPException(status_code=422, detail="Suma încasată trebuie să fie pozitivă.")
+    if amount > remaining and method:
+        # Suma cerută nu încape în rest — se reduce proporțional partea de
+        # numerar/card, ca cele două componente să rămână consistente cu suma
+        # efectiv încasată (nu doar totalul).
+        scale = remaining / amount
+        cash = (cash * scale).quantize(Decimal("0.01"))
+        card = remaining - cash
     amount = min(amount, remaining)
 
     payment.amount_paid = Decimal(payment.amount_paid) + amount
+    if method:
+        payment.amount_paid_cash = Decimal(payment.amount_paid_cash) + cash
+        payment.amount_paid_card = Decimal(payment.amount_paid_card) + card
+        payment.method = method
     payment.status = _status_for_amount(payment.amount_paid, payment.final_price)
     payment.paid_at = datetime.now(timezone.utc)
     db.commit()
@@ -274,7 +314,11 @@ def mark_payment_paid(
         action="payment.mark_paid",
         target_type="Payment",
         target_id=payment_id,
-        metadata={"amount": str(amount), "resulting_status": payment.status.value},
+        metadata={
+            "amount": str(amount),
+            "resulting_status": payment.status.value,
+            **({"method": method, "cash": str(cash), "card": str(card)} if method else {}),
+        },
     )
     return {"ok": True}
 
@@ -302,18 +346,34 @@ def mark_package_paid(
     remaining_by_line = [(p, Decimal(p.final_price) - Decimal(p.amount_paid)) for p in outstanding]
     total_remaining = sum((r for _, r in remaining_by_line), Decimal("0"))
 
-    amount = Decimal(str(payload.amount)) if payload and payload.amount is not None else total_remaining
+    resolved_amount, cash, card, method = _resolve_mark_paid_amount(payload)
+    amount = resolved_amount if resolved_amount is not None else total_remaining
     if amount <= 0:
         raise HTTPException(status_code=422, detail="Suma încasată trebuie să fie pozitivă.")
+    if amount > total_remaining and method:
+        scale = total_remaining / amount
+        cash = (cash * scale).quantize(Decimal("0.01"))
+        card = total_remaining - cash
     amount = min(amount, total_remaining)
+    # Ponderea numerar/card se aplică identic pe fiecare linie, ca proporția
+    # cerută de admin (ex. 50% numerar) să se reflecte pe toată achiziția,
+    # nu doar pe prima linie alocată.
+    cash_ratio = (cash / amount) if method and amount > 0 else Decimal("0")
 
     now = datetime.now(timezone.utc)
     allocated = Decimal("0")
+    allocated_cash = Decimal("0")
     for idx, (p, line_remaining) in enumerate(remaining_by_line):
         is_last = idx == len(remaining_by_line) - 1
         share = amount - allocated if is_last else (amount * line_remaining / total_remaining).quantize(Decimal("0.01"))
         allocated += share
         p.amount_paid = Decimal(p.amount_paid) + share
+        if method:
+            line_cash = (cash - allocated_cash) if is_last else (share * cash_ratio).quantize(Decimal("0.01"))
+            allocated_cash += line_cash
+            p.amount_paid_cash = Decimal(p.amount_paid_cash) + line_cash
+            p.amount_paid_card = Decimal(p.amount_paid_card) + (share - line_cash)
+            p.method = method
         p.status = _status_for_amount(p.amount_paid, p.final_price)
         p.paid_at = now
     db.commit()
@@ -324,7 +384,7 @@ def mark_package_paid(
         action="payment.mark_package_paid",
         target_type="Payment",
         target_id=package_purchase_id,
-        metadata={"amount": str(amount)},
+        metadata={"amount": str(amount), **({"method": method, "cash": str(cash), "card": str(card)} if method else {})},
     )
     return {"ok": True}
 
@@ -576,6 +636,8 @@ def export_payments_csv(
             "Incasat",
             "Rest de plata",
             "Metoda",
+            "Incasat numerar",
+            "Incasat card",
             "Status",
             "Platit la",
         ]
@@ -593,6 +655,8 @@ def export_payments_csv(
                 p.amount_paid,
                 p.final_price - p.amount_paid,
                 p.method or "",
+                p.amount_paid_cash,
+                p.amount_paid_card,
                 p.status.value,
                 p.paid_at.strftime("%Y-%m-%d %H:%M") if p.paid_at else "",
             ]

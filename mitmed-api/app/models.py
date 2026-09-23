@@ -315,6 +315,12 @@ class Payment(Base):
     # Nu ținem un istoric al încasărilor individuale (doar suma cumulată) —
     # suficient pentru "cât mai are de plată", nu un registru contabil.
     amount_paid: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
+    # Defalcarea lui amount_paid pe cele două metode, când o încasare a fost
+    # împărțită parte numerar/parte card (vezi routers/payments.py:mark_payment_paid) —
+    # doar informativ, pentru chitanță/export contabil; amount_paid rămâne
+    # sursa de adevăr pentru "cât s-a încasat în total".
+    amount_paid_cash: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
+    amount_paid_card: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
     status: Mapped[PaymentStatus] = mapped_column(
         SAEnum(PaymentStatus, name="payment_status"), nullable=False, default=PaymentStatus.NEPLATIT
     )

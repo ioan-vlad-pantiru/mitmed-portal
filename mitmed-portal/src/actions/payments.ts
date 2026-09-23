@@ -48,13 +48,28 @@ export async function createPayment(
 
 export type MarkPaidResult = { ok: true } | { ok: false; message: string };
 
-/** Înregistrează o încasare pentru o plată existentă — fără `amount`,
- * încasează tot restul (achitare integrală); cu `amount`, doar atât
- * (încasare parțială, se poate apela din nou mai târziu pentru rest). */
-export async function markPaymentPaid(paymentId: string, clientId: string, amount?: number): Promise<MarkPaidResult> {
+/** Fie o sumă unică (comportamentul clasic), fie o împărțire explicită
+ * numerar/card — cele două forme sunt exclusive, vezi routers/payments.py. */
+export type MarkPaidInput = { amount: number } | { cashAmount: number; cardAmount: number };
+
+function markPaidPayload(input?: MarkPaidInput) {
+  if (!input) return {};
+  if ("amount" in input) return { amount: input.amount };
+  return { cash_amount: input.cashAmount, card_amount: input.cardAmount };
+}
+
+/** Înregistrează o încasare pentru o plată existentă — fără `input`,
+ * încasează tot restul (achitare integrală); cu o sumă unică, doar atât
+ * (încasare parțială); cu cashAmount/cardAmount, încasarea se împarte între
+ * cele două metode (ex. o parte numerar, o parte card la recepție). */
+export async function markPaymentPaid(
+  paymentId: string,
+  clientId: string,
+  input?: MarkPaidInput
+): Promise<MarkPaidResult> {
   await requireRole(Role.ADMIN, Role.RECEPTIE);
   try {
-    await apiPost(`/payments/${paymentId}/mark-paid`, amount ? { amount } : {});
+    await apiPost(`/payments/${paymentId}/mark-paid`, markPaidPayload(input));
   } catch (err) {
     if (err instanceof ApiError) return { ok: false, message: err.message };
     throw err;
@@ -70,11 +85,11 @@ export async function markPaymentPaid(paymentId: string, clientId: string, amoun
 export async function markPackagePaid(
   packagePurchaseId: string,
   clientId: string,
-  amount?: number
+  input?: MarkPaidInput
 ): Promise<MarkPaidResult> {
   await requireRole(Role.ADMIN, Role.RECEPTIE);
   try {
-    await apiPost(`/payments/package/${packagePurchaseId}/mark-paid`, amount ? { amount } : {});
+    await apiPost(`/payments/package/${packagePurchaseId}/mark-paid`, markPaidPayload(input));
   } catch (err) {
     if (err instanceof ApiError) return { ok: false, message: err.message };
     throw err;
