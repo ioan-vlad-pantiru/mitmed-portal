@@ -4,6 +4,6 @@
 
 export type LoginFormState = { message?: string } | undefined;
 
-export type RegisterFormState = { message?: string; success?: boolean } | undefined;
+export type RegisterFormState = { message?: string; success?: boolean; phone?: string } | undefined;
 
 export type ChangePasswordFormState = { message?: string; success?: boolean } | undefined;

@@ -8,6 +8,7 @@ type Payment = {
   id: string;
   created_at: string;
   final_price: string;
+  amount_paid: string;
   status: PaymentStatus;
   therapy: { name: string };
   coupon: { code: string } | null;
@@ -144,7 +145,18 @@ export default async function PaymentsPage() {
                 </span>
                 {item.status !== "PLATIT" && <PayOnlineButton paymentId={item.id} className="portal-pay-btn" />}
               </span>
-              <b>{item.final_price} RON</b>
+              <b>
+                {item.status === "PARTIAL" ? (
+                  <>
+                    {(Number(item.final_price) - Number(item.amount_paid)).toFixed(2)} RON rest
+                    <span className="mm-numeric block text-xs font-normal text-zinc-400">
+                      din {item.final_price} RON, {item.amount_paid} încasați
+                    </span>
+                  </>
+                ) : (
+                  `${item.final_price} RON`
+                )}
+              </b>
             </div>
           ))}
           {!client.payments.length && <p className="portal-quiet">Nu există plăți încă.</p>}

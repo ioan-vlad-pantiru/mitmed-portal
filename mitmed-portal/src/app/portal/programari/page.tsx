@@ -1,4 +1,4 @@
-import { CalendarDays } from "lucide-react";
+import { CalendarDays, Stethoscope } from "lucide-react";
 import { getOwnClientData } from "@/actions/clients";
 import { listTherapies } from "@/actions/therapies";
 import { listWeekdayHours, listVacations } from "@/actions/clinic";
@@ -25,6 +25,10 @@ export default async function AppointmentsPage() {
   const unpaidByAppointment = new Map(
     client.payments.filter((p) => p.appointment_id && p.status !== "PLATIT").map((p) => [p.appointment_id as string, p.id])
   );
+  const bookableTherapies = therapies.filter((item) => item.active);
+  // La fel ca pe pagina principală a portalului — dacă tot ce poate rezerva
+  // clientul e marcat `is_consultation`, n-are încă nimic deblocat de medic.
+  const isConsultationOnly = bookableTherapies.length > 0 && bookableTherapies.every((t) => t.is_consultation);
 
   return (
     <div className="portal-subpage">
@@ -76,10 +80,22 @@ export default async function AppointmentsPage() {
           <CalendarDays />
           <h2>Programează o ședință</h2>
         </div>
+        {isConsultationOnly && (
+          <div className="mb-4 flex items-start gap-2.5 rounded-lg bg-[var(--mitmed-sky)]/12 px-3.5 py-3 text-sm text-[var(--mitmed-teal-deep)]">
+            <Stethoscope size={18} className="mt-0.5 shrink-0" />
+            <p>
+              <strong>Prima programare trebuie să fie o consultație.</strong> Restul terapiilor se deblochează abia
+              după ce medicul te vede — de-asta apare doar consultația mai jos.
+            </p>
+          </div>
+        )}
         <BookingForm
-          therapies={therapies
-            .filter((item) => item.active)
-            .map((item) => ({ id: item.id, name: item.name, price: item.price, durationMinutes: item.duration_minutes }))}
+          therapies={bookableTherapies.map((item) => ({
+            id: item.id,
+            name: item.name,
+            price: item.price,
+            durationMinutes: item.duration_minutes,
+          }))}
           hours={hours}
           vacations={vacations}
         />
