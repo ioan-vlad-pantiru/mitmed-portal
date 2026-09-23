@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
@@ -8,21 +8,21 @@ import { Button } from "@/components/ui/Button";
 const SESSION_KEY = "mm-profile-nudge-shown";
 
 /** Popup afișat o singură dată pe sesiune de navigare, când profilul
- * clientului nu are încă niciun câmp opțional completat. */
+ * clientului nu are încă niciun câmp opțional completat. Deschiderea inițială
+ * se calculează direct în useState (nu într-un efect) — `incomplete` nu se
+ * schimbă după montare, deci nu e nevoie de o sincronizare continuă. */
 export function ProfileCompletionPrompt({ incomplete }: { incomplete: boolean }) {
-  const [open, setOpen] = useState(false);
-  const router = useRouter();
-
-  useEffect(() => {
-    if (!incomplete) return;
+  const [open, setOpen] = useState(() => {
+    if (!incomplete) return false;
     try {
-      if (sessionStorage.getItem(SESSION_KEY)) return;
+      if (sessionStorage.getItem(SESSION_KEY)) return false;
       sessionStorage.setItem(SESSION_KEY, "1");
     } catch {
       // Stocare indisponibilă (mod privat etc.) — arătăm popup-ul oricum.
     }
-    setOpen(true);
-  }, [incomplete]);
+    return true;
+  });
+  const router = useRouter();
 
   return (
     <Dialog
