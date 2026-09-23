@@ -37,8 +37,10 @@ class Settings(BaseSettings):
     twilio_account_sid: str | None = None
     twilio_auth_token: str | None = None
     twilio_from_number: str | None = None
-    # Fereastra (ore) înainte de programare la care se trimite reminderul.
-    reminder_hours_before: int = 24
+    # Ferestrele (ore) înainte de programare la care se trimite câte un
+    # reminder — două remindere distincte per programare, nu unul singur.
+    reminder_day_before_hours: int = 24
+    reminder_hour_before_hours: int = 1
 
     # URL-ul de recenzii Google (Maps) — folosit pt. nudge-ul de recenzie din portal.
     google_review_url: str | None = None

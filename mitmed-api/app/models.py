@@ -362,9 +362,11 @@ class Appointment(Base):
     )
     google_calendar_event_id: Mapped[str | None] = mapped_column(String)
     created_by_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"))
-    # Setat de job-ul periodic de remindere (app/services/notifications.py) —
-    # evită trimiterea de remindere duplicate pentru aceeași programare.
-    reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Setate de job-ul periodic de remindere (app/scheduler.py) — două
+    # remindere distincte per programare (cu o zi înainte, cu o oră înainte),
+    # fiecare cu propriul flag, ca să nu se trimită duplicat.
+    reminder_day_before_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reminder_hour_before_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 

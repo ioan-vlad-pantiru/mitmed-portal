@@ -42,8 +42,11 @@ def send_sms(to_phone: str, message: str) -> bool:
     return True
 
 
-def appointment_reminder_message(client_name: str, therapy_name: str, starts_at_local: str) -> str:
+def appointment_reminder_message(client_name: str, therapy_name: str, starts_at_local: str, when_label: str) -> str:
+    """`when_label` e fraza care spune CÂND e programarea față de acum — ex.
+    "mâine" pentru reminderul cu o zi înainte, "într-o oră" pentru cel cu o
+    oră înainte (vezi app/scheduler.py, care trimite ambele, distinct)."""
     return (
-        f"Salut, {client_name}! Îți reamintim de programarea ta la MitMed "
-        f"({therapy_name}) pe {starts_at_local}. Ne vedem curând!"
+        f"Salut, {client_name}! Îți reamintim că ai programare la MitMed {when_label} "
+        f"({therapy_name}, {starts_at_local}). Ne vedem curând!"
     )
