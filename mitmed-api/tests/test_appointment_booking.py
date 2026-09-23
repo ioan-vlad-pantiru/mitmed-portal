@@ -7,16 +7,14 @@ from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
 
-from app.routers.appointments import _create_appointment, _ensure_own_slot_is_available
+from app.routers.appointments import _available_slot_starts, _create_appointment, _ensure_own_slot_is_available
 
 CLINIC_TIMEZONE = ZoneInfo("Europe/Bucharest")
 
 
 def _next_weekday_10am() -> datetime:
-    dt = datetime.now(timezone.utc) + timedelta(days=1)
-    while dt.weekday() >= 5:
-        dt += timedelta(days=1)
-    return dt.replace(hour=10, minute=0, second=0, microsecond=0)
+    # 10:00 ora clinicii — 10:00 UTC ar cădea în pauza de prânz (13:00 local).
+    return _next_weekday_at_local(10)
 
 
 def _next_weekday_at_local(hour: int, minute: int = 0) -> datetime:
@@ -166,3 +164,62 @@ def test_cancelled_slot_can_be_rebooked(db_session, make_client_user, make_thera
         db_session, client_id=client_b.id, therapy_id=therapy.id, starts_at=starts_at, created_by_id=client_b.user_id
     )
     assert second.id
+
+
+def test_appointment_overlapping_lunch_break_is_rejected(db_session, make_client_user, make_therapy):
+    """Pauza 13:00-14:00 se aplică și programărilor făcute de recepție:
+    o ședință de 60 min la 12:30 ar intra în pauză."""
+    _, client_a = make_client_user(email="a@example.com")
+    therapy = make_therapy(duration_minutes=60)
+
+    for hour, minute in [(12, 30), (13, 0), (13, 30)]:
+        try:
+            _create_appointment(
+                db_session,
+                client_id=client_a.id,
+                therapy_id=therapy.id,
+                starts_at=_next_weekday_at_local(hour, minute),
+                created_by_id=client_a.user_id,
+            )
+            assert False, f"programarea de la {hour}:{minute:02d} ar fi trebuit respinsă — pauză 13-14"
+        except HTTPException as exc:
+            assert exc.status_code == 422
+
+
+def test_appointments_adjacent_to_lunch_break_are_allowed(db_session, make_client_user, make_therapy):
+    _, client_a = make_client_user(email="a@example.com")
+    therapy = make_therapy(duration_minutes=60)
+
+    for hour in (12, 14):
+        appointment = _create_appointment(
+            db_session,
+            client_id=client_a.id,
+            therapy_id=therapy.id,
+            starts_at=_next_weekday_at_local(hour),
+            created_by_id=client_a.user_id,
+        )
+        assert appointment.id
+
+
+def test_available_slots_skip_lunch_break(db_session, make_therapy):
+    therapy = make_therapy(duration_minutes=45)
+    day = _far_weekday_at_local(10).date()
+
+    slots = [slot.strftime("%H:%M") for slot in _available_slot_starts(db_session, day=day, therapy=therapy)]
+    assert slots == ["10:00", "11:00", "12:00", "14:00", "15:00", "16:00", "17:00"]
+
+
+def test_available_slots_keep_15_minute_buffer_around_appointments(db_session, make_client_user, make_therapy):
+    """O programare 11:00-11:45: sloturile de 30 min trebuie să se termine
+    până la 10:45 și să reînceapă de la 12:00."""
+    _, client_a = make_client_user(email="a@example.com")
+    therapy = make_therapy(duration_minutes=30)
+    booked = make_therapy(name="Masaj", duration_minutes=45)
+    starts_at = _far_weekday_at_local(11)
+    _create_appointment(
+        db_session, client_id=client_a.id, therapy_id=booked.id, starts_at=starts_at, created_by_id=client_a.user_id
+    )
+
+    slots = [s.strftime("%H:%M") for s in _available_slot_starts(db_session, day=starts_at.date(), therapy=therapy)]
+    assert slots[:4] == ["10:00", "12:00", "14:00", "14:45"]  # 12:45 ar intra în pauza de prânz
+    assert "10:45" not in slots and "11:45" not in slots

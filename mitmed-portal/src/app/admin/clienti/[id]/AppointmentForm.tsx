@@ -10,6 +10,13 @@ type Therapy = { id: string; name: string; duration_minutes: number };
 
 const CLINIC_OPENS_AT = "10:00";
 const CLINIC_CLOSES_AT = "18:00";
+const LUNCH_BREAK_STARTS_AT = "13:00";
+const LUNCH_BREAK_ENDS_AT = "14:00";
+
+const toMinutes = (value: string) => {
+  const [h, m] = value.split(":").map(Number);
+  return h * 60 + m;
+};
 
 function formatDateTime(date: string, time: string) {
   return date && time ? `${date}T${time}` : "";
@@ -25,11 +32,15 @@ function isWeekday(value: string) {
  * funcție de durata terapiei) trebuie să se încheie până la ora 18:00. */
 function fitsBusinessHours(time: string, durationMinutes: number) {
   if (!time) return true;
-  const [h, m] = time.split(":").map(Number);
-  const startMinutes = h * 60 + m;
-  const [openH, openM] = CLINIC_OPENS_AT.split(":").map(Number);
-  const [closeH, closeM] = CLINIC_CLOSES_AT.split(":").map(Number);
-  return startMinutes >= openH * 60 + openM && startMinutes + durationMinutes <= closeH * 60 + closeM;
+  const startMinutes = toMinutes(time);
+  return startMinutes >= toMinutes(CLINIC_OPENS_AT) && startMinutes + durationMinutes <= toMinutes(CLINIC_CLOSES_AT);
+}
+
+/** Ședința nu poate atinge pauza de prânz (13:00-14:00). */
+function avoidsLunchBreak(time: string, durationMinutes: number) {
+  if (!time) return true;
+  const startMinutes = toMinutes(time);
+  return startMinutes + durationMinutes <= toMinutes(LUNCH_BREAK_STARTS_AT) || startMinutes >= toMinutes(LUNCH_BREAK_ENDS_AT);
 }
 
 export function AppointmentForm({ clientId, therapies }: { clientId: string; therapies: Therapy[] }) {
@@ -42,6 +53,7 @@ export function AppointmentForm({ clientId, therapies }: { clientId: string; the
   const weekdaySelected = isWeekday(date);
   const selectedTherapy = therapies.find((t) => t.id === therapyId);
   const withinHours = fitsBusinessHours(time, selectedTherapy?.duration_minutes ?? 0);
+  const outsideBreak = avoidsLunchBreak(time, selectedTherapy?.duration_minutes ?? 0);
 
   return (
     <form action={formAction} className="mt-3 grid gap-4 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm md:grid-cols-2">
@@ -65,14 +77,16 @@ export function AppointmentForm({ clientId, therapies }: { clientId: string; the
       {state?.message && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700 md:col-span-2">{state.message}</p>}
 
       <div className="flex items-center justify-between gap-3 border-t border-zinc-100 pt-3 md:col-span-2">
-        <p className={`text-xs ${weekdaySelected && withinHours ? "text-zinc-400" : "font-medium text-red-600"}`}>
+        <p className={`text-xs ${weekdaySelected && withinHours && outsideBreak ? "text-zinc-400" : "font-medium text-red-600"}`}>
           {!weekdaySelected
             ? "Selectează o zi de luni până vineri."
             : !withinHours
               ? "Programul clinicii este 10:00-18:00 — ședința trebuie să se încheie până la ora 18:00."
-              : "Programul clinicii: luni-vineri, 10:00-18:00."}
+              : !outsideBreak
+                ? "Între 13:00 și 14:00 este pauză — ședința trebuie să se încheie până la 13:00 sau să înceapă de la 14:00."
+                : "Programul clinicii: luni-vineri, 10:00-18:00, pauză 13:00-14:00."}
         </p>
-        <Button type="submit" disabled={pending || !weekdaySelected || !withinHours}>
+        <Button type="submit" disabled={pending || !weekdaySelected || !withinHours || !outsideBreak}>
           {pending ? "Se programează…" : "Creează programarea"}
         </Button>
       </div>

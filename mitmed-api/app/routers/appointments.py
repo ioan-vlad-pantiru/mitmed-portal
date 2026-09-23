@@ -35,6 +35,13 @@ MIN_BOOKING_NOTICE = timedelta(hours=24)
 CLINIC_TIMEZONE = ZoneInfo("Europe/Bucharest")
 CLINIC_OPENS_AT = time(hour=10)
 CLINIC_CLOSES_AT = time(hour=18)
+# Pauza de prânz — nicio ședință nu poate începe, trece prin sau se încheie în
+# acest interval (nici din portal, nici programată manual de recepție).
+LUNCH_BREAK_STARTS_AT = time(hour=13)
+LUNCH_BREAK_ENDS_AT = time(hour=14)
+# Pauză obligatorie după fiecare ședință (pregătirea cabinetului) — între
+# sfârșitul unei programări și începutul următoarei rămân minim 15 minute.
+APPOINTMENT_BUFFER = timedelta(minutes=15)
 BOOKABLE_STATUSES = (AppointmentStatus.PROGRAMATA, AppointmentStatus.CONFIRMATA)
 
 
@@ -85,11 +92,20 @@ def _to_clinic_time(value: datetime) -> datetime:
     return value.astimezone(CLINIC_TIMEZONE)
 
 
+def _lunch_break(day: date) -> tuple[datetime, datetime]:
+    return (
+        datetime.combine(day, LUNCH_BREAK_STARTS_AT, tzinfo=CLINIC_TIMEZONE),
+        datetime.combine(day, LUNCH_BREAK_ENDS_AT, tzinfo=CLINIC_TIMEZONE),
+    )
+
+
 def _available_slot_starts(db: DBSession, *, day: date, therapy: Therapy) -> list[datetime]:
     """Construiește sloturi consecutive din golurile reale ale agendei.
 
-    Pasul este durata terapiei, nu un set global de ore predefinite. Astfel, o
-    ședință de 30 de minute se poate alipi direct de o programare existentă.
+    Pasul este durata terapiei plus pauza de 15 minute dintre ședințe, nu un
+    set global de ore predefinite. O ședință nouă începe la minim 15 minute
+    după sfârșitul programării anterioare și se termină cu minim 15 minute
+    înainte de următoarea. Pauza de prânz și ora de închidere nu cer buffer.
     """
     if day.weekday() >= 5:
         return []
@@ -112,26 +128,31 @@ def _available_slot_starts(db: DBSession, *, day: date, therapy: Therapy) -> lis
         starts_at = _to_clinic_time(appointment.starts_at)
         ends_at = starts_at + timedelta(minutes=appointment.therapy.duration_minutes)
         if ends_at > day_start and starts_at < day_end:
-            occupied.append((max(starts_at, day_start), min(ends_at, day_end)))
+            occupied.append((starts_at - APPOINTMENT_BUFFER, ends_at + APPOINTMENT_BUFFER))
+    # Pauza e tratată ca un interval ocupat: sloturile se opresc înainte de
+    # 13:00 și reîncep exact la 14:00.
+    occupied.append(_lunch_break(day))
+    occupied.sort()
 
     slots: list[datetime] = []
     cursor = day_start
     duration = timedelta(minutes=therapy.duration_minutes)
+    step = duration + APPOINTMENT_BUFFER
     for starts_at, ends_at in occupied:
         while cursor + duration <= starts_at:
             slots.append(cursor)
-            cursor += duration
+            cursor += step
         cursor = max(cursor, ends_at)
     while cursor + duration <= day_end:
         slots.append(cursor)
-        cursor += duration
+        cursor += step
 
     earliest_bookable = datetime.now(timezone.utc) + MIN_BOOKING_NOTICE
     return [slot for slot in slots if slot.astimezone(timezone.utc) >= earliest_bookable]
 
 
 def _ensure_within_business_hours(*, starts_at: datetime, therapy: Therapy) -> None:
-    """Program: luni-vineri, 10:00-18:00 — o programare nu poate începe
+    """Program: luni-vineri, 10:00-18:00, cu pauză 13:00-14:00 — o programare nu poate începe
     înainte de deschidere și nici să se termine după închidere. Verificată
     unconditionat în `_create_appointment`, indiferent dacă vine din
     portalul clientului sau e creată manual de recepție — altfel recepția
@@ -147,6 +168,13 @@ def _ensure_within_business_hours(*, starts_at: datetime, therapy: Therapy) -> N
         raise HTTPException(
             status_code=422,
             detail="Programările sunt posibile doar între 10:00 și 18:00, iar ședința trebuie să se încheie până la ora 18:00.",
+        )
+
+    break_start, break_end = _lunch_break(local_start.date())
+    if local_start < break_end and local_end > break_start:
+        raise HTTPException(
+            status_code=422,
+            detail="Între 13:00 și 14:00 este pauză — ședința trebuie să se încheie până la 13:00 sau să înceapă de la 14:00.",
         )
 
 

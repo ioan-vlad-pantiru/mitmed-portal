@@ -4,6 +4,7 @@ import { IconChevronLeft, IconChevronRight } from "@/components/icons";
 const DAY_NAMES = ["Luni", "Marți", "Miercuri", "Joi", "Vineri"];
 const DAY_START_HOUR = 9;
 const DAY_END_HOUR = 19; // interval afișat pe grilă; orele reale ale cabinetului sunt 10–18
+const LUNCH_BREAK_HOUR = 13; // pauza 13:00–14:00, fără programări
 const HOUR_PX = 64;
 
 export type CalendarAppointment = {
@@ -172,6 +173,13 @@ export function WeekCalendar({
                 {hours.map((_, i) => (
                   <div key={i} className="absolute left-0 right-0 border-t border-zinc-100" style={{ top: i * HOUR_PX }} />
                 ))}
+                <div
+                  className="absolute left-0 right-0 flex items-center justify-center bg-zinc-100/70 text-[11px] font-medium text-zinc-400"
+                  style={{ top: (LUNCH_BREAK_HOUR - DAY_START_HOUR) * HOUR_PX, height: HOUR_PX }}
+                  aria-label="Pauză 13:00–14:00"
+                >
+                  Pauză
+                </div>
 
                 {dayAppointments.map((a) => {
                   const start = new Date(a.startsAt);
