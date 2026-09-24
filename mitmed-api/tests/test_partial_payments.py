@@ -423,3 +423,35 @@ def test_receptie_can_correct_amount_paid(client, make_admin_user, make_client_u
 
     resp = client.post(f"/payments/{payment_id}/correct-amount-paid", json={"amount_paid": 0})
     assert resp.status_code == 200, resp.text
+
+
+def test_admin_can_delete_payment_but_reception_cannot(client, make_admin_user, make_client_user, make_therapy):
+    make_admin_user(email="admin@example.com", password="parola123", role="ADMIN")
+    make_admin_user(email="rec@example.com", password="parola123", role="RECEPTIE")
+    _, profile = make_client_user(email="c@example.com", password="parola123")
+    therapy = make_therapy(price=200)
+
+    _login(client, identifier="rec@example.com")
+    payment_id = client.post("/payments", json={"client_id": profile.id, "therapy_id": therapy.id}).json()["id"]
+    assert client.delete(f"/payments/{payment_id}").status_code == 403
+
+    _login(client)
+    assert client.delete(f"/payments/{payment_id}").status_code == 200
+    assert client.get(f"/clients/{profile.id}").json()["payments"] == []
+    assert client.delete(f"/payments/{payment_id}").status_code == 404
+
+
+def test_cannot_delete_payu_confirmed_payment(client, db_session, make_admin_user, make_client_user, make_therapy):
+    make_admin_user(email="admin@example.com", password="parola123", role="ADMIN")
+    _, profile = make_client_user(email="c@example.com", password="parola123")
+    therapy = make_therapy(price=200)
+    _login(client)
+    payment_id = client.post("/payments", json={"client_id": profile.id, "therapy_id": therapy.id}).json()["id"]
+
+    from app.models import Payment
+
+    db_session.get(Payment, payment_id).method = "CARD_ONLINE"
+    db_session.commit()
+
+    assert client.delete(f"/payments/{payment_id}").status_code == 422
+    assert len(client.get(f"/clients/{profile.id}").json()["payments"]) == 1

@@ -22,6 +22,8 @@ import { ResetPasswordButton } from "./ResetPasswordButton";
 import { Badge } from "@/components/ui/Badge";
 import { MarkPaidControl } from "@/components/MarkPaidControl";
 import { CorrectPaymentControl } from "@/components/CorrectPaymentControl";
+import { DeletePaymentControl } from "@/components/DeletePaymentControl";
+import { getCurrentUser } from "@/lib/authSession";
 import { PackageCheck } from "lucide-react";
 
 type PaymentStatus = "NEPLATIT" | "PARTIAL" | "PLATIT";
@@ -126,6 +128,7 @@ export default async function ClientDetailPage({ params, searchParams }: { param
 
   if (!clientRaw) notFound();
   const client = clientRaw as unknown as ClientDetail;
+  const isAdmin = (await getCurrentUser())?.role === "ADMIN";
   const consents = await getClientConsents(client.id);
   const signedTypes = new Set(consents.map((c) => c.type));
 
@@ -398,7 +401,7 @@ export default async function ClientDetailPage({ params, searchParams }: { param
                     </li>
                   ))}
                 </ul>
-                {(g.status !== "PLATIT" || (g.totalPaid > 0 && !g.paidViaPayu)) && (
+                {(g.status !== "PLATIT" || (g.totalPaid > 0 && !g.paidViaPayu) || (isAdmin && !g.paidViaPayu)) && (
                   <div className="mt-3 flex flex-col items-end gap-1.5 border-t border-zinc-100 pt-3">
                     {g.status !== "PLATIT" && (
                       <MarkPaidControl
@@ -412,6 +415,13 @@ export default async function ClientDetailPage({ params, searchParams }: { param
                         target={{ packagePurchaseId: g.purchaseId }}
                         clientId={client.id}
                         currentAmountPaid={g.totalPaid}
+                      />
+                    )}
+                    {isAdmin && !g.paidViaPayu && (
+                      <DeletePaymentControl
+                        target={{ packagePurchaseId: g.purchaseId }}
+                        clientId={client.id}
+                        label={`Pachet ${g.packageName}`}
                       />
                     )}
                   </div>
@@ -470,6 +480,13 @@ export default async function ClientDetailPage({ params, searchParams }: { param
                               target={{ paymentId: p.id }}
                               clientId={client.id}
                               currentAmountPaid={Number(p.amount_paid)}
+                            />
+                          )}
+                          {isAdmin && !p.paid_via_payu && (
+                            <DeletePaymentControl
+                              target={{ paymentId: p.id }}
+                              clientId={client.id}
+                              label={`${p.therapy.name} · ${p.final_price} RON`}
                             />
                           )}
                         </div>

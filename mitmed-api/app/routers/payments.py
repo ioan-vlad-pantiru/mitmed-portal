@@ -481,6 +481,81 @@ def correct_package_amount_paid(
     return {"ok": True}
 
 
+_PAYU_DELETE_BLOCKED = (
+    "Această plată a fost confirmată online prin PayU — banii au circulat, deci nu poate fi ștearsă. "
+    "Pentru o rambursare, e nevoie de un proces PayU real."
+)
+
+
+@router.delete("/{payment_id}")
+def delete_payment(
+    payment_id: str,
+    db: DBSession = Depends(get_db),
+    actor: User = Depends(require_roles(Role.ADMIN)),
+) -> dict:
+    """Șterge definitiv o linie de plată introdusă greșit. Doar ADMIN. Refuzată
+    pentru o plată confirmată prin PayU și pentru o linie dintr-un pachet (acolo
+    se șterge întreaga achiziție, ca pachetul să nu rămână cu linii lipsă).
+    Programarea asociată, dacă există, rămâne neatinsă."""
+    payment = db.get(Payment, payment_id)
+    if not payment:
+        raise HTTPException(status_code=404, detail="Plată inexistentă.")
+    if payment.method == "CARD_ONLINE":
+        raise HTTPException(status_code=422, detail=_PAYU_DELETE_BLOCKED)
+    if payment.package_purchase_id:
+        raise HTTPException(
+            status_code=422, detail="Această linie face parte dintr-un pachet — șterge întreaga achiziție de pachet."
+        )
+
+    snapshot = {
+        "client_id": payment.client_id,
+        "therapy_id": payment.therapy_id,
+        "final_price": str(payment.final_price),
+        "amount_paid": str(payment.amount_paid),
+        "status": payment.status.value,
+        "appointment_id": payment.appointment_id,
+    }
+    db.delete(payment)
+    db.commit()
+
+    log_audit(db, actor_id=actor.id, action="payment.delete", target_type="Payment", target_id=payment_id, metadata=snapshot)
+    return {"ok": True}
+
+
+@router.delete("/package/{package_purchase_id}")
+def delete_package_purchase(
+    package_purchase_id: str,
+    db: DBSession = Depends(get_db),
+    actor: User = Depends(require_roles(Role.ADMIN)),
+) -> dict:
+    """Șterge definitiv o achiziție de pachet întreagă (toate liniile). Doar ADMIN."""
+    lines = db.query(Payment).filter(Payment.package_purchase_id == package_purchase_id).all()
+    if not lines:
+        raise HTTPException(status_code=404, detail="Achiziție de pachet inexistentă.")
+    if any(p.method == "CARD_ONLINE" for p in lines):
+        raise HTTPException(status_code=422, detail=_PAYU_DELETE_BLOCKED)
+
+    snapshot = {
+        "client_id": lines[0].client_id,
+        "lines": len(lines),
+        "total_price": str(sum((Decimal(p.final_price) for p in lines), Decimal("0"))),
+        "total_paid": str(sum((Decimal(p.amount_paid) for p in lines), Decimal("0"))),
+    }
+    for p in lines:
+        db.delete(p)
+    db.commit()
+
+    log_audit(
+        db,
+        actor_id=actor.id,
+        action="payment.delete_package",
+        target_type="Payment",
+        target_id=package_purchase_id,
+        metadata=snapshot,
+    )
+    return {"ok": True}
+
+
 class PayuCheckoutOut(BaseModel):
     redirect_url: str
 

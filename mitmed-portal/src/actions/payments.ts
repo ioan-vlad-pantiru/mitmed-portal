@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { apiGet, apiGetText, apiPost, ApiError } from "@/lib/apiClient";
+import { apiDelete, apiGet, apiGetText, apiPost, ApiError } from "@/lib/apiClient";
 import { requireRole } from "@/lib/authSession";
 import { Role } from "@/lib/enums";
 
@@ -132,6 +132,30 @@ export async function correctPackageAmountPaid(
   revalidatePath(`/admin/clienti/${clientId}`);
   revalidatePath("/admin/insights");
   return { ok: true };
+}
+
+async function deleteAndRevalidate(path: string, clientId: string): Promise<MarkPaidResult> {
+  await requireRole(Role.ADMIN);
+  try {
+    await apiDelete(path);
+  } catch (err) {
+    if (err instanceof ApiError) return { ok: false, message: err.message };
+    throw err;
+  }
+  revalidatePath(`/admin/clienti/${clientId}`);
+  revalidatePath("/admin/insights");
+  return { ok: true };
+}
+
+/** Șterge definitiv o plată introdusă greșit — doar ADMIN. Refuzat de backend
+ * pentru plăți confirmate prin PayU și pentru linii de pachet. */
+export async function deletePayment(paymentId: string, clientId: string): Promise<MarkPaidResult> {
+  return deleteAndRevalidate(`/payments/${paymentId}`, clientId);
+}
+
+/** Șterge definitiv o achiziție de pachet întreagă — doar ADMIN. */
+export async function deletePackagePurchase(packagePurchaseId: string, clientId: string): Promise<MarkPaidResult> {
+  return deleteAndRevalidate(`/payments/package/${packagePurchaseId}`, clientId);
 }
 
 export type PayuCheckoutResult = { redirectUrl: string } | { message: string };
