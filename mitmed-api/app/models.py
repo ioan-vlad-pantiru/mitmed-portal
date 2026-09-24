@@ -389,6 +389,10 @@ class Payment(Base):
     # trebuie plătit și nu contează el însuși ca "ștampilă" spre următoarea
     # răsplată (altfel s-ar autoalimenta la nesfârșit).
     fidelity_card_id: Mapped[str | None] = mapped_column(String, ForeignKey("client_fidelity_cards.id"))
+    # Cardul a cărui ștampilă a fost efectiv avansată de această plată (setat
+    # în services/fidelity.register_paid_session) — ca ștampila să poată fi
+    # retrasă exact, o singură dată, dacă plata e ștearsă sau anulată.
+    fidelity_stamped_card_id: Mapped[str | None] = mapped_column(String)
 
     client: Mapped[ClientProfile] = relationship(back_populates="payments")
     therapy: Mapped[Therapy] = relationship()

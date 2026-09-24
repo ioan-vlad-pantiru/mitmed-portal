@@ -42,6 +42,10 @@ def register_paid_session(db: DBSession, payment: Payment) -> None:
     incluse, nu se cumulează cu fidelitatea)."""
     if payment.package_total_sessions is not None:
         return
+    # Idempotent: o plată deja ștampilată (ex. coborâtă la PARȚIAL printr-o
+    # corecție și apoi achitată din nou) nu avansează ciclul a doua oară.
+    if payment.fidelity_stamped_card_id:
+        return
 
     card = find_active_card(db, client_id=payment.client_id, therapy_id=payment.therapy_id)
     if not card:
@@ -51,4 +55,26 @@ def register_paid_session(db: DBSession, payment: Payment) -> None:
     card.stamps = (card.stamps + 1) % cycle_length if cycle_length > 0 else card.stamps + 1
     if payment.fidelity_card_id == card.id:
         card.discounted_sessions_used += 1
+    payment.fidelity_stamped_card_id = card.id
     db.commit()
+
+
+def unregister_paid_session(db: DBSession, payment: Payment, *, was_fully_paid: bool) -> None:
+    """Inversul lui register_paid_session — retrage ștampila când o plată
+    achitată integral e ștearsă sau coborâtă sub integral. NU face commit
+    (apelantul salvează împreună cu modificarea plății).
+
+    Cardul se ia din `fidelity_stamped_card_id`; pentru plățile de dinainte de
+    acest câmp, se folosește cardul a cărui reducere a fost aplicată
+    (`fidelity_card_id`) — doar dacă plata era într-adevăr achitată integral,
+    altfel n-a ștampilat niciodată."""
+    card_id = payment.fidelity_stamped_card_id or (payment.fidelity_card_id if was_fully_paid else None)
+    if not card_id:
+        return
+    card = db.get(ClientFidelityCard, card_id)
+    if card:
+        cycle_length = card.card_type.cycle_length
+        card.stamps = (card.stamps - 1) % cycle_length if cycle_length > 0 else max(card.stamps - 1, 0)
+        if payment.fidelity_card_id == card.id and card.discounted_sessions_used > 0:
+            card.discounted_sessions_used -= 1
+    payment.fidelity_stamped_card_id = None

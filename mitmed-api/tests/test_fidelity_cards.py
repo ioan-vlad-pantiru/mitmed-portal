@@ -269,3 +269,69 @@ def test_own_fidelity_cards_endpoint_only_shows_own_active_cards(client, make_ad
     _login(client, identifier="b@example.com")
     own_b = client.get("/clients/me/fidelity-cards").json()
     assert own_b == []
+
+
+def _setup_paid_card(client, make_admin_user, make_client_user, make_therapy):
+    make_admin_user(email="admin@example.com", password="parola123", role="ADMIN")
+    _, profile = make_client_user(email="c@example.com", password="parola123")
+    therapy = make_therapy(price=100)
+    _login(client)
+    _make_type(client, therapy.id, [{"session_number": 3, "discount_percent": 25}])
+    type_id = client.get("/fidelity-cards/types").json()[0]["id"]
+    client.post(f"/clients/{profile.id}/fidelity-cards", json={"card_type_id": type_id})
+    return profile, therapy
+
+
+def _stamps(client, profile):
+    return client.get(f"/clients/{profile.id}/fidelity-cards").json()[0]["stamps"]
+
+
+def test_deleting_a_paid_payment_rolls_back_the_stamp(client, make_admin_user, make_client_user, make_therapy):
+    profile, therapy = _setup_paid_card(client, make_admin_user, make_client_user, make_therapy)
+    ids = []
+    for _ in range(2):
+        pid = client.post("/payments", json={"client_id": profile.id, "therapy_id": therapy.id}).json()["id"]
+        client.post(f"/payments/{pid}/mark-paid")
+        ids.append(pid)
+    assert _stamps(client, profile) == 2
+
+    assert client.delete(f"/payments/{ids[1]}").status_code == 200
+    assert _stamps(client, profile) == 1
+    assert client.delete(f"/payments/{ids[0]}").status_code == 200
+    assert _stamps(client, profile) == 0
+
+
+def test_deleting_an_unpaid_payment_leaves_stamps_alone(client, make_admin_user, make_client_user, make_therapy):
+    profile, therapy = _setup_paid_card(client, make_admin_user, make_client_user, make_therapy)
+    paid = client.post("/payments", json={"client_id": profile.id, "therapy_id": therapy.id}).json()["id"]
+    client.post(f"/payments/{paid}/mark-paid")
+    unpaid = client.post("/payments", json={"client_id": profile.id, "therapy_id": therapy.id}).json()["id"]
+    assert _stamps(client, profile) == 1
+
+    assert client.delete(f"/payments/{unpaid}").status_code == 200
+    assert _stamps(client, profile) == 1
+
+
+def test_rollback_wraps_back_across_the_cycle(client, make_admin_user, make_client_user, make_therapy):
+    profile, therapy = _setup_paid_card(client, make_admin_user, make_client_user, make_therapy)
+    ids = []
+    for _ in range(3):
+        pid = client.post("/payments", json={"client_id": profile.id, "therapy_id": therapy.id}).json()["id"]
+        client.post(f"/payments/{pid}/mark-paid")
+        ids.append(pid)
+    assert _stamps(client, profile) == 0  # ciclu de 3 încheiat
+
+    client.delete(f"/payments/{ids[2]}")
+    assert _stamps(client, profile) == 2
+
+
+def test_correcting_paid_payment_down_and_up_stamps_once(client, make_admin_user, make_client_user, make_therapy):
+    profile, therapy = _setup_paid_card(client, make_admin_user, make_client_user, make_therapy)
+    pid = client.post("/payments", json={"client_id": profile.id, "therapy_id": therapy.id}).json()["id"]
+    client.post(f"/payments/{pid}/mark-paid")
+    assert _stamps(client, profile) == 1
+
+    client.post(f"/payments/{pid}/correct-amount-paid", json={"amount_paid": 40})
+    assert _stamps(client, profile) == 0
+    client.post(f"/payments/{pid}/correct-amount-paid", json={"amount_paid": 100})
+    assert _stamps(client, profile) == 1

@@ -25,7 +25,7 @@ from app.models import (
     gen_id,
 )
 from app.services import payu
-from app.services.fidelity import find_active_card, next_session_discount_percent, register_paid_session
+from app.services.fidelity import find_active_card, next_session_discount_percent, register_paid_session, unregister_paid_session
 from app.services.pricing import CouponError, calculate_price
 
 router = APIRouter(prefix="/payments", tags=["payments"])
@@ -420,7 +420,13 @@ def correct_payment_amount_paid(
     payment.amount_paid = new_amount
     payment.status = _status_for_amount(new_amount, payment.final_price)
     payment.paid_at = datetime.now(timezone.utc) if new_amount > 0 else None
+    # Ștampila de fidelitate urmărește "achitat integral": retrasă dacă plata
+    # scade sub integral, (re)acordată dacă ajunge la integral.
+    if old_status == PaymentStatus.PLATIT and payment.status != PaymentStatus.PLATIT:
+        unregister_paid_session(db, payment, was_fully_paid=True)
     db.commit()
+    if old_status != PaymentStatus.PLATIT and payment.status == PaymentStatus.PLATIT:
+        register_paid_session(db, payment)
 
     log_audit(
         db,
@@ -507,6 +513,7 @@ def delete_payment(
             status_code=422, detail="Această linie face parte dintr-un pachet — șterge întreaga achiziție de pachet."
         )
 
+    unregister_paid_session(db, payment, was_fully_paid=payment.status == PaymentStatus.PLATIT)
     snapshot = {
         "client_id": payment.client_id,
         "therapy_id": payment.therapy_id,
