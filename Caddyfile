@@ -1,3 +1,11 @@
 portal.mitmed.ro {
-	reverse_proxy portal:3000
+	# Notificări server-to-server (Meta WhatsApp, PayU) merg direct la API;
+	# fiecare endpoint își verifică singur semnătura/tokenul.
+	handle /webhooks/* {
+		reverse_proxy api:8000
+	}
+
+	handle {
+		reverse_proxy portal:3000
+	}
 }

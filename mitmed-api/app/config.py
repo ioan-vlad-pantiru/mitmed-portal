@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     twilio_account_sid: str | None = None
     twilio_auth_token: str | None = None
     twilio_from_number: str | None = None
+    # WhatsApp Business Cloud API (Meta) — webhook /webhooks/whatsapp.
+    # `verify_token`: șirul ales de noi în App Dashboard > WhatsApp >
+    # Configuration; `app_secret`: App settings > Basic (semnează POST-urile).
+    whatsapp_verify_token: str | None = None
+    whatsapp_app_secret: str | None = None
     # Ferestrele (ore) înainte de programare la care se trimite câte un
     # reminder — două remindere distincte per programare, nu unul singur.
     reminder_day_before_hours: int = 24

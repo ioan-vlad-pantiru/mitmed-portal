@@ -2,17 +2,62 @@
 externi. Fără autentificare de sesiune — integritatea vine din verificarea
 semnăturii proprii a fiecărui provider (vezi services/payu.verify_signature)."""
 
+import hashlib
+import hmac
+import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session as DBSession
 
+from app.config import settings
 from app.database import get_db
 from app.models import Payment, PaymentStatus
 from app.services import payu
 from app.services.fidelity import register_paid_session
 
+logger = logging.getLogger("mitmed.webhooks")
+
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
+
+
+@router.get("/whatsapp", response_class=PlainTextResponse)
+def whatsapp_verify(
+    mode: str | None = Query(default=None, alias="hub.mode"),
+    token: str | None = Query(default=None, alias="hub.verify_token"),
+    challenge: str | None = Query(default=None, alias="hub.challenge"),
+) -> str:
+    """Handshake-ul Meta la salvarea webhook-ului: returnăm `hub.challenge`
+    doar dacă tokenul coincide cu cel configurat de noi."""
+    expected = settings.whatsapp_verify_token
+    if not expected or mode != "subscribe" or not token or not hmac.compare_digest(token, expected):
+        raise HTTPException(status_code=403, detail="Token invalid.")
+    return challenge or ""
+
+
+@router.post("/whatsapp")
+async def whatsapp_notify(request: Request) -> dict:
+    raw_body = await request.body()
+    secret = settings.whatsapp_app_secret
+    signature = request.headers.get("X-Hub-Signature-256", "")
+    if not secret:
+        raise HTTPException(status_code=403, detail="Webhook neconfigurat.")
+    expected = "sha256=" + hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(signature, expected):
+        raise HTTPException(status_code=403, detail="Semnătură invalidă.")
+
+    payload = await request.json()
+    # Doar statusuri de livrare și numărul de mesaje primite — fără conținut
+    # sau numere de telefon în loguri (date personale).
+    for entry in payload.get("entry", []):
+        for change in entry.get("changes", []):
+            value = change.get("value", {})
+            for status in value.get("statuses", []):
+                logger.info("WhatsApp status %s pentru mesajul %s", status.get("status"), status.get("id"))
+            if value.get("messages"):
+                logger.info("WhatsApp: %d mesaje primite", len(value["messages"]))
+    return {"ok": True}
 
 
 @router.post("/payu")

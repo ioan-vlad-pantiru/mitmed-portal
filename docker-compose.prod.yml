@@ -24,6 +24,7 @@ services:
       - caddy_config:/config
     depends_on:
       - portal
+      - api
 
 volumes:
   caddy_data:
