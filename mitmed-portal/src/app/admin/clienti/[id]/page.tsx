@@ -8,7 +8,8 @@ import { listPackages } from "@/actions/packages";
 import { getClientConsents, listActiveConsentTemplates } from "@/actions/consents";
 import Link from "next/link";
 import { MedicalRecordForm } from "./MedicalRecordForm";
-import { CnpForm } from "./CnpForm";
+import { PatientDetailsForm } from "./PatientDetailsForm";
+import { ConsultationSheetsPanel, type ConsultationSheet } from "./ConsultationSheetsPanel";
 import { NotesForm } from "./NotesForm";
 import { UnlockedTherapiesForm } from "./UnlockedTherapiesForm";
 import { FidelityCardsPanel } from "./FidelityCardsPanel";
@@ -42,6 +43,7 @@ type ClientDetail = {
   emergency_contact_phone: string | null;
   notes: string | null;
   unlocked_therapy_ids: string[];
+  consultation_sheets: ConsultationSheet[];
   medical_history: {
     allergies?: string;
     conditions?: string;
@@ -338,7 +340,20 @@ export default async function ClientDetailPage({ params, searchParams }: { param
 
       {activeTab === "dosar" && <section>
         <h2 className="text-base font-semibold text-zinc-900">Fișă medicală</h2>
-        <CnpForm clientId={client.id} cnp={client.cnp} />
+        <PatientDetailsForm clientId={client.id} client={client} />
+        <ConsultationSheetsPanel
+          clientId={client.id}
+          sheets={client.consultation_sheets}
+          patient={{
+            full_name: client.full_name,
+            cnp: client.cnp,
+            birth_date: client.birth_date,
+            phone: client.phone,
+            gender: client.profile_data?.gender,
+            address: client.profile_data?.address,
+            occupation: client.profile_data?.occupation,
+          }}
+        />
         <UnlockedTherapiesForm
           clientId={client.id}
           therapies={therapiesRaw.map((t) => ({ id: t.id, name: t.name, is_consultation: t.is_consultation }))}

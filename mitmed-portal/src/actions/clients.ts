@@ -151,25 +151,39 @@ export async function updateClientUnlockedTherapies(
   return { success: true, message: "Terapii actualizate." };
 }
 
-export type CnpFormState = { message?: string; success?: boolean } | undefined;
+export type PatientDetailsFormState = { message?: string; success?: boolean } | undefined;
 
-/** CNP-ul pacientului pe fișa medicală — completat doar de personal. */
-export async function updateClientCnp(
+/** Datele pacientului pe fișa medicală — completate/corectate de personal
+ * când pacientul nu le-a introdus singur din portal. */
+export async function updateClientDetails(
   clientProfileId: string,
-  _state: CnpFormState,
+  _state: PatientDetailsFormState,
   formData: FormData
-): Promise<CnpFormState> {
+): Promise<PatientDetailsFormState> {
   await requireRole(Role.ADMIN, Role.RECEPTIE);
-  const cnp = String(formData.get("cnp") ?? "").trim();
+  const value = (name: string) => String(formData.get(name) ?? "").trim() || null;
+  const fullName = value("fullName");
+  if (!fullName) return { message: "Numele nu poate fi gol." };
+  const cnp = value("cnp");
   if (cnp && !/^\d{13}$/.test(cnp)) return { message: "CNP-ul are exact 13 cifre." };
   try {
-    await apiPatch(`/clients/${clientProfileId}/cnp`, { cnp: cnp || null });
+    await apiPatch(`/clients/${clientProfileId}/details`, {
+      full_name: fullName,
+      phone: value("phone"),
+      cnp,
+      birth_date: value("birthDate"),
+      gender: value("gender"),
+      city: value("city"),
+      county: value("county"),
+      address: value("address"),
+      occupation: value("occupation"),
+    });
   } catch (err) {
     if (err instanceof ApiError) return { message: err.message };
     throw err;
   }
   revalidatePath(`/admin/clienti/${clientProfileId}`);
-  return { success: true, message: "CNP salvat." };
+  return { success: true, message: "Datele pacientului au fost salvate." };
 }
 
 export type MedicalHistoryFormState = { message?: string; success?: boolean } | undefined;

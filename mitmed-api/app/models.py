@@ -166,6 +166,9 @@ class ClientProfile(Base):
     # pentru un client nou: poate rezerva doar o terapie marcată `is_consultation`.
     unlocked_therapies: Mapped[list["Therapy"]] = relationship(secondary=client_unlocked_therapies)
     fidelity_cards: Mapped[list["ClientFidelityCard"]] = relationship(back_populates="client")
+    consultation_sheets: Mapped[list["ConsultationSheet"]] = relationship(
+        back_populates="client", cascade="all, delete-orphan"
+    )
 
 
 class Therapy(Base):
@@ -235,6 +238,38 @@ class MedicalRecord(Base):
     client: Mapped[ClientProfile] = relationship(back_populates="medical_records")
     author: Mapped[User] = relationship()
     therapy: Mapped[Therapy | None] = relationship()
+
+
+class ConsultationSheet(Base):
+    """Fișa de consultații și evaluări medicale (formularul pe hârtie al cabinetului).
+
+    Completată la prima vizită și la reconsult (~6 luni). Datele de identitate
+    (nume, CNP, domiciliu, ocupație, telefon) rămân pe ClientProfile — fișa le
+    afișează, nu le duplică.
+    """
+
+    __tablename__ = "consultation_sheets"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_id)
+    client_id: Mapped[str] = mapped_column(String, ForeignKey("client_profiles.id", ondelete="CASCADE"), index=True)
+    author_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"))
+    sheet_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    sheet_number: Mapped[str | None] = mapped_column(String(30))
+    marital_status: Mapped[str | None] = mapped_column(String(50))
+    antecedents: Mapped[str | None] = mapped_column(String)
+    working_conditions: Mapped[str | None] = mapped_column(String)
+    blood_pressure: Mapped[str | None] = mapped_column(String(30))
+    pulse: Mapped[str | None] = mapped_column(String(30))
+    oxygen_saturation: Mapped[str | None] = mapped_column(String(30))
+    glycemia: Mapped[str | None] = mapped_column(String(30))
+    symptoms: Mapped[str | None] = mapped_column(String)
+    diagnosis: Mapped[str | None] = mapped_column(String)
+    recommendations: Mapped[str | None] = mapped_column(String)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    client: Mapped[ClientProfile] = relationship(back_populates="consultation_sheets")
+    author: Mapped[User] = relationship()
 
 
 class ClientDocument(Base):

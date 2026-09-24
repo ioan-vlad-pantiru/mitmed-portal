@@ -14,6 +14,7 @@ from app.deps import require_roles, require_user
 from app.models import (
     AccountStatus,
     ClientProfile,
+    ConsultationSheet,
     DataRequestStatus,
     DataRequestType,
     DataSubjectRequest,
@@ -68,6 +69,22 @@ def _is_valid_cnp(cnp: str) -> bool:
         return False
     control = sum(int(d) * w for d, w in zip(cnp, _CNP_WEIGHTS)) % 11
     return int(cnp[12]) == (1 if control == 10 else control)
+
+
+class PatientDetailsRequest(BaseModel):
+    """Datele pacientului completate/corectate de personal pe fișa medicală."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    full_name: str = Field(min_length=1, max_length=200)
+    phone: str | None = Field(default=None, max_length=30)
+    cnp: str | None = None
+    birth_date: date | None = None
+    gender: Literal["FEMININ", "MASCULIN", "NU_DORESC_SA_SPUN"] | None = None
+    city: str | None = Field(default=None, max_length=100)
+    county: str | None = Field(default=None, max_length=100)
+    address: str | None = Field(default=None, max_length=300)
+    occupation: str | None = Field(default=None, max_length=120)
 
 
 class MedicalHistoryRequest(BaseModel):
@@ -414,6 +431,7 @@ def get_client_detail(
             joinedload(ClientProfile.payments).joinedload(Payment.package),
             joinedload(ClientProfile.appointments).joinedload(Appointment.therapy),
             joinedload(ClientProfile.unlocked_therapies),
+            joinedload(ClientProfile.consultation_sheets).joinedload(ConsultationSheet.author),
         )
         .filter(ClientProfile.id == client_id)
         .first()
@@ -536,6 +554,43 @@ def update_client_cnp(
     return {"ok": True}
 
 
+@router.patch("/clients/{client_id}/details")
+def update_client_details(
+    client_id: str,
+    payload: PatientDetailsRequest,
+    db: DBSession = Depends(get_db),
+    actor: User = Depends(require_roles(Role.ADMIN, Role.RECEPTIE)),
+) -> dict:
+    client = db.get(ClientProfile, client_id)
+    if not client:
+        raise HTTPException(status_code=404, detail="Client inexistent.")
+    cnp = (payload.cnp or "").strip() or None
+    if cnp and not _is_valid_cnp(cnp):
+        raise HTTPException(status_code=422, detail="CNP invalid — verifică cele 13 cifre.")
+
+    client.full_name = payload.full_name.strip()
+    client.phone = (payload.phone or "").strip() or None
+    client.cnp = cnp
+    client.birth_date = (
+        datetime.combine(payload.birth_date, time.min, tzinfo=timezone.utc) if payload.birth_date else None
+    )
+    # Fuzionăm peste profile_data (nu îl înlocuim): cîmpurile completate de
+    # client (preferințe, sondaj) trebuie să rămână neatinse.
+    profile_data = dict(client.profile_data or {})
+    for key in ("gender", "city", "county", "address", "occupation"):
+        value = getattr(payload, key)
+        value = value.strip() if isinstance(value, str) else value
+        if value:
+            profile_data[key] = value
+        else:
+            profile_data.pop(key, None)
+    client.profile_data = profile_data
+    db.commit()
+
+    log_audit(db, actor_id=actor.id, action="client.update_details", target_type="ClientProfile", target_id=client_id)
+    return {"ok": True}
+
+
 @router.get("/dashboard/stats")
 def get_dashboard_stats(
     db: DBSession = Depends(get_db), _user: User = Depends(require_roles(Role.ADMIN, Role.RECEPTIE))
@@ -563,6 +618,25 @@ def _serialize_client_detail(client: ClientProfile) -> dict:
         "medical_history": client.medical_history,
         "profile_data": client.profile_data,
         "unlocked_therapy_ids": [t.id for t in client.unlocked_therapies],
+        "consultation_sheets": [
+            {
+                "id": cs.id,
+                "sheet_date": cs.sheet_date,
+                "sheet_number": cs.sheet_number,
+                "marital_status": cs.marital_status,
+                "antecedents": cs.antecedents,
+                "working_conditions": cs.working_conditions,
+                "blood_pressure": cs.blood_pressure,
+                "pulse": cs.pulse,
+                "oxygen_saturation": cs.oxygen_saturation,
+                "glycemia": cs.glycemia,
+                "symptoms": cs.symptoms,
+                "diagnosis": cs.diagnosis,
+                "recommendations": cs.recommendations,
+                "author": {"email": cs.author.email} if cs.author else None,
+            }
+            for cs in sorted(client.consultation_sheets, key=lambda cs: cs.sheet_date, reverse=True)
+        ],
         "medical_records": [
             {
                 "id": r.id,
