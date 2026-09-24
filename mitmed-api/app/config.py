@@ -42,6 +42,12 @@ class Settings(BaseSettings):
     reminder_day_before_hours: int = 24
     reminder_hour_before_hours: int = 1
 
+    # Adresa cabinetului și link-ul de orientare Google Maps (trimis în SMS-uri).
+    clinic_address: str = "Bulevardul Oituz 18, Parter, Ap 58, Onești"
+    clinic_directions_url: str = (
+        "https://www.google.com/maps/dir/?api=1&destination=Centrul+Medical+MitMed+Bulevardul+Oituz+18+Onesti"
+    )
+
     # URL-ul de recenzii Google (Maps) — folosit pt. nudge-ul de recenzie din portal.
     google_review_url: str | None = None
 

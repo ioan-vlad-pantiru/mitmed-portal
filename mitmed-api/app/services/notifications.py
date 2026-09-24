@@ -48,5 +48,6 @@ def appointment_reminder_message(client_name: str, therapy_name: str, starts_at_
     oră înainte (vezi app/scheduler.py, care trimite ambele, distinct)."""
     return (
         f"Salut, {client_name}! Îți reamintim că ai programare la MitMed {when_label} "
-        f"({therapy_name}, {starts_at_local}). Ne vedem curând!"
+        f"({therapy_name}, {starts_at_local}). Adresa: {settings.clinic_address}. "
+        f"Cum ajungi: {settings.clinic_directions_url}"
     )

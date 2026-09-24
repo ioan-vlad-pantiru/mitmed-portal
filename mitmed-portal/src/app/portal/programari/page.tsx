@@ -4,6 +4,7 @@ import { listTherapies } from "@/actions/therapies";
 import { listWeekdayHours, listVacations } from "@/actions/clinic";
 import { BookingForm } from "../BookingForm";
 import { CancelOwnAppointmentButton } from "../CancelOwnAppointmentButton";
+import { ClinicLocationCard } from "@/components/ClinicLocationCard";
 import { PayOnlineButton } from "@/components/PayOnlineButton";
 
 type Payment = { id: string; status: string; appointment_id: string | null };
@@ -74,6 +75,8 @@ export default async function AppointmentsPage() {
           <p className="portal-quiet">Nu ai nicio programare viitoare.</p>
         )}
       </section>
+
+      <ClinicLocationCard />
 
       <section className="portal-feature-panel">
         <div className="portal-panel-title">
