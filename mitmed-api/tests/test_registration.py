@@ -15,28 +15,26 @@ def _payload(**overrides):
     return base
 
 
-def _capture_sms(monkeypatch):
-    """Prinde codul trimis prin SMS — testele nu au acces la mesajul real
-    (Twilio neconfigurat = no-op), doar la ce s-ar fi trimis, la fel ca în
-    producție (vezi app.routers.auth._otp_message)."""
+def _capture_sent(monkeypatch):
+    """Prinde codul trimis pe WhatsApp — testele nu trimit nimic real
+    (WhatsApp neconfigurat = no-op), doar înregistrează ce s-ar fi trimis."""
     sent: list[tuple[str, str]] = []
 
-    def fake_send_sms(to_phone: str, message: str) -> bool:
-        sent.append((to_phone, message))
+    def fake_send_otp(to_phone: str, code: str) -> bool:
+        sent.append((to_phone, code))
         return True
 
-    monkeypatch.setattr("app.routers.auth.send_sms", fake_send_sms)
+    monkeypatch.setattr("app.routers.auth.send_otp", fake_send_otp)
     return sent
 
 
-def _extract_code(message: str) -> str:
-    match = re.search(r"Codul tău MitMed: (\d{6})", message)
-    assert match, f"nu găsesc codul în mesaj: {message}"
-    return match.group(1)
+def _extract_code(code: str) -> str:
+    assert re.fullmatch(r"\d{6}", code), f"cod invalid: {code}"
+    return code
 
 
 def test_register_requires_minimum_age(client, monkeypatch):
-    _capture_sms(monkeypatch)
+    _capture_sent(monkeypatch)
     minor_birth_date = date.today().replace(year=date.today().year - 10).isoformat()
 
     resp = client.post("/auth/register", json=_payload(birth_date=minor_birth_date))
@@ -45,14 +43,14 @@ def test_register_requires_minimum_age(client, monkeypatch):
 
 
 def test_register_requires_privacy_policy_acceptance(client, monkeypatch):
-    _capture_sms(monkeypatch)
+    _capture_sent(monkeypatch)
     resp = client.post("/auth/register", json=_payload(accepted_privacy_policy=False))
 
     assert resp.status_code == 422
 
 
-def test_register_sends_sms_code_and_does_not_create_account_yet(client, monkeypatch):
-    sent = _capture_sms(monkeypatch)
+def test_register_sends_code_and_does_not_create_account_yet(client, monkeypatch):
+    sent = _capture_sent(monkeypatch)
 
     resp = client.post("/auth/register", json=_payload())
     assert resp.status_code == 201
@@ -66,7 +64,7 @@ def test_register_sends_sms_code_and_does_not_create_account_yet(client, monkeyp
 
 
 def test_verify_correct_code_creates_active_account_and_logs_in(client, monkeypatch):
-    sent = _capture_sms(monkeypatch)
+    sent = _capture_sent(monkeypatch)
     client.post("/auth/register", json=_payload())
     code = _extract_code(sent[0][1])
 
@@ -84,7 +82,7 @@ def test_verify_correct_code_creates_active_account_and_logs_in(client, monkeypa
 
 
 def test_verify_wrong_code_is_rejected(client, monkeypatch):
-    sent = _capture_sms(monkeypatch)
+    sent = _capture_sent(monkeypatch)
     client.post("/auth/register", json=_payload())
     real_code = _extract_code(sent[0][1])
     wrong_code = "000000" if real_code != "000000" else "111111"
@@ -98,7 +96,7 @@ def test_verify_wrong_code_is_rejected(client, monkeypatch):
 
 
 def test_verify_locks_out_after_too_many_wrong_attempts(client, monkeypatch):
-    sent = _capture_sms(monkeypatch)
+    sent = _capture_sent(monkeypatch)
     client.post("/auth/register", json=_payload())
     real_code = _extract_code(sent[0][1])
     wrong_code = "000000" if real_code != "000000" else "111111"
@@ -118,7 +116,7 @@ def test_verify_locks_out_after_too_many_wrong_attempts(client, monkeypatch):
 
 
 def test_resend_code_issues_a_new_usable_code(client, monkeypatch):
-    sent = _capture_sms(monkeypatch)
+    sent = _capture_sent(monkeypatch)
     client.post("/auth/register", json=_payload())
 
     resend_resp = client.post("/auth/register/resend", json={"phone": "0722111222"})
@@ -131,7 +129,7 @@ def test_resend_code_issues_a_new_usable_code(client, monkeypatch):
 
 
 def test_register_with_phone_only_succeeds(client, monkeypatch):
-    sent = _capture_sms(monkeypatch)
+    sent = _capture_sent(monkeypatch)
     resp = client.post("/auth/register", json=_payload(email=None, phone="0722333444"))
     assert resp.status_code == 201
 
@@ -142,7 +140,7 @@ def test_register_with_phone_only_succeeds(client, monkeypatch):
 
 
 def test_login_lookup_by_phone_works_after_verification(client, monkeypatch):
-    sent = _capture_sms(monkeypatch)
+    sent = _capture_sent(monkeypatch)
     client.post("/auth/register", json=_payload(email=None, phone="0722555666"))
     code = _extract_code(sent[0][1])
     client.post("/auth/register/verify", json={"phone": "0722555666", "code": code})
@@ -153,7 +151,7 @@ def test_login_lookup_by_phone_works_after_verification(client, monkeypatch):
 
 
 def test_register_rejects_duplicate_phone(client, monkeypatch):
-    sent = _capture_sms(monkeypatch)
+    sent = _capture_sent(monkeypatch)
     client.post("/auth/register", json=_payload(email="a@example.com", phone="0722777888"))
     code = _extract_code(sent[0][1])
     client.post("/auth/register/verify", json={"phone": "0722777888", "code": code})
@@ -165,7 +163,7 @@ def test_register_rejects_duplicate_phone(client, monkeypatch):
 def test_second_register_call_overwrites_pending_code_for_same_phone(client, monkeypatch):
     """Dacă cineva cere de două ori un cod pentru același telefon (fără să-l
     fi confirmat prima dată), codul vechi nu mai trebuie să funcționeze."""
-    sent = _capture_sms(monkeypatch)
+    sent = _capture_sent(monkeypatch)
     client.post("/auth/register", json=_payload())
     old_code = _extract_code(sent[0][1])
 
@@ -180,16 +178,16 @@ def test_second_register_call_overwrites_pending_code_for_same_phone(client, mon
         assert stale_resp.status_code == 422
 
 
-def _fail_sms(monkeypatch):
-    monkeypatch.setattr("app.routers.auth.send_sms", lambda *a, **k: False)
+def _fail_send(monkeypatch):
+    monkeypatch.setattr("app.routers.auth.send_otp", lambda *a, **k: False)
 
 
-def test_register_surfaces_error_when_sms_fails(client, monkeypatch):
-    _fail_sms(monkeypatch)
+def test_register_surfaces_error_when_send_fails(client, monkeypatch):
+    _fail_send(monkeypatch)
 
     resp = client.post("/auth/register", json=_payload())
     assert resp.status_code == 502
-    assert "SMS" in resp.json()["detail"]
+    assert "WhatsApp" in resp.json()["detail"]
 
     # Contul tot nu există — eșecul de trimitere nu trebuie să mascheze
     # lipsa unui cod real trimis.
@@ -197,14 +195,14 @@ def test_register_surfaces_error_when_sms_fails(client, monkeypatch):
     assert login_resp.status_code == 401
 
 
-def test_resend_surfaces_error_when_sms_fails(client, monkeypatch):
-    sent = _capture_sms(monkeypatch)
+def test_resend_surfaces_error_when_send_fails(client, monkeypatch):
+    sent = _capture_sent(monkeypatch)
     client.post("/auth/register", json=_payload())
 
-    _fail_sms(monkeypatch)
+    _fail_send(monkeypatch)
     resend_resp = client.post("/auth/register/resend", json={"phone": "0722111222"})
     assert resend_resp.status_code == 502
-    assert "SMS" in resend_resp.json()["detail"]
+    assert "WhatsApp" in resend_resp.json()["detail"]
 
     # Codul din prima trimitere (reușită) rămâne valabil — resend-ul eșuat
     # n-a apucat să-l invalideze pe cel vechi înainte de eșec... de fapt îl

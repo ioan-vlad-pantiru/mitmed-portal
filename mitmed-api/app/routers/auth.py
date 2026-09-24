@@ -21,7 +21,7 @@ from app.security import (
     register_successful_login,
     verify_password,
 )
-from app.services.notifications import send_sms
+from app.services.notifications import send_otp
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -31,10 +31,10 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 # recepție împreună cu un părinte/tutore (cont creat manual din /admin).
 MIN_SELF_REGISTRATION_AGE = 16
 
-# Auto-înregistrarea se face în doi pași: /register trimite un cod prin SMS,
+# Auto-înregistrarea se face în doi pași: /register trimite un cod pe WhatsApp,
 # /register/verify îl confirmă și abia atunci creează contul, deja ACTIV —
 # telefonul verificat înlocuiește aprobarea manuală de recepție de dinainte
-# (un telefon real, capabil să primească SMS, e o dovadă suficientă că nu e
+# (un telefon real, capabil să primească mesaje, e o dovadă suficientă că nu e
 # un cont fals, și nu cere nici email, nici așteptare — important pentru
 # clienții vârstnici care pot să nu aibă adresă de email deloc).
 OTP_LENGTH = 6
@@ -44,10 +44,6 @@ MAX_OTP_ATTEMPTS = 5
 
 def _generate_otp() -> str:
     return "".join(secrets.choice(string.digits) for _ in range(OTP_LENGTH))
-
-
-def _otp_message(code: str) -> str:
-    return f"Codul tău MitMed: {code}. Valabil {int(OTP_TTL.total_seconds() // 60)} minute."
 
 
 def _age_years(birth_date: date) -> int:
@@ -197,19 +193,19 @@ def register(request: Request, payload: RegisterRequest, db: DBSession = Depends
     pending.attempts = 0
     db.commit()
 
-    if not send_sms(payload.phone, _otp_message(code)):
+    if not send_otp(payload.phone, code):
         # Nu ascundem eșecul — altfel clientul așteaptă la nesfârșit un cod
-        # care n-a plecat niciodată (ex: număr neverificat pe un cont Twilio
-        # trial, sau providerul e picat). Rândul PendingRegistration rămâne —
+        # care n-a plecat niciodată (ex: numărul nu are WhatsApp, template-ul
+        # nu e încă aprobat, sau Meta e picat). Rândul PendingRegistration rămâne —
         # /register/resend sau un nou /register pot încerca din nou fără să
         # retasteze totul.
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Nu am putut trimite codul prin SMS la acest număr. Verifică numărul sau încearcă din nou în "
+            detail="Nu am putut trimite codul pe WhatsApp la acest număr. Verifică numărul sau încearcă din nou în "
             "câteva minute — dacă problema persistă, sună la recepție.",
         )
 
-    return {"message": "Ți-am trimis un cod prin SMS la numărul indicat.", "phone": payload.phone}
+    return {"message": "Ți-am trimis un cod pe WhatsApp la numărul indicat.", "phone": payload.phone}
 
 
 @router.post("/register/verify")
@@ -217,7 +213,7 @@ def register(request: Request, payload: RegisterRequest, db: DBSession = Depends
 def verify_registration(
     request: Request, payload: VerifyRegistrationRequest, response: Response, db: DBSession = Depends(get_db)
 ) -> MeResponse:
-    """Confirmă codul SMS și creează contul, deja ACTIV — verificarea
+    """Confirmă codul primit și creează contul, deja ACTIV — verificarea
     telefonului e ce înlocuiește aprobarea manuală de recepție (vezi
     comentariul de la OTP_TTL mai sus)."""
     phone = payload.phone.strip()
@@ -308,10 +304,10 @@ def resend_registration_code(request: Request, payload: ResendCodeRequest, db: D
     pending.attempts = 0
     db.commit()
 
-    if not send_sms(pending.phone, _otp_message(code)):
+    if not send_otp(pending.phone, code):
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Nu am putut retrimite codul prin SMS. Încearcă din nou în câteva minute — dacă problema "
+            detail="Nu am putut retrimite codul pe WhatsApp. Încearcă din nou în câteva minute — dacă problema "
             "persistă, sună la recepție.",
         )
     return {"message": "Cod retrimis."}

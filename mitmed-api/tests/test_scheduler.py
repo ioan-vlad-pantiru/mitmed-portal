@@ -21,19 +21,19 @@ def _make_appointment(db_session, *, client, therapy, starts_at, status=Appointm
     return appointment
 
 
-def _capture_sms(monkeypatch):
+def _capture_sent(monkeypatch):
     sent: list[tuple[str, str]] = []
 
-    def fake_send_sms(to_phone: str, message: str) -> bool:
-        sent.append((to_phone, message))
+    def fake_send_reminder(to_phone: str, *, when_label: str, **_kwargs) -> bool:
+        sent.append((to_phone, when_label))
         return True
 
-    monkeypatch.setattr("app.scheduler.send_sms", fake_send_sms)
+    monkeypatch.setattr("app.scheduler.send_appointment_reminder", fake_send_reminder)
     return sent
 
 
 def test_sends_day_before_reminder_within_window(db_session, make_client_user, make_therapy, monkeypatch):
-    sent = _capture_sms(monkeypatch)
+    sent = _capture_sent(monkeypatch)
     _, client = make_client_user(email="c@example.com")
     client.phone = "0722000111"
     db_session.commit()
@@ -52,7 +52,7 @@ def test_sends_day_before_reminder_within_window(db_session, make_client_user, m
 
 
 def test_sends_hour_before_reminder_within_window(db_session, make_client_user, make_therapy, monkeypatch):
-    sent = _capture_sms(monkeypatch)
+    sent = _capture_sent(monkeypatch)
     _, client = make_client_user(email="c@example.com")
     client.phone = "0722000111"
     db_session.commit()
@@ -72,7 +72,7 @@ def test_sends_hour_before_reminder_within_window(db_session, make_client_user, 
 
 
 def test_does_not_resend_already_sent_reminder(db_session, make_client_user, make_therapy, monkeypatch):
-    sent = _capture_sms(monkeypatch)
+    sent = _capture_sent(monkeypatch)
     _, client = make_client_user(email="c@example.com")
     client.phone = "0722000111"
     db_session.commit()
@@ -84,11 +84,11 @@ def test_does_not_resend_already_sent_reminder(db_session, make_client_user, mak
     send_due_reminders()
     assert len(sent) == 2
     send_due_reminders()
-    assert len(sent) == 2  # niciun SMS nou la a doua rulare
+    assert len(sent) == 2  # niciun reminder nou la a doua rulare
 
 
 def test_ignores_appointments_outside_both_windows(db_session, make_client_user, make_therapy, monkeypatch):
-    sent = _capture_sms(monkeypatch)
+    sent = _capture_sent(monkeypatch)
     _, client = make_client_user(email="c@example.com")
     client.phone = "0722000111"
     db_session.commit()
@@ -106,7 +106,7 @@ def test_ignores_appointments_outside_both_windows(db_session, make_client_user,
 
 
 def test_ignores_cancelled_appointments(db_session, make_client_user, make_therapy, monkeypatch):
-    sent = _capture_sms(monkeypatch)
+    sent = _capture_sent(monkeypatch)
     _, client = make_client_user(email="c@example.com")
     client.phone = "0722000111"
     db_session.commit()
@@ -125,7 +125,7 @@ def test_ignores_cancelled_appointments(db_session, make_client_user, make_thera
 
 
 def test_marks_sent_even_without_phone_to_avoid_endless_retries(db_session, make_client_user, make_therapy, monkeypatch):
-    sent = _capture_sms(monkeypatch)
+    sent = _capture_sent(monkeypatch)
     _, client = make_client_user(email="c@example.com")
     assert client.phone is None
     therapy = make_therapy()

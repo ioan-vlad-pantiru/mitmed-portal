@@ -663,8 +663,8 @@ class ClientFidelityCard(Base):
 
 
 class PendingRegistration(Base):
-    """Auto-înregistrare în așteptarea verificării telefonului prin SMS — nu
-    devine User/ClientProfile până nu se confirmă codul primit prin SMS.
+    """Auto-înregistrare în așteptarea verificării telefonului pe WhatsApp — nu
+    devine User/ClientProfile până nu se confirmă codul primit pe WhatsApp.
     Ținută separat (nu direct pe User) ca un cod niciodată introdus să nu
     lase un cont orfan/neverificat în tabela principală. Un singur rând activ
     per telefon — o cerere nouă de cod pentru același telefon suprascrie

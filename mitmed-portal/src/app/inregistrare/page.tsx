@@ -44,7 +44,7 @@ export default function RegisterPage() {
       <div className="mb-6 flex items-start gap-2.5 rounded-lg bg-[var(--mitmed-sky)]/12 px-3.5 py-3 text-sm text-[var(--mitmed-teal-deep)]">
         <CalendarCheck2 size={18} className="mt-0.5 shrink-0" />
         <p>
-          Completezi datele o singură dată (sub 2 minute), confirmi telefonul printr-un cod SMS, iar apoi alegi
+          Completezi datele o singură dată (sub 2 minute), confirmi telefonul printr-un cod primit pe WhatsApp, iar apoi alegi
           singur/ă ziua și ora ședinței, din calendar. Fără email — telefonul e suficient.
         </p>
       </div>

@@ -1,4 +1,4 @@
-"""Job periodic: trimite remindere SMS pentru programările apropiate care nu
+"""Job periodic: trimite remindere WhatsApp pentru programările apropiate care nu
 au primit deja unul. Două remindere distincte per programare — cu o zi
 înainte și cu o oră înainte (vezi REMINDER_DAY_BEFORE_HOURS/
 REMINDER_HOUR_BEFORE_HOURS în config). Rulează la fiecare 5 minute — mult mai
@@ -16,7 +16,7 @@ from sqlalchemy.orm.attributes import InstrumentedAttribute
 from app.config import settings
 from app.database import SessionLocal
 from app.models import Appointment, AppointmentStatus, PendingRegistration
-from app.services.notifications import appointment_reminder_message, send_sms
+from app.services.notifications import send_appointment_reminder
 
 logger = logging.getLogger("mitmed.scheduler")
 
@@ -49,12 +49,15 @@ def _send_reminder_batch(
         client = appointment.client
         therapy = appointment.therapy
         if client.phone:
-            message = appointment_reminder_message(
-                client.full_name, therapy.name, appointment.starts_at.strftime("%d.%m.%Y %H:%M"), when_label
+            send_appointment_reminder(
+                client.phone,
+                client_name=client.full_name,
+                therapy_name=therapy.name,
+                starts_at_local=appointment.starts_at.strftime("%d.%m.%Y %H:%M"),
+                when_label=when_label,
             )
-            send_sms(client.phone, message)
         # Marcat ca trimis chiar și fără telefon pe fișă — altfel job-ul ar
-        # reîncerca la nesfârșit o programare care n-are cum să primească SMS.
+        # reîncerca la nesfârșit o programare care n-are cum să primească reminderul.
         setattr(appointment, sent_at_field, now)
 
     if due:
@@ -98,7 +101,7 @@ def send_due_reminders() -> None:
 def cleanup_expired_pending_registrations() -> None:
     """Șterge auto-înregistrările abandonate (cod niciodată introdus) — conțin
     date personale (nume, telefon, data nașterii, hash de parolă) care n-au
-    ce căuta în bază după ce codul SMS a expirat."""
+    ce căuta în bază după ce codul de verificare a expirat."""
     db = SessionLocal()
     try:
         deleted = (

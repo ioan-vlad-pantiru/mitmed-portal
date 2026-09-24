@@ -31,23 +31,27 @@ class Settings(BaseSettings):
     seed_admin_email: str = "sebastian@mitmed.ro"
     seed_admin_password: str = DEFAULT_SEED_ADMIN_PASSWORD
 
-    # SMS/WhatsApp remindere — no-op (doar logare) până se completează un
-    # provider. Twilio e implementat ca exemplu; poate fi înlocuit ușor cu
-    # orice gateway SMS românesc care oferă un API HTTP similar.
-    twilio_account_sid: str | None = None
-    twilio_auth_token: str | None = None
-    twilio_from_number: str | None = None
     # WhatsApp Business Cloud API (Meta) — webhook /webhooks/whatsapp.
     # `verify_token`: șirul ales de noi în App Dashboard > WhatsApp >
     # Configuration; `app_secret`: App settings > Basic (semnează POST-urile).
     whatsapp_verify_token: str | None = None
     whatsapp_app_secret: str | None = None
+    # Trimitere (remindere, coduri de înregistrare) — no-op (doar logare) până
+    # se completează. `phone_number_id`: App Dashboard > WhatsApp > API Setup;
+    # `access_token`: token permanent de System User (Business Settings), cu
+    # permisiunea whatsapp_business_messaging.
+    whatsapp_phone_number_id: str | None = None
+    whatsapp_access_token: str | None = None
+    whatsapp_graph_api_version: str = "v23.0"
+    whatsapp_template_language: str = "ro"
+    whatsapp_otp_template: str = "mitmed_otp"
+    whatsapp_reminder_template: str = "mitmed_reminder"
     # Ferestrele (ore) înainte de programare la care se trimite câte un
     # reminder — două remindere distincte per programare, nu unul singur.
     reminder_day_before_hours: int = 24
     reminder_hour_before_hours: int = 1
 
-    # Adresa cabinetului și link-ul de orientare Google Maps (trimis în SMS-uri).
+    # Adresa cabinetului și link-ul de orientare Google Maps (trimis în remindere).
     clinic_address: str = "Bulevardul Oituz 18, Parter, Ap 58, Onești"
     clinic_directions_url: str = (
         "https://www.google.com/maps/dir/?api=1&destination=Centrul+Medical+MitMed+Bulevardul+Oituz+18+Onesti"

@@ -7,7 +7,7 @@ import { resendRegistrationCode, verifyRegistrationCode } from "@/actions/auth";
 
 const RESEND_COOLDOWN_SECONDS = 30;
 
-/** Pasul 2 al înregistrării — codul de 6 cifre primit prin SMS. La succes,
+/** Pasul 2 al înregistrării — codul de 6 cifre primit pe WhatsApp. La succes,
  * backend-ul a creat deja contul (ACTIV) și a pornit sesiunea, deci trecem
  * direct în portal — niciun ecran de "așteaptă aprobarea". */
 export function VerifyCodeForm({ phone }: { phone: string }) {
@@ -55,7 +55,7 @@ export function VerifyCodeForm({ phone }: { phone: string }) {
       <div className="mb-6 flex items-start gap-2.5 rounded-lg bg-[var(--mitmed-sky)]/12 px-3.5 py-3 text-sm text-[var(--mitmed-teal-deep)]">
         <MessageSquareText size={18} className="mt-0.5 shrink-0" />
         <p>
-          Ți-am trimis un cod de 6 cifre prin SMS la <strong>{phone}</strong>. Introdu-l mai jos — imediat ești în
+          Ți-am trimis un cod de 6 cifre pe WhatsApp la <strong>{phone}</strong>. Introdu-l mai jos — imediat ești în
           contul tău, gata de programare.
         </p>
       </div>
@@ -66,7 +66,7 @@ export function VerifyCodeForm({ phone }: { phone: string }) {
       >
         <div>
           <label htmlFor="code" className="block text-sm font-medium text-zinc-700">
-            Cod din SMS
+            Cod din WhatsApp
           </label>
           <input
             id="code"
