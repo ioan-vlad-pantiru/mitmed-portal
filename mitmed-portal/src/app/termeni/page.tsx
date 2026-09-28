@@ -49,8 +49,9 @@ export default function TermsPage() {
             afișate în portal înainte de programare și plată.
           </p>
           <p className="mt-2">
-            Prețurile sunt exprimate în lei (RON) și sunt prețuri finale, cu TVA și toate taxele incluse. Nu se
-            percep costuri de livrare sau alte taxe suplimentare.
+            Prețurile sunt exprimate în lei (RON) și sunt prețuri finale. Cabinetul nu este înregistrat în
+            scopuri de TVA, deci prețurile nu conțin TVA. Nu se percep costuri de livrare sau alte taxe
+            suplimentare.
           </p>
         </section>
 
