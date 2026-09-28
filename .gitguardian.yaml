@@ -1,0 +1,5 @@
+version: 2
+secret:
+  # Test fixtures use fake accounts (e.g. admin@example.com / parola123).
+  ignored_paths:
+    - mitmed-api/tests/**
