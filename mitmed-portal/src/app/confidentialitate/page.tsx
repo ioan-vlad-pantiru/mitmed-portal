@@ -1,14 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { CLINIC_EMAIL, CLINIC_PHONE, LEGAL_ADDRESS, LEGAL_CIF, LEGAL_NAME } from "@/lib/clinic";
 
 export const metadata: Metadata = {
   title: "Politica de confidențialitate — MitMed",
 };
 
-// NOTĂ INTERNĂ (nu se afișează clientului): acest text este un DRAFT generat
-// ca punct de plecare, nu o politică de confidențialitate finală. Câmpurile
-// marcate cu [...] trebuie completate de clinică, iar textul integral trebuie
-// revizuit de un avocat/DPO înainte de a fi publicat cu date reale de clienți.
+// NOTĂ INTERNĂ (nu se afișează clientului): textul trebuie revizuit de un
+// avocat/DPO — în special lista de destinatari (secțiunea 4), care trebuie
+// ținută la zi cu furnizorii folosiți efectiv de portal.
 export default function PrivacyPolicyPage() {
   return (
     <main className="mx-auto max-w-3xl px-6 py-14 text-[var(--mitmed-ink)]">
@@ -19,16 +19,21 @@ export default function PrivacyPolicyPage() {
       <h1 className="mt-6 font-serif text-3xl font-semibold text-[var(--mitmed-teal-deep)]">
         Politica de confidențialitate
       </h1>
-      <p className="mt-2 text-sm text-zinc-500">Ultima actualizare: [completează data publicării].</p>
+      <p className="mt-2 text-sm text-zinc-500">Ultima actualizare: 28 septembrie 2026.</p>
 
       <div className="mt-8 space-y-8 text-[15px] leading-relaxed text-zinc-700">
         <section>
           <h2 className="text-lg font-semibold text-[var(--mitmed-teal-deep)]">1. Operatorul de date</h2>
           <p className="mt-2">
             Operatorul datelor cu caracter personal colectate prin acest portal este{" "}
-            <strong>Semarvion SRL</strong> (cabinetul MitMed), [completează: sediul social, nr. înregistrare
-            Registrul Comerțului, CUI]. Pentru orice întrebare privind protecția datelor, ne poți contacta la
-            [completează: adresă email dedicată, ex. gdpr@mitmed.ro] sau la sediul cabinetului.
+            <strong>{LEGAL_NAME}</strong> (cabinetul MitMed), CIF {LEGAL_CIF}, cu sediul în {LEGAL_ADDRESS}.
+          </p>
+          <p className="mt-2">
+            Pentru orice întrebare sau cerere privind protecția datelor, ne poți contacta la{" "}
+            <a href={`mailto:${CLINIC_EMAIL}`} className="font-medium text-[var(--mitmed-teal)] hover:underline">
+              {CLINIC_EMAIL}
+            </a>
+            , telefonic la {CLINIC_PHONE} sau în scris la sediul cabinetului.
           </p>
         </section>
 
@@ -79,23 +84,33 @@ export default function PrivacyPolicyPage() {
           </p>
           <ul className="mt-2 list-disc space-y-1 pl-5">
             <li>
-              <strong>PayU România</strong> — procesare plăți online (nu stocăm datele cardului tău; acestea sunt
-              introduse direct pe pagina securizată PayU).
+              <strong>PayU S.A.</strong> (Grunwaldzka 186, 60-166 Poznań, Polonia) — procesarea plăților online.
+              Îi transmitem adresa de email, suma și descrierea plății. Datele cardului sunt introduse direct pe
+              pagina securizată PayU; nu le primim și nu le stocăm.
             </li>
-            <li>[completează, dacă e cazul: furnizor SMS/WhatsApp pentru remindere, Google Calendar pentru sincronizarea agendei interne].</li>
+            <li>
+              <strong>Meta Platforms (WhatsApp Business)</strong> — trimiterea codurilor de verificare la
+              înregistrare și a reminderelor de programare. Îi transmitem numărul de telefon, numele și data/ora
+              programării.
+            </li>
+            <li>
+              <strong>Google (Google Calendar)</strong> — sincronizarea agendei interne a cabinetului. Îi
+              transmitem numele tău, terapia și data/ora programării.
+            </li>
           </ul>
           <p className="mt-2">
-            Datele nu sunt transferate în afara Spațiului Economic European. Dacă acest lucru se schimbă,
-            vom actualiza această politică și vom asigura garanțiile prevăzute de GDPR (ex. clauze contractuale
-            standard).
+            Meta și Google pot prelucra datele și în afara Spațiului Economic European (inclusiv în SUA). În
+            aceste cazuri transferul se face pe baza garanțiilor prevăzute de GDPR: Cadrul UE-SUA privind
+            confidențialitatea datelor și/sau clauzele contractuale standard aprobate de Comisia Europeană.
+            Datele medicale (chestionarul medical și fișele clinice) nu sunt transmise acestor furnizori.
           </p>
         </section>
 
         <section>
           <h2 className="text-lg font-semibold text-[var(--mitmed-teal-deep)]">5. Cât timp păstrăm datele</h2>
           <p className="mt-2">
-            Fișele medicale se păstrează conform obligațiilor legale de arhivare a documentației medicale
-            [completează: durata exactă conform reglementărilor aplicabile cabinetului]. Documentele
+            Fișele medicale se păstrează pe durata prevăzută de legislația privind arhivarea documentației
+            medicale, după care sunt șterse sau anonimizate. Documentele
             financiar-contabile se păstrează conform legislației fiscale românești (în general 10 ani). Datele de
             cont care nu fac obiectul unei obligații legale de păstrare pot fi șterse/anonimizate la cererea ta
             (vezi secțiunea 6).

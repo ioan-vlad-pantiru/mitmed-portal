@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session as DBSession, joinedload
 from app.audit import log_audit
 from app.database import get_db
 from app.deps import require_roles
-from app.models import BookingRequestStatus, PublicBookingRequest, Role, Therapy, User
+from app.models import BookingRequestStatus, PackageItem, PublicBookingRequest, Role, Therapy, TherapyPackage, User
 from app.rate_limit import limiter
 
 
@@ -42,8 +42,23 @@ class BookingRequestIn(BaseModel):
 class PublicTherapyOut(BaseModel):
     id: str
     name: str
+    description: str | None
     duration_minutes: int
+    price: str
     is_consultation: bool
+
+
+class PublicPackageItemOut(BaseModel):
+    therapy_name: str
+    sessions_included: int
+
+
+class PublicPackageOut(BaseModel):
+    id: str
+    name: str
+    list_price: str
+    price: str
+    items: list[PublicPackageItemOut]
 
 
 class BookingRequestOut(BaseModel):
@@ -58,8 +73,9 @@ class BookingRequestOut(BaseModel):
     created_at: datetime
 
 
-# Doar terapiile active, fără preț — alimentează lista „Ce serviciu te
-# interesează?" din formularul de programare fără cont de pe site.
+# Doar terapiile active, cu preț — alimentează lista „Ce serviciu te
+# interesează?" din formularul de programare fără cont și lista de tarife de pe
+# site (PayU cere ca prețurile să fie vizibile public, înainte de cont).
 @router.get("/therapies")
 def list_public_therapies(db: DBSession = Depends(get_db)) -> list[PublicTherapyOut]:
     therapies = (
@@ -70,9 +86,39 @@ def list_public_therapies(db: DBSession = Depends(get_db)) -> list[PublicTherapy
     )
     return [
         PublicTherapyOut(
-            id=t.id, name=t.name, duration_minutes=t.duration_minutes, is_consultation=t.is_consultation
+            id=t.id,
+            name=t.name,
+            description=t.description,
+            duration_minutes=t.duration_minutes,
+            price=f"{float(t.price):.2f}",
+            is_consultation=t.is_consultation,
         )
         for t in therapies
+    ]
+
+
+# Pachetele active, cu prețul final — pentru lista de tarife de pe site.
+@router.get("/packages")
+def list_public_packages(db: DBSession = Depends(get_db)) -> list[PublicPackageOut]:
+    packages = (
+        db.query(TherapyPackage)
+        .options(joinedload(TherapyPackage.items).joinedload(PackageItem.therapy))
+        .filter(TherapyPackage.active.is_(True))
+        .order_by(TherapyPackage.name.asc())
+        .all()
+    )
+    return [
+        PublicPackageOut(
+            id=p.id,
+            name=p.name,
+            list_price=f"{p.list_price:.2f}",
+            price=f"{p.price:.2f}",
+            items=[
+                PublicPackageItemOut(therapy_name=i.therapy.name, sessions_included=i.sessions_included)
+                for i in p.items
+            ],
+        )
+        for p in packages
     ]
 
 

@@ -3,14 +3,14 @@ import { publicSiteCorsHeaders } from "@/lib/publicSiteCors";
 
 const API_BASE_URL = process.env.API_BASE_URL ?? "http://localhost:8000";
 
-// Lista publică de terapii active, cu preț, pentru formularul de programare
-// fără cont și lista de tarife de pe mitmed.ro. API-ul nu e expus public în producție, așa că
+// Lista publică de pachete active, cu preț final, pentru lista de tarife de
+// pe mitmed.ro. API-ul nu e expus public în producție, așa că
 // portalul face legătura.
 export async function GET(request: Request) {
   const headers = publicSiteCorsHeaders(request.headers.get("origin"));
 
   try {
-    const res = await fetch(`${API_BASE_URL}/public/therapies`, { next: { revalidate: 300 } });
+    const res = await fetch(`${API_BASE_URL}/public/packages`, { next: { revalidate: 300 } });
     if (!res.ok) return NextResponse.json([], { status: 502, headers });
     return NextResponse.json(await res.json(), { headers });
   } catch {

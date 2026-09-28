@@ -4,7 +4,7 @@ def _request(**overrides):
     return base
 
 
-def test_public_therapies_lists_only_active_without_price(client, db_session, make_therapy):
+def test_public_therapies_lists_only_active_with_price(client, db_session, make_therapy):
     consult = make_therapy(name="Consultație", is_consultation=True)
     make_therapy(name="Dry Needling")
     inactive = make_therapy(name="Retrasă")
@@ -17,7 +17,29 @@ def test_public_therapies_lists_only_active_without_price(client, db_session, ma
     body = res.json()
     assert [t["name"] for t in body] == ["Consultație", "Dry Needling"]
     assert body[0]["id"] == consult.id
-    assert "price" not in body[0]
+    assert body[0]["price"] == f"{float(consult.price):.2f}"
+
+
+def test_public_packages_lists_only_active_with_final_price(client, db_session, make_therapy):
+    from app.models import PackageItem, TherapyPackage
+
+    therapy = make_therapy(name="Kinetoterapie")
+    active = TherapyPackage(name="Pachet 10", discount_percent=10)
+    active.items = [PackageItem(therapy_id=therapy.id, sessions_included=10)]
+    retired = TherapyPackage(name="Vechi", discount_percent=0, active=False)
+    retired.items = [PackageItem(therapy_id=therapy.id, sessions_included=5)]
+    db_session.add_all([active, retired])
+    db_session.commit()
+
+    res = client.get("/public/packages")
+
+    assert res.status_code == 200
+    body = res.json()
+    assert [p["name"] for p in body] == ["Pachet 10"]
+    list_price = float(therapy.price) * 10
+    assert body[0]["list_price"] == f"{list_price:.2f}"
+    assert body[0]["price"] == f"{round(list_price * 0.9, 2):.2f}"
+    assert body[0]["items"] == [{"therapy_name": "Kinetoterapie", "sessions_included": 10}]
 
 
 def test_guest_booking_request_is_stored(client, make_therapy):

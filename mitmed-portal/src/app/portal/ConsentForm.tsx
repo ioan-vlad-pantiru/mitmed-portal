@@ -57,7 +57,7 @@ export function ConsentForm({
       <div className="border-b border-zinc-100 bg-gradient-to-b from-zinc-50 to-white px-6 py-5 sm:px-8 sm:py-6">
         <div className="flex items-center justify-between">
           <span className="text-sm font-bold tracking-tight text-[var(--mitmed-teal)]">
-            MitMed <span className="font-normal text-zinc-400">· Semarvion SRL</span>
+            MitMed <span className="font-normal text-zinc-400">· Cabinet Individual de Fizioterapie Mitu Sebastian-Mihai</span>
           </span>
           <span className="text-xs text-zinc-400">{today}</span>
         </div>

@@ -30,7 +30,7 @@ DEFAULT_TEMPLATES: dict[str, tuple[str, str, str]] = {
     "GDPR": (
         "Acord GDPR",
         "Sunt de acord ca datele mele medicale să fie prelucrate de cabinetul MitMed "
-        "(Semarvion SRL) exclusiv în scopul recuperării medicale, conform GDPR. "
+        "(Cabinet Individual de Fizioterapie Mitu Sebastian-Mihai) exclusiv în scopul recuperării medicale, conform GDPR. "
         "Confirm că am fost informat/ă despre natura tratamentului și pot solicita "
         "oricând ștergerea datelor mele, cu excepția celor pe care legea ne obligă "
         "să le păstrăm.",
