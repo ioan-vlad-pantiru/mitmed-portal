@@ -255,21 +255,36 @@ class ConsultationSheet(Base):
     author_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"))
     sheet_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     sheet_number: Mapped[str | None] = mapped_column(String(30))
-    marital_status: Mapped[str | None] = mapped_column(String(50))
-    antecedents: Mapped[str | None] = mapped_column(String)
-    working_conditions: Mapped[str | None] = mapped_column(String)
-    blood_pressure: Mapped[str | None] = mapped_column(String(30))
-    pulse: Mapped[str | None] = mapped_column(String(30))
-    oxygen_saturation: Mapped[str | None] = mapped_column(String(30))
-    glycemia: Mapped[str | None] = mapped_column(String(30))
-    symptoms: Mapped[str | None] = mapped_column(String)
-    diagnosis: Mapped[str | None] = mapped_column(String)
-    recommendations: Mapped[str | None] = mapped_column(String)
+    # {field_id: text} — câmpurile sunt definite de admin în ConsultationSheetField.
+    field_values: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     client: Mapped[ClientProfile] = relationship(back_populates="consultation_sheets")
     author: Mapped[User] = relationship()
+
+
+class ConsultationSheetField(Base):
+    """Un câmp din fișa de consultație, configurabil de admin (Setări).
+
+    Un câmp „șters” e doar arhivat: nu mai apare pe fișele noi, dar valorile
+    deja completate pe fișele vechi rămân vizibile.
+    """
+
+    __tablename__ = "consultation_sheet_fields"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_id)
+    label: Mapped[str] = mapped_column(String(120), nullable=False)
+    # "text" = un rând scurt (ex: tensiune), "textarea" = text lung.
+    field_type: Mapped[str] = mapped_column(String(20), nullable=False, default="textarea")
+    # Câmpurile consecutive cu aceeași secțiune sunt grupate în formular.
+    section: Mapped[str | None] = mapped_column(String(120))
+    placeholder: Mapped[str | None] = mapped_column(String(120))
+    # Precompletat pe o fișă nouă din ultima fișă a pacientului (ex: antecedente).
+    carry_over: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class ClientDocument(Base):

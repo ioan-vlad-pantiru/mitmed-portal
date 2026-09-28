@@ -623,16 +623,7 @@ def _serialize_client_detail(client: ClientProfile) -> dict:
                 "id": cs.id,
                 "sheet_date": cs.sheet_date,
                 "sheet_number": cs.sheet_number,
-                "marital_status": cs.marital_status,
-                "antecedents": cs.antecedents,
-                "working_conditions": cs.working_conditions,
-                "blood_pressure": cs.blood_pressure,
-                "pulse": cs.pulse,
-                "oxygen_saturation": cs.oxygen_saturation,
-                "glycemia": cs.glycemia,
-                "symptoms": cs.symptoms,
-                "diagnosis": cs.diagnosis,
-                "recommendations": cs.recommendations,
+                "values": cs.field_values or {},
                 "author": {"email": cs.author.email} if cs.author else None,
             }
             for cs in sorted(client.consultation_sheets, key=lambda cs: cs.sheet_date, reverse=True)

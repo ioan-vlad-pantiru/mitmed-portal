@@ -6,6 +6,7 @@ import { listClientFidelityCards, listFidelityCardTypes } from "@/actions/fideli
 import { listCoupons } from "@/actions/coupons";
 import { listPackages } from "@/actions/packages";
 import { getClientConsents, listActiveConsentTemplates } from "@/actions/consents";
+import { listConsultationSheetFields } from "@/actions/consultationSheets";
 import Link from "next/link";
 import { MedicalRecordForm } from "./MedicalRecordForm";
 import { PatientDetailsForm } from "./PatientDetailsForm";
@@ -112,7 +113,7 @@ export default async function ClientDetailPage({ params, searchParams }: { param
   const { id } = await params;
   const { tab } = await searchParams;
   const activeTab = ["profil", "dosar", "plati", "programari"].includes(tab ?? "") ? tab! : "profil";
-  const [clientRaw, therapiesRaw, coupons, packagesRaw, consentTemplates, documents, hours, vacations, fidelityCards, fidelityCardTypes] =
+  const [clientRaw, therapiesRaw, coupons, packagesRaw, consentTemplates, documents, hours, vacations, fidelityCards, fidelityCardTypes, sheetFields] =
     await Promise.all([
       getClientDetail(id),
       listTherapies(),
@@ -124,6 +125,7 @@ export default async function ClientDetailPage({ params, searchParams }: { param
       listVacations(),
       listClientFidelityCards(id),
       listFidelityCardTypes(),
+      listConsultationSheetFields(true),
     ]);
 
   if (!clientRaw) notFound();
@@ -347,6 +349,7 @@ export default async function ClientDetailPage({ params, searchParams }: { param
         <ConsultationSheetsPanel
           clientId={client.id}
           sheets={client.consultation_sheets}
+          fields={sheetFields}
           patient={{
             full_name: client.full_name,
             cnp: client.cnp,

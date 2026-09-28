@@ -2,7 +2,11 @@
 
 import { useActionState, useState } from "react";
 import { ChevronRight, Plus } from "lucide-react";
-import { createConsultationSheet, updateConsultationSheet } from "@/actions/consultationSheets";
+import {
+  createConsultationSheet,
+  updateConsultationSheet,
+  type ConsultationSheetField,
+} from "@/actions/consultationSheets";
 import { Dialog } from "@/components/ui/Dialog";
 import { Input, Textarea } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -11,16 +15,7 @@ export type ConsultationSheet = {
   id: string;
   sheet_date: string;
   sheet_number: string | null;
-  marital_status: string | null;
-  antecedents: string | null;
-  working_conditions: string | null;
-  blood_pressure: string | null;
-  pulse: string | null;
-  oxygen_saturation: string | null;
-  glycemia: string | null;
-  symptoms: string | null;
-  diagnosis: string | null;
-  recommendations: string | null;
+  values: Record<string, string>;
   author: { email: string } | null;
 };
 
@@ -47,16 +42,70 @@ function Label({ htmlFor, children }: { htmlFor: string; children: React.ReactNo
   return <label htmlFor={htmlFor} className="block text-xs font-medium text-zinc-700">{children}</label>;
 }
 
+type FieldBlock =
+  | { kind: "section"; title: string; fields: ConsultationSheetField[] }
+  | { kind: "short"; fields: ConsultationSheetField[] }
+  | { kind: "long"; field: ConsultationSheetField };
+
+/** Câmpurile consecutive din aceeași secțiune merg într-un chenar; câmpurile
+ * scurte consecutive din afara secțiunilor se așază pe același rând. */
+function toBlocks(fields: ConsultationSheetField[]): FieldBlock[] {
+  const blocks: FieldBlock[] = [];
+  for (const f of fields) {
+    const last = blocks[blocks.length - 1];
+    if (f.section) {
+      if (last?.kind === "section" && last.title === f.section) last.fields.push(f);
+      else blocks.push({ kind: "section", title: f.section, fields: [f] });
+    } else if (f.field_type === "text") {
+      if (last?.kind === "short") last.fields.push(f);
+      else blocks.push({ kind: "short", fields: [f] });
+    } else {
+      blocks.push({ kind: "long", field: f });
+    }
+  }
+  return blocks;
+}
+
+function FieldInput({ field, value }: { field: ConsultationSheetField; value: string }) {
+  const id = `field-${field.id}`;
+  const label = field.archived ? `${field.label} (câmp șters)` : field.label;
+  const common = {
+    id,
+    name: `field:${field.id}`,
+    defaultValue: value,
+    placeholder: field.placeholder ?? undefined,
+    className: "mt-1",
+  };
+  return (
+    <div>
+      <Label htmlFor={id}>{label}</Label>
+      {field.field_type === "text" ? <Input {...common} /> : <Textarea {...common} rows={field.section ? 2 : 3} />}
+    </div>
+  );
+}
+
+function FieldGrid({ fields, values, wide }: { fields: ConsultationSheetField[]; values: Record<string, string>; wide?: boolean }) {
+  return (
+    <div className={`grid gap-3 ${wide ? "grid-cols-2 sm:grid-cols-4" : "sm:grid-cols-3"}`}>
+      {fields.map((f) => (
+        <FieldInput key={f.id} field={f} value={values[f.id] ?? ""} />
+      ))}
+    </div>
+  );
+}
+
 function SheetForm({
   clientId,
   sheet,
+  fields,
   defaults,
   patient,
   onSaved,
 }: {
   clientId: string;
   sheet: ConsultationSheet | null;
-  defaults: Partial<ConsultationSheet>;
+  fields: ConsultationSheetField[];
+  defaults: Record<string, string>;
   patient: PatientHeader;
   onSaved: () => void;
 }) {
@@ -68,8 +117,10 @@ function SheetForm({
     return result;
   };
   const [state, action, pending] = useActionState(save, undefined);
-  const v = sheet ?? defaults;
+  const values = sheet?.values ?? defaults;
   const today = new Date().toISOString().slice(0, 10);
+  // Câmpurile șterse apar doar pe fișele unde au deja o valoare.
+  const shown = fields.filter((f) => !f.archived || (sheet && sheet.values[f.id]));
 
   return (
     <form action={action} className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
@@ -89,57 +140,22 @@ function SheetForm({
         </div>
         <div>
           <Label htmlFor="sheetNumber">Nr. fișă</Label>
-          <Input id="sheetNumber" name="sheetNumber" defaultValue={v.sheet_number ?? ""} className="mt-1" />
-        </div>
-        <div>
-          <Label htmlFor="maritalStatus">Starea civilă</Label>
-          <Input id="maritalStatus" name="maritalStatus" defaultValue={v.marital_status ?? ""} className="mt-1" />
+          <Input id="sheetNumber" name="sheetNumber" defaultValue={sheet?.sheet_number ?? ""} className="mt-1" />
         </div>
       </div>
 
-      <div>
-        <Label htmlFor="antecedents">Antecedente</Label>
-        <Textarea id="antecedents" name="antecedents" rows={2} defaultValue={v.antecedents ?? ""} className="mt-1" />
-      </div>
-      <div>
-        <Label htmlFor="workingConditions">Condiții de muncă</Label>
-        <Textarea id="workingConditions" name="workingConditions" rows={2} defaultValue={v.working_conditions ?? ""} className="mt-1" />
-      </div>
-
-      <fieldset className="rounded-lg border border-zinc-100 p-3">
-        <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-zinc-500">Consultații / Investigații / Evaluări</legend>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <div>
-            <Label htmlFor="bloodPressure">Tensiune arterială</Label>
-            <Input id="bloodPressure" name="bloodPressure" defaultValue={sheet?.blood_pressure ?? ""} placeholder="ex: 120/80" className="mt-1" />
-          </div>
-          <div>
-            <Label htmlFor="pulse">Puls</Label>
-            <Input id="pulse" name="pulse" defaultValue={sheet?.pulse ?? ""} placeholder="bătăi/min" className="mt-1" />
-          </div>
-          <div>
-            <Label htmlFor="oxygenSaturation">Saturație O2</Label>
-            <Input id="oxygenSaturation" name="oxygenSaturation" defaultValue={sheet?.oxygen_saturation ?? ""} placeholder="%" className="mt-1" />
-          </div>
-          <div>
-            <Label htmlFor="glycemia">Glicemie</Label>
-            <Input id="glycemia" name="glycemia" defaultValue={sheet?.glycemia ?? ""} placeholder="mg/dl" className="mt-1" />
-          </div>
-        </div>
-      </fieldset>
-
-      <div>
-        <Label htmlFor="symptoms">Semne și simptome</Label>
-        <Textarea id="symptoms" name="symptoms" rows={3} defaultValue={sheet?.symptoms ?? ""} className="mt-1" />
-      </div>
-      <div>
-        <Label htmlFor="diagnosis">Diagnostic</Label>
-        <Textarea id="diagnosis" name="diagnosis" rows={2} defaultValue={sheet?.diagnosis ?? ""} className="mt-1" />
-      </div>
-      <div>
-        <Label htmlFor="recommendations">Recomandări</Label>
-        <Textarea id="recommendations" name="recommendations" rows={3} defaultValue={sheet?.recommendations ?? ""} className="mt-1" />
-      </div>
+      {toBlocks(shown).map((block, i) => {
+        if (block.kind === "section") {
+          return (
+            <fieldset key={i} className="rounded-lg border border-zinc-100 p-3">
+              <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-zinc-500">{block.title}</legend>
+              <FieldGrid fields={block.fields} values={values} wide />
+            </fieldset>
+          );
+        }
+        if (block.kind === "short") return <FieldGrid key={i} fields={block.fields} values={values} />;
+        return <FieldInput key={i} field={block.field} value={values[block.field.id] ?? ""} />;
+      })}
 
       <div className="flex flex-wrap items-center gap-3">
         <Button type="submit" disabled={pending}>{pending ? "Se salvează…" : "Salvează fișa"}</Button>
@@ -149,32 +165,38 @@ function SheetForm({
   );
 }
 
-const SUMMARY_FIELDS: [keyof ConsultationSheet, string][] = [
-  ["antecedents", "Antecedente"],
-  ["working_conditions", "Condiții de muncă"],
-  ["symptoms", "Semne și simptome"],
-  ["diagnosis", "Diagnostic"],
-  ["recommendations", "Recomandări"],
-];
+function sheetSummary(sheet: ConsultationSheet, fields: ConsultationSheetField[]): string {
+  const short = fields
+    .filter((f) => f.field_type === "text" && sheet.values[f.id])
+    .map((f) => `${f.label} ${sheet.values[f.id]}`);
+  if (short.length) return short.join(" · ");
+  return fields.map((f) => sheet.values[f.id]).find(Boolean) ?? "Fișă necompletată";
+}
 
 /** Fișele de consultații și evaluări medicale ale pacientului (prima vizită și
  * reconsult), cu formularul cabinetului pentru creare și editare. */
 export function ConsultationSheetsPanel({
   clientId,
   sheets,
+  fields,
   patient,
 }: {
   clientId: string;
   sheets: ConsultationSheet[];
+  /** Toate câmpurile, inclusiv cele șterse (pentru fișele vechi). */
+  fields: ConsultationSheetField[];
   patient: PatientHeader;
 }) {
   // undefined = închis, null = fișă nouă, string = id-ul fișei editate.
   const [editing, setEditing] = useState<string | null | undefined>(undefined);
   const editedSheet = typeof editing === "string" ? sheets.find((s) => s.id === editing) ?? null : null;
   const latest = sheets[0];
-  const defaults: Partial<ConsultationSheet> = latest
-    ? { marital_status: latest.marital_status, antecedents: latest.antecedents, working_conditions: latest.working_conditions }
-    : {};
+  const defaults: Record<string, string> = {};
+  if (latest) {
+    for (const f of fields) {
+      if (f.carry_over && !f.archived && latest.values[f.id]) defaults[f.id] = latest.values[f.id];
+    }
+  }
 
   return (
     <section className="mt-3">
@@ -200,15 +222,9 @@ export function ConsultationSheetsPanel({
                 <p className="text-sm font-medium text-zinc-900">
                   {new Date(s.sheet_date).toLocaleDateString("ro-RO")}
                   {s.sheet_number ? ` · Nr. ${s.sheet_number}` : ""}
-                  {s.diagnosis ? ` · ${s.diagnosis}` : ""}
                 </p>
                 <p className="truncate text-xs text-zinc-500">
-                  {[
-                    s.blood_pressure && `TA ${s.blood_pressure}`,
-                    s.pulse && `Puls ${s.pulse}`,
-                    s.oxygen_saturation && `SpO2 ${s.oxygen_saturation}`,
-                    s.glycemia && `Glicemie ${s.glycemia}`,
-                  ].filter(Boolean).join(" · ") || SUMMARY_FIELDS.map(([k]) => s[k]).find(Boolean)?.toString() || "Fișă necompletată"}
+                  {sheetSummary(s, fields)}
                 </p>
               </div>
               <ChevronRight size={16} className="shrink-0 text-zinc-300" />
@@ -229,6 +245,7 @@ export function ConsultationSheetsPanel({
             key={editing ?? "new"}
             clientId={clientId}
             sheet={editedSheet}
+            fields={fields}
             defaults={defaults}
             patient={patient}
             onSaved={() => setEditing(undefined)}
