@@ -20,6 +20,7 @@ import { PaymentForm } from "./PaymentForm";
 import { AppointmentForm } from "./AppointmentForm";
 import { CancelAppointmentButton } from "./CancelAppointmentButton";
 import { ResetPasswordButton } from "./ResetPasswordButton";
+import { EditableProfileCard } from "./EditableProfileCard";
 import { Badge } from "@/components/ui/Badge";
 import { MarkPaidControl } from "@/components/MarkPaidControl";
 import { CorrectPaymentControl } from "@/components/CorrectPaymentControl";
@@ -68,6 +69,7 @@ type ClientDetail = {
     activity_level?: string;
     primary_goal?: string;
     secondary_goal?: string;
+    interest?: string;
     communication_consent?: boolean;
   } | null;
   user: { id: string; email: string; status: string };
@@ -201,14 +203,16 @@ export default async function ClientDetailPage({ params, searchParams }: { param
       <nav className="flex overflow-x-auto border-b border-zinc-200" aria-label="Secțiuni client">{tabs.map((item) => <Link key={item.id} href={`/admin/clienti/${client.id}?tab=${item.id}`} className={`shrink-0 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === item.id ? "border-[var(--mitmed-teal)] text-[var(--mitmed-teal-deep)]" : "border-transparent text-zinc-500 hover:text-zinc-900"}`}>{item.label}</Link>)}</nav>
 
       {activeTab === "profil" && <>
-      <section className="mm-card p-4">
-        <div className="flex items-start justify-between">
+      <EditableProfileCard
+        client={{ ...client, email: client.user.email }}
+        header={
           <div>
             <h1 className="text-lg font-semibold text-zinc-900">{client.full_name}</h1>
             <p className="mt-0.5 text-xs text-zinc-400">Client din {new Date(client.created_at).toLocaleDateString("ro-RO", { day: "numeric", month: "long", year: "numeric" })}</p>
           </div>
-          <ResetPasswordButton userId={client.user.id} />
-        </div>
+        }
+        actions={<ResetPasswordButton userId={client.user.id} />}
+      >
 
         <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 break-words text-sm text-zinc-600 sm:grid-cols-4">
           <div>
@@ -318,13 +322,14 @@ export default async function ClientDetailPage({ params, searchParams }: { param
             <ProfileDetail label="Activitate" value={client.profile_data?.activity_level} />
             <ProfileDetail label="Obiectiv" value={client.profile_data?.primary_goal} />
             <ProfileDetail label="Obiectiv secundar" value={client.profile_data?.secondary_goal} />
+            <ProfileDetail label="Interes" value={client.profile_data?.interest} />
             <ProfileDetail
               label="Acceptă comunicare marketing"
               value={client.profile_data?.communication_consent === undefined ? undefined : client.profile_data.communication_consent ? "Da" : "Nu"}
             />
           </dl>
         </div>
-      </section>
+      </EditableProfileCard>
 
       <NotesForm clientId={client.id} notes={client.notes} />
 

@@ -591,6 +591,79 @@ def update_client_details(
     return {"ok": True}
 
 
+class ClientFullProfileRequest(BaseModel):
+    """Tot ce apare pe cardul de profil din admin, editat dintr-o dată de personal."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    full_name: str = Field(min_length=1, max_length=200)
+    email: EmailStr | None = None
+    phone: str | None = Field(default=None, max_length=30)
+    cnp: str | None = None
+    birth_date: date | None = None
+    emergency_contact_name: str | None = Field(default=None, max_length=200)
+    emergency_contact_phone: str | None = Field(default=None, max_length=30)
+    medical_history: MedicalHistoryRequest
+    profile_data: ClientProfileDataRequest
+
+
+@router.put("/clients/{client_id}/profile")
+def update_client_full_profile(
+    client_id: str,
+    payload: ClientFullProfileRequest,
+    db: DBSession = Depends(get_db),
+    actor: User = Depends(require_roles(Role.ADMIN, Role.RECEPTIE)),
+) -> dict:
+    client = db.get(ClientProfile, client_id)
+    if not client:
+        raise HTTPException(status_code=404, detail="Client inexistent.")
+    cnp = (payload.cnp or "").strip() or None
+    if cnp and not _is_valid_cnp(cnp):
+        raise HTTPException(status_code=422, detail="CNP invalid — verifică cele 13 cifre.")
+
+    # Emailul și telefonul sunt identificatori de autentificare — nu pot
+    # coincide cu ale altui cont.
+    email = payload.email.lower() if payload.email else None
+    if email and db.query(User).filter(User.email == email, User.id != client.user_id).first():
+        raise HTTPException(status_code=409, detail="Există deja un cont cu acest email.")
+    phone = (payload.phone or "").strip() or None
+    if phone and db.query(ClientProfile).filter(ClientProfile.phone == phone, ClientProfile.id != client.id).first():
+        raise HTTPException(status_code=409, detail="Există deja un cont cu acest număr de telefon.")
+
+    def clean(value: str | None) -> str | None:
+        return (value or "").strip() or None
+
+    client.user.email = email
+    client.full_name = payload.full_name.strip()
+    client.phone = phone
+    client.cnp = cnp
+    client.birth_date = (
+        datetime.combine(payload.birth_date, time.min, tzinfo=timezone.utc) if payload.birth_date else None
+    )
+    client.emergency_contact_name = clean(payload.emergency_contact_name)
+    client.emergency_contact_phone = clean(payload.emergency_contact_phone)
+
+    medical_history = {k: v for k, v in payload.medical_history.model_dump().items() if clean(v)}
+    client.medical_history = medical_history or None
+
+    profile_data = {
+        k: (v.strip() if isinstance(v, str) else v)
+        for k, v in payload.profile_data.model_dump(exclude={"birth_date"}).items()
+        if v is not None and (not isinstance(v, str) or v.strip())
+    }
+    # Un profil pe care clientul nu l-a completat niciodată rămâne `null`
+    # (portalul îl invită să-l completeze) dacă personalul n-a adăugat nimic.
+    has_answers = any(profile_data.values())
+    if client.profile_data is not None or has_answers:
+        client.profile_data = profile_data
+    db.commit()
+
+    log_audit(
+        db, actor_id=actor.id, action="client.update_full_profile", target_type="ClientProfile", target_id=client_id
+    )
+    return {"ok": True}
+
+
 @router.get("/dashboard/stats")
 def get_dashboard_stats(
     db: DBSession = Depends(get_db), _user: User = Depends(require_roles(Role.ADMIN, Role.RECEPTIE))

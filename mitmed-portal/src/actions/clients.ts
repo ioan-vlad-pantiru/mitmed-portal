@@ -207,6 +207,63 @@ export async function updateClientDetails(
   return { success: true, message: "Datele pacientului au fost salvate." };
 }
 
+export type ClientProfileEditState = { message?: string; success?: boolean } | undefined;
+
+/** Editarea completă, de către personal, a cardului de profil al clientului:
+ * date de contact, chestionarul medical și profilul/preferințele. */
+export async function updateClientFullProfile(
+  clientProfileId: string,
+  _state: ClientProfileEditState,
+  formData: FormData
+): Promise<ClientProfileEditState> {
+  await requireRole(Role.ADMIN, Role.RECEPTIE);
+  const value = (name: string) => optionalValue(formData, name);
+  const fullName = value("fullName");
+  if (!fullName) return { message: "Numele nu poate fi gol." };
+  const cnp = value("cnp");
+  if (cnp && !/^\d{13}$/.test(cnp)) return { message: "CNP-ul are exact 13 cifre." };
+  try {
+    await apiPut(`/clients/${clientProfileId}/profile`, {
+      full_name: fullName,
+      email: value("email"),
+      phone: value("phone"),
+      cnp,
+      birth_date: value("birthDate"),
+      emergency_contact_name: value("emergencyContactName"),
+      emergency_contact_phone: value("emergencyContactPhone"),
+      medical_history: {
+        allergies: value("allergies"),
+        conditions: value("conditions"),
+        medications: value("medications"),
+        previous_injuries: value("previousInjuries"),
+        notes: value("medicalNotes"),
+      },
+      profile_data: {
+        gender: value("gender"),
+        city: value("city"),
+        county: value("county"),
+        address: value("address"),
+        occupation: value("occupation"),
+        occupation_category: value("occupationCategory"),
+        preferred_contact: value("preferredContact"),
+        preferred_language: value("preferredLanguage"),
+        referral_source: value("referralSource"),
+        referral_details: value("referralDetails"),
+        activity_level: value("activityLevel"),
+        primary_goal: value("primaryGoal"),
+        secondary_goal: value("secondaryGoal"),
+        interest: value("interest"),
+        communication_consent: formData.get("communicationConsent") === "on",
+      },
+    });
+  } catch (err) {
+    if (err instanceof ApiError) return { message: err.message };
+    throw err;
+  }
+  revalidatePath(`/admin/clienti/${clientProfileId}`);
+  return { success: true, message: "Profil salvat." };
+}
+
 export type MedicalHistoryFormState = { message?: string; success?: boolean } | undefined;
 export type ProfileFormState = { message?: string; success?: boolean } | undefined;
 
