@@ -34,7 +34,12 @@ export function PackageRow({ pkg, therapies }: { pkg: TherapyPackage; therapies:
           </ul>
         </td>
         <td className="px-4 py-2 text-zinc-600">{pkg.discount_percent}%</td>
-        <td className="px-4 py-2 text-zinc-600">{pkg.price} RON</td>
+        <td className="px-4 py-2 text-zinc-600">
+          {pkg.price} RON
+          {pkg.price_override !== null && (
+            <span className="block text-xs text-zinc-400">editat manual (calculat: {pkg.computed_price} RON)</span>
+          )}
+        </td>
         <td className="px-4 py-2">
           <Badge variant={pkg.active ? "success" : "neutral"}>{pkg.active ? "Da" : "Nu"}</Badge>
         </td>
@@ -89,7 +94,7 @@ export function PackageRow({ pkg, therapies }: { pkg: TherapyPackage; therapies:
             <form action={action} className="grid max-w-2xl grid-cols-2 gap-3">
               <PackageFields
                 therapies={therapies}
-                defaults={{ name: pkg.name, discountPercent: pkg.discount_percent, items: pkg.items }}
+                defaults={{ name: pkg.name, discountPercent: pkg.discount_percent, priceOverride: pkg.price_override, items: pkg.items }}
               />
               {state?.message && <p className="col-span-2 text-sm text-red-600">{state.message}</p>}
               <div className="col-span-2 flex gap-2">

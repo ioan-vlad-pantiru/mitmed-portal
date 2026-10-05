@@ -2,18 +2,34 @@
 
 import { useActionState, useState } from "react";
 import { createMedicalRecord } from "@/actions/medicalRecords";
+import type { ConsultationSheetField } from "@/actions/consultationSheets";
+import { TEMPLATE_TRATAMENT } from "@/lib/sheetTemplates";
+import { AddSheetFieldInline, SheetFieldInputs } from "@/components/SheetFields";
 import { BodyMapPicker, type BodyMapPoint } from "@/components/BodyMap";
 import { Input, Select, Textarea } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 
 type Therapy = { id: string; name: string };
 
-export function MedicalRecordForm({ clientId, therapies }: { clientId: string; therapies: Therapy[] }) {
+export function MedicalRecordForm({
+  clientId,
+  therapies,
+  extraFields,
+  isAdmin,
+}: {
+  clientId: string;
+  therapies: Therapy[];
+  /** Căsuțele fișei de tratament configurate de admin (doar cele active). */
+  extraFields: ConsultationSheetField[];
+  isAdmin: boolean;
+}) {
   const [state, action, pending] = useActionState(createMedicalRecord, undefined);
   const [bodyMap, setBodyMap] = useState<BodyMapPoint[]>([]);
 
   return (
-    <form action={action} className="mt-3 space-y-3 mm-card p-4">
+    <div className="mt-3 space-y-3 mm-card p-4">
+    <h4 className="text-sm font-semibold text-zinc-900">Ședință nouă</h4>
+    <form action={action} className="space-y-3">
       <input type="hidden" name="clientId" value={clientId} />
       <input type="hidden" name="bodyMap" value={JSON.stringify(bodyMap)} />
 
@@ -36,9 +52,11 @@ export function MedicalRecordForm({ clientId, therapies }: { clientId: string; t
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-zinc-700">Notițe ședință</label>
+        <label className="block text-xs font-medium text-zinc-700">Proceduri efectuate și desfășurarea ședinței</label>
         <Textarea name="notes" required rows={3} className="mt-1" />
       </div>
+
+      <SheetFieldInputs fields={extraFields} values={{}} editable={isAdmin} />
 
       <div>
         <label className="block text-xs font-medium text-zinc-700">Plan de tratament (opțional)</label>
@@ -55,8 +73,10 @@ export function MedicalRecordForm({ clientId, therapies }: { clientId: string; t
       {state?.message && <p className="text-sm text-red-600">{state.message}</p>}
 
       <Button type="submit" disabled={pending}>
-        {pending ? "Se salvează…" : "Adaugă intrare"}
+        {pending ? "Se salvează…" : "Adaugă ședința"}
       </Button>
     </form>
+    {isAdmin && <AddSheetFieldInline templateId={TEMPLATE_TRATAMENT} />}
+    </div>
   );
 }

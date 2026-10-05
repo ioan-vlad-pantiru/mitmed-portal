@@ -58,14 +58,14 @@ def _void_unpaid_appointment_payment(db: DBSession, appointment_id: str) -> None
         db.commit()
 
 
-def _ensure_cancellable(appointment: Appointment) -> None:
-    """Regulă unică de anulare — valabilă atât pentru client, cât și pentru
-    admin/recepție: cu minim 48h înainte de programare. Sub acest prag,
-    anularea se refuză (întâlnirea rămâne, trebuie gestionată manual —
-    telefon/reprogramare)."""
-    if appointment.status != AppointmentStatus.PROGRAMATA and appointment.status != AppointmentStatus.CONFIRMATA:
+def _ensure_cancellable(appointment: Appointment, *, enforce_notice: bool = True) -> None:
+    """Regula de anulare: cu minim 48h înainte de programare, pentru client
+    și recepție. Adminul e exceptat (`enforce_notice=False`) — un pacient
+    care anunță cu o oră înainte că nu mai vine trebuie să poată fi scos
+    din agendă sau reprogramat."""
+    if appointment.status not in BOOKABLE_STATUSES:
         raise HTTPException(status_code=422, detail="Această programare nu mai poate fi anulată.")
-    if appointment.starts_at - datetime.now(timezone.utc) < MIN_CANCEL_NOTICE:
+    if enforce_notice and appointment.starts_at - datetime.now(timezone.utc) < MIN_CANCEL_NOTICE:
         raise HTTPException(
             status_code=422,
             detail="Anularea este posibilă doar cu cel puțin 48 de ore înainte de programare.",
@@ -81,6 +81,11 @@ class StaffAppointmentIn(BaseModel):
     client_id: str
     therapy_id: str
     starts_at: datetime
+
+
+class RescheduleIn(BaseModel):
+    starts_at: datetime
+    therapy_id: str | None = None
 
 
 def _to_clinic_time(value: datetime) -> datetime:
@@ -397,7 +402,7 @@ def cancel_appointment(
     appointment = db.get(Appointment, appointment_id)
     if not appointment:
         raise HTTPException(status_code=404, detail="Programare inexistentă.")
-    _ensure_cancellable(appointment)
+    _ensure_cancellable(appointment, enforce_notice=actor.role != Role.ADMIN)
 
     appointment.status = AppointmentStatus.ANULATA
     db.commit()
@@ -406,6 +411,100 @@ def cancel_appointment(
     sync_appointment_cancelled(appointment.google_calendar_event_id)
 
     log_audit(db, actor_id=actor.id, action="appointment.cancel", target_type="Appointment", target_id=appointment_id)
+    return {"ok": True}
+
+
+@router.put("/{appointment_id}")
+def reschedule_appointment(
+    appointment_id: str,
+    payload: RescheduleIn,
+    db: DBSession = Depends(get_db),
+    actor: User = Depends(require_roles(Role.ADMIN)),
+) -> dict:
+    """Reprogramare (oră și, opțional, terapie) — doar admin, fără limita de
+    48h. Programul cabinetului se respectă la fel ca la o programare nouă."""
+    appointment = db.get(Appointment, appointment_id)
+    if not appointment:
+        raise HTTPException(status_code=404, detail="Programare inexistentă.")
+    if appointment.status not in BOOKABLE_STATUSES:
+        raise HTTPException(status_code=422, detail="Doar programările active pot fi reprogramate.")
+
+    therapy = db.get(Therapy, payload.therapy_id or appointment.therapy_id)
+    if not therapy or not therapy.active:
+        raise HTTPException(status_code=422, detail="Terapia selectată nu este disponibilă.")
+    _ensure_within_business_hours(db, starts_at=payload.starts_at, therapy=therapy)
+
+    old_event_id = appointment.google_calendar_event_id
+    previous_start = appointment.starts_at
+    appointment.starts_at = payload.starts_at
+    appointment.therapy_id = therapy.id
+    # Reminderele se retrimit pentru noua oră.
+    appointment.reminder_day_before_sent_at = None
+    appointment.reminder_hour_before_sent_at = None
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Există deja o programare pentru această terapie la ora aleasă.")
+
+    try:
+        sync_appointment_cancelled(old_event_id)
+        appointment.google_calendar_event_id = sync_appointment_created(
+            summary=f"{therapy.name} — {appointment.client.full_name}",
+            description=f"Programare MitMed pentru {appointment.client.full_name}",
+            starts_at=appointment.starts_at,
+            duration_minutes=therapy.duration_minutes,
+        )
+        db.commit()
+    except Exception:
+        logger.exception("sincronizare Google Calendar eșuată la reprogramarea %s", appointment_id)
+
+    log_audit(
+        db,
+        actor_id=actor.id,
+        action="appointment.reschedule",
+        target_type="Appointment",
+        target_id=appointment_id,
+        metadata={"from": previous_start.isoformat(), "to": appointment.starts_at.isoformat()},
+    )
+    return {"ok": True}
+
+
+@router.delete("/{appointment_id}")
+def delete_appointment(
+    appointment_id: str,
+    db: DBSession = Depends(get_db),
+    actor: User = Depends(require_roles(Role.ADMIN)),
+) -> dict:
+    """Șterge definitiv o programare (doar admin, oricând). O ședință deja
+    documentată (are notițe de consult) nu se șterge — istoricul medical
+    rămâne legat de ea."""
+    appointment = db.get(Appointment, appointment_id)
+    if not appointment:
+        raise HTTPException(status_code=404, detail="Programare inexistentă.")
+    if db.query(MedicalRecord.id).filter(MedicalRecord.appointment_id == appointment_id).first():
+        raise HTTPException(
+            status_code=409,
+            detail="Programarea are deja o fișă de tratament completată și nu poate fi ștearsă.",
+        )
+
+    _void_unpaid_appointment_payment(db, appointment_id)
+    # O plată deja încasată rămâne (se rezolvă manual), doar fără legătura la programare.
+    db.query(Payment).filter(Payment.appointment_id == appointment_id).update({Payment.appointment_id: None})
+    event_id = appointment.google_calendar_event_id
+    client_id = appointment.client_id
+    db.delete(appointment)
+    db.commit()
+    sync_appointment_cancelled(event_id)
+
+    log_audit(
+        db,
+        actor_id=actor.id,
+        action="appointment.delete",
+        target_type="Appointment",
+        target_id=appointment_id,
+        metadata={"client_id": client_id},
+    )
     return {"ok": True}
 
 

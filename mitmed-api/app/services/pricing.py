@@ -1,10 +1,17 @@
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from app.models import Coupon, Therapy
 
 
 class CouponError(Exception):
     pass
+
+
+def round_money(value: Decimal) -> Decimal:
+    """Rotunjește la bani (2 zecimale). Reducerea se rotunjește ÎNAINTE de a
+    calcula totalul, ca preț = total + reducere să rămână exact după salvarea
+    pe 2 zecimale (altfel ex. 12,345 + 87,655 devin 12,35 + 87,66)."""
+    return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 def calculate_price(therapy: Therapy, coupon: Coupon | None, therapy_id: str) -> tuple[Decimal, Decimal, Decimal]:
@@ -33,9 +40,9 @@ def calculate_price(therapy: Therapy, coupon: Coupon | None, therapy_id: str) ->
 
     value = Decimal(coupon.value)
     if coupon.type.value == "PROCENT":
-        discount_amount = base_price * value / Decimal(100)
+        discount_amount = round_money(base_price * value / Decimal(100))
     else:
-        discount_amount = value
+        discount_amount = round_money(value)
 
     if discount_amount > base_price:
         discount_amount = base_price

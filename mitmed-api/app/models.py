@@ -1,6 +1,7 @@
 import enum
 import secrets
 from datetime import date as date_, datetime, time as time_, timezone
+from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy import (
     Boolean,
@@ -232,6 +233,9 @@ class MedicalRecord(Base):
     # Diagramă corporală — listă de puncte marcate: [{"x": 0.4, "y": 0.6, "label": "..."}]
     # x/y sunt fracții (0-1) din dimensiunile siluetei, ca desenul să nu depindă de rezoluție.
     body_map: Mapped[list | None] = mapped_column(JSON)
+    # {field_id: text} — căsuțele suplimentare ale fișei de tratament, definite
+    # de admin în Setări (șablonul TEMPLATE_TRATAMENT), pe lângă câmpurile SOAP.
+    field_values: Mapped[dict | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
@@ -240,18 +244,48 @@ class MedicalRecord(Base):
     therapy: Mapped[Therapy | None] = relationship()
 
 
-class ConsultationSheet(Base):
-    """Fișa de consultații și evaluări medicale (formularul pe hârtie al cabinetului).
+# Șabloanele de sistem — id-uri fixe, create de migrare, nu pot fi șterse.
+TEMPLATE_CONSULTATIE = "consultatie"
+TEMPLATE_TRATAMENT = "tratament"
 
-    Completată la prima vizită și la reconsult (~6 luni). Datele de identitate
-    (nume, CNP, domiciliu, ocupație, telefon) rămân pe ClientProfile — fișa le
-    afișează, nu le duplică.
+
+class SheetTemplate(Base):
+    """Un tip de fișă medicală, cu câmpuri configurate de admin (Setări → Fișe medicale).
+
+    - `consultatie`: fișa de consultații și evaluări (prima vizită / reconsult).
+    - `tratament`: căsuțele suplimentare ale notițelor de ședință (MedicalRecord).
+    - `custom`: fișe construite de admin; completate per pacient ca ConsultationSheet.
+    """
+
+    __tablename__ = "sheet_templates"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_id)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False, default="custom")
+    description: Mapped[str | None] = mapped_column(String(300))
+    # Pacientul vede fișele de acest tip în portal și le poate descărca în PDF.
+    visible_to_client: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ConsultationSheet(Base):
+    """O fișă completată pentru un pacient, după un SheetTemplate — fișa de
+    consultații și evaluări medicale (formularul pe hârtie al cabinetului) sau
+    o fișă construită de admin.
+
+    Datele de identitate (nume, CNP, domiciliu, ocupație, telefon) rămân pe
+    ClientProfile — fișa le afișează, nu le duplică.
     """
 
     __tablename__ = "consultation_sheets"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_id)
     client_id: Mapped[str] = mapped_column(String, ForeignKey("client_profiles.id", ondelete="CASCADE"), index=True)
+    template_id: Mapped[str] = mapped_column(
+        String, ForeignKey("sheet_templates.id"), nullable=False, default=TEMPLATE_CONSULTATIE, index=True
+    )
     author_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"))
     sheet_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     sheet_number: Mapped[str | None] = mapped_column(String(30))
@@ -262,10 +296,11 @@ class ConsultationSheet(Base):
 
     client: Mapped[ClientProfile] = relationship(back_populates="consultation_sheets")
     author: Mapped[User] = relationship()
+    template: Mapped[SheetTemplate] = relationship()
 
 
 class ConsultationSheetField(Base):
-    """Un câmp din fișa de consultație, configurabil de admin (Setări).
+    """Un câmp dintr-un SheetTemplate, configurabil de admin (Setări).
 
     Un câmp „șters” e doar arhivat: nu mai apare pe fișele noi, dar valorile
     deja completate pe fișele vechi rămân vizibile.
@@ -274,6 +309,9 @@ class ConsultationSheetField(Base):
     __tablename__ = "consultation_sheet_fields"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_id)
+    template_id: Mapped[str] = mapped_column(
+        String, ForeignKey("sheet_templates.id"), nullable=False, default=TEMPLATE_CONSULTATIE, index=True
+    )
     label: Mapped[str] = mapped_column(String(120), nullable=False)
     # "text" = un rând scurt (ex: tensiune), "textarea" = text lung.
     field_type: Mapped[str] = mapped_column(String(20), nullable=False, default="textarea")
@@ -318,6 +356,9 @@ class TherapyPackage(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_id)
     name: Mapped[str] = mapped_column(String, nullable=False)
     discount_percent: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False, default=0)
+    # Totalul tastat de admin după aplicarea reducerii (ex. rotunjit la o sumă
+    # „frumoasă”). Gol = se folosește totalul calculat din reducere.
+    price_override: Mapped[float | None] = mapped_column(Numeric(10, 2))
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
@@ -330,9 +371,18 @@ class TherapyPackage(Base):
         return sum(float(i.therapy.price) * i.sessions_included for i in self.items)
 
     @property
+    def computed_price(self) -> float:
+        """Prețul de listă cu reducerea aplicată, rotunjit la cel mai apropiat
+        leu întreg (ex. -8% din 1290 = 1186,80 → 1187)."""
+        exact = Decimal(str(self.list_price)) * (1 - Decimal(str(self.discount_percent)) / 100)
+        return float(exact.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+    @property
     def price(self) -> float:
-        """Preț final, calculat automat — nu se mai tastează manual."""
-        return round(self.list_price * (1 - float(self.discount_percent) / 100), 2)
+        """Preț final: totalul tastat de admin, dacă există, altfel cel calculat."""
+        if self.price_override is not None:
+            return float(self.price_override)
+        return self.computed_price
 
 
 class PackageItem(Base):

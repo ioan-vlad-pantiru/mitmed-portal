@@ -63,7 +63,7 @@ export function SheetFieldRow({ field, isFirst, isLast }: { field: ConsultationS
       </div>
       {editing && (
         <div className="mt-3 border-t border-zinc-100 pt-3">
-          <SheetFieldForm field={field} onDone={() => setEditing(false)} />
+          <SheetFieldForm templateId={field.template_id} field={field} onDone={() => setEditing(false)} />
         </div>
       )}
     </div>

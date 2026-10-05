@@ -11,10 +11,13 @@ export function CancelAppointmentButton({
   appointmentId,
   clientId,
   startsAt,
+  isAdmin = false,
 }: {
   appointmentId: string;
   clientId: string;
   startsAt: string;
+  /** Adminul poate anula oricând, inclusiv sub 48h. */
+  isAdmin?: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const toast = useToast();
@@ -27,7 +30,7 @@ export function CancelAppointmentButton({
   // ca sursă de adevăr. Aici doar evităm un click care oricum ar eșua.
   const tooLateToCancel = new Date(startsAt).getTime() - now < MIN_CANCEL_NOTICE_MS;
 
-  if (tooLateToCancel) {
+  if (tooLateToCancel && !isAdmin) {
     return <span className="text-xs text-zinc-400">Nu se mai poate anula (sub 48h)</span>;
   }
 

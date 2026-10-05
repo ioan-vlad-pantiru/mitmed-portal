@@ -70,6 +70,20 @@ def _seed_default_clinic_hours(db_session):
 
 
 @pytest.fixture(autouse=True)
+def _seed_sheet_templates(db_session):
+    """Șabloanele de sistem create de migrarea b5c6d7e8f9a0 (create_all nu
+    rulează migrările)."""
+    from app.models import TEMPLATE_CONSULTATIE, TEMPLATE_TRATAMENT, SheetTemplate
+
+    db_session.merge(SheetTemplate(id=TEMPLATE_CONSULTATIE, name="Fișă de consultație", kind="consultatie", position=0))
+    db_session.merge(
+        SheetTemplate(id=TEMPLATE_TRATAMENT, name="Fișă de tratament", kind="tratament", visible_to_client=False, position=1)
+    )
+    db_session.commit()
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _reset_rate_limiter():
     # Fără asta, testele care lovesc /auth/login sau /public/booking-requests
     # de mai multe ori s-ar bloca reciproc între ele prin limita per-IP

@@ -7,8 +7,16 @@ import { Button } from "@/components/ui/Button";
 import { useToast } from "@/components/Toast";
 
 /** Formularul unui câmp din fișă — adăugare (fără `field`) sau editare. */
-export function SheetFieldForm({ field, onDone }: { field?: ConsultationSheetField; onDone?: () => void }) {
-  const save = field ? updateSheetField.bind(null, field.id) : createSheetField;
+export function SheetFieldForm({
+  templateId,
+  field,
+  onDone,
+}: {
+  templateId: string;
+  field?: ConsultationSheetField;
+  onDone?: () => void;
+}) {
+  const save = field ? updateSheetField.bind(null, field.id) : createSheetField.bind(null, templateId);
   const [state, action, pending] = useActionState(save, undefined);
   const formRef = useRef<HTMLFormElement>(null);
   const toast = useToast();

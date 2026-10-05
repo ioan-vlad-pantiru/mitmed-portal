@@ -54,7 +54,8 @@ class Settings(BaseSettings):
     # Adresa cabinetului și link-ul de orientare Google Maps (trimis în remindere).
     clinic_address: str = "Bulevardul Oituz 18, Parter, Ap 58, Onești"
     clinic_directions_url: str = (
-        "https://www.google.com/maps/dir/?api=1&destination=Centrul+Medical+MitMed+Bulevardul+Oituz+18+Onesti"
+        # Fișa Google Business a cabinetului (cid) — pinul exact din Google Maps.
+        "https://maps.google.com/?cid=14134451368250057260"
     )
 
     # URL-ul de recenzii Google (Maps) — folosit pt. nudge-ul de recenzie din portal.

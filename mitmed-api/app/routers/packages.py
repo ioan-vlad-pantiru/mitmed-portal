@@ -20,6 +20,9 @@ class PackageOut(BaseModel):
     id: str
     name: str
     discount_percent: str
+    # Totalul calculat din reducere vs. totalul tastat de admin (dacă există).
+    computed_price: str
+    price_override: str | None
     list_price: str
     price: str
     active: bool
@@ -34,6 +37,8 @@ class PackageItemIn(BaseModel):
 class PackageIn(BaseModel):
     name: str = Field(min_length=2)
     discount_percent: float = Field(ge=0, le=100)
+    # Totalul editat manual după aplicarea reducerii; None = cel calculat.
+    price_override: float | None = Field(default=None, ge=0)
     items: list[PackageItemIn] = Field(min_length=1)
 
 
@@ -42,8 +47,10 @@ def _serialize(p: TherapyPackage) -> PackageOut:
         id=p.id,
         name=p.name,
         discount_percent=str(p.discount_percent),
+        computed_price=f"{p.computed_price:.2f}",
+        price_override=str(p.price_override) if p.price_override is not None else None,
         list_price=str(p.list_price),
-        price=str(p.price),
+        price=f"{p.price:.2f}",
         active=p.active,
         items=[
             PackageItemOut(therapy_id=i.therapy_id, therapy_name=i.therapy.name, sessions_included=i.sessions_included)
@@ -80,7 +87,9 @@ def create_package(
 ) -> PackageOut:
     _validate_items(db, payload.items)
 
-    package = TherapyPackage(name=payload.name, discount_percent=payload.discount_percent)
+    package = TherapyPackage(
+        name=payload.name, discount_percent=payload.discount_percent, price_override=payload.price_override
+    )
     package.items = [
         PackageItem(therapy_id=i.therapy_id, sessions_included=i.sessions_included) for i in payload.items
     ]
@@ -105,6 +114,7 @@ def update_package(
 
     package.name = payload.name
     package.discount_percent = payload.discount_percent
+    package.price_override = payload.price_override
     # Rescrie complet lista de terapii incluse — mai simplu și mai puțin
     # predispus la erori decât un diff linie-cu-linie pentru un pachet cu
     # câteva rânduri. Nu afectează pachetele deja cumpărate (Payment-urile

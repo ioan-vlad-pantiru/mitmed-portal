@@ -99,6 +99,12 @@ body {
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--mitmed-sky) 25%, transparent);
   }
 
+  /* Căsuțele de text lung se pot mări/micșora din colț (fișele medicale). */
+  textarea.mm-input {
+    resize: vertical;
+    min-height: 2.5rem;
+  }
+
   .mm-input:disabled {
     opacity: 0.6;
     cursor: not-allowed;

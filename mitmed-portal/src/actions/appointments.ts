@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { apiGet, apiPost, ApiError } from "@/lib/apiClient";
+import { apiDelete, apiGet, apiPost, apiPut, ApiError } from "@/lib/apiClient";
 import { requireRole, verifySession } from "@/lib/authSession";
 import { Role } from "@/lib/enums";
 
@@ -74,6 +74,43 @@ export async function cancelAppointment(appointmentId: string, clientId: string)
   await requireRole(Role.ADMIN, Role.RECEPTIE);
   try {
     await apiPost(`/appointments/${appointmentId}/cancel`);
+  } catch (err) {
+    if (err instanceof ApiError) return { ok: false, message: err.message };
+    throw err;
+  }
+  revalidatePath(`/admin/clienti/${clientId}`);
+  revalidatePath("/admin");
+  return { ok: true };
+}
+
+/** Reprogramare (doar admin, fără limita de 48h) — programul cabinetului se
+ * verifică pe backend la fel ca la o programare nouă. */
+export async function rescheduleAppointment(
+  appointmentId: string,
+  clientId: string,
+  _state: AppointmentFormState,
+  formData: FormData
+): Promise<AppointmentFormState> {
+  await requireRole(Role.ADMIN);
+  try {
+    await apiPut(`/appointments/${appointmentId}`, {
+      starts_at: String(formData.get("startsAt") ?? ""),
+      therapy_id: String(formData.get("therapyId") ?? "") || null,
+    });
+  } catch (err) {
+    if (err instanceof ApiError) return { message: err.message };
+    throw err;
+  }
+  revalidatePath(`/admin/clienti/${clientId}`);
+  revalidatePath("/admin");
+  return { success: "Programarea a fost mutată." };
+}
+
+/** Șterge definitiv o programare (doar admin, oricând). */
+export async function deleteAppointment(appointmentId: string, clientId: string): Promise<CancelResult> {
+  await requireRole(Role.ADMIN);
+  try {
+    await apiDelete(`/appointments/${appointmentId}`);
   } catch (err) {
     if (err instanceof ApiError) return { ok: false, message: err.message };
     throw err;

@@ -1,9 +1,16 @@
 "use client";
 
-import { useState } from "react";
-import { Activity, ChevronRight, ClipboardCheck, Home, MapPin, MessageSquareText, Ruler } from "lucide-react";
+import { useActionState, useEffect, useState } from "react";
+import { Activity, ChevronRight, ClipboardCheck, Download, Home, MapPin, MessageSquareText, Ruler } from "lucide-react";
+import { updateMedicalRecord } from "@/actions/medicalRecords";
+import type { ConsultationSheetField } from "@/actions/consultationSheets";
 import { Dialog } from "@/components/ui/Dialog";
+import { Input, Textarea } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
 import { BodyMapView } from "@/components/BodyMap";
+import { TEMPLATE_TRATAMENT } from "@/lib/sheetTemplates";
+import { AddSheetFieldInline, SheetFieldInputs, SheetFieldValues } from "@/components/SheetFields";
+import { useToast } from "@/components/Toast";
 
 type MedicalRecord = {
   id: string;
@@ -15,24 +22,44 @@ type MedicalRecord = {
   notes: string;
   treatment_plan: string | null;
   body_map: { x: number; y: number; label?: string }[] | null;
+  field_values: Record<string, string>;
   therapy: { name: string } | null;
   author: { email: string } | null;
 };
 
-// Fișa de consult completă e mult conținut (S/O/A + intervenții + plan + hartă
-// corporală) — nu intră util pe o linie de listă. Overview-ul arată doar
-// esențialul (dată, diagnostic/terapie, autor); click deschide totul în modal.
-export function MedicalRecordsPanel({ records }: { records: MedicalRecord[] }) {
+// Fișa de tratament = ședințele pacientului. O ședință completă e mult
+// conținut (S/O/A + intervenții + plan + hartă corporală + căsuțele adăugate
+// de admin) — overview-ul arată doar esențialul (dată, diagnostic/terapie,
+// autor); click deschide totul în modal, unde adminul îl poate și corecta.
+export function MedicalRecordsPanel({
+  clientId,
+  records,
+  extraFields,
+  isAdmin,
+}: {
+  clientId: string;
+  records: MedicalRecord[];
+  /** Căsuțele fișei de tratament, inclusiv cele șterse (pentru ședințele vechi). */
+  extraFields: ConsultationSheetField[];
+  isAdmin: boolean;
+}) {
   const [openId, setOpenId] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
   const selected = records.find((r) => r.id === openId) ?? null;
-
-  if (records.length === 0) {
-    return <p className="text-sm text-zinc-400">Nicio intrare încă.</p>;
-  }
 
   return (
     <>
-      <div className="space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-zinc-500">
+          {records.length === 0 ? "Nicio ședință încă." : `${records.length} ${records.length === 1 ? "ședință" : "ședințe"}`}
+        </p>
+        {records.length > 0 && (
+          <a href={`/admin/clienti/${clientId}/fisa-tratament`} className="mm-btn" data-variant="ghost">
+            <Download size={14} className="mr-1" />Descarcă fișa de tratament (PDF)
+          </a>
+        )}
+      </div>
+      <div className="mt-2 space-y-2">
         {records.map((r) => {
           const date = new Date(r.session_date);
           return (
@@ -72,7 +99,7 @@ export function MedicalRecordsPanel({ records }: { records: MedicalRecord[] }) {
 
       <Dialog
         open={selected !== null}
-        onOpenChange={(open) => { if (!open) setOpenId(null); }}
+        onOpenChange={(open) => { if (!open) { setOpenId(null); setEditing(false); } }}
         title={selected?.diagnosis || selected?.therapy?.name || "Ședință"}
         description={
           selected
@@ -81,12 +108,27 @@ export function MedicalRecordsPanel({ records }: { records: MedicalRecord[] }) {
         }
         size="lg"
       >
-        {selected && (
+        {selected && editing && (
+          <EditRecordForm
+            key={selected.id}
+            record={selected}
+            clientId={clientId}
+            extraFields={extraFields}
+            onDone={() => setEditing(false)}
+          />
+        )}
+        {selected && !editing && (
           <div className="max-h-[70vh] space-y-3 overflow-y-auto pr-1">
+            {isAdmin && (
+              <div className="flex justify-end">
+                <Button type="button" variant="secondary" onClick={() => setEditing(true)}>Editează ședința</Button>
+              </div>
+            )}
             <SoapField icon={MessageSquareText} label="S · Relatarea clientului" value={selected.subjective} accent="sky" />
             <SoapField icon={Ruler} label="O · Observații și măsurători" value={selected.objective} accent="teal" />
             <SoapField icon={Activity} label="A · Evaluare clinică" value={selected.assessment} accent="teal" />
             <SoapField icon={ClipboardCheck} label="Intervenții efectuate și răspuns" value={selected.notes} accent="teal" />
+            <SheetFieldValues fields={extraFields} values={selected.field_values ?? {}} />
             <SoapField icon={Home} label="P · Plan următoare" value={selected.treatment_plan} accent="highlight" />
             {selected.body_map && selected.body_map.length > 0 && (
               <div className="rounded-lg border border-zinc-100 bg-white p-3">
@@ -100,6 +142,62 @@ export function MedicalRecordsPanel({ records }: { records: MedicalRecord[] }) {
         )}
       </Dialog>
     </>
+  );
+}
+
+function EditRecordForm({
+  record,
+  clientId,
+  extraFields,
+  onDone,
+}: {
+  record: MedicalRecord;
+  clientId: string;
+  extraFields: ConsultationSheetField[];
+  onDone: () => void;
+}) {
+  const [state, action, pending] = useActionState(updateMedicalRecord.bind(null, record.id, clientId), undefined);
+  const toast = useToast();
+  const values = record.field_values ?? {};
+  const shownExtra = extraFields.filter((f) => !f.archived || values[f.id]);
+
+  useEffect(() => {
+    if (!state?.success) return;
+    toast.success("Ședința a fost actualizată.");
+    onDone();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
+
+  const area = (name: string, label: string, value: string | null, rows = 2, required = false) => (
+    <div>
+      <label htmlFor={`edit-${name}`} className="block text-xs font-medium text-zinc-700">{label}</label>
+      <Textarea id={`edit-${name}`} name={name} rows={rows} required={required} defaultValue={value ?? ""} className="mt-1" />
+    </div>
+  );
+
+  return (
+    <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
+      <form action={action} className="space-y-3">
+        <div>
+          <label htmlFor="edit-diagnosis" className="block text-xs font-medium text-zinc-700">Diagnostic</label>
+          <Input id="edit-diagnosis" name="diagnosis" defaultValue={record.diagnosis ?? ""} className="mt-1" />
+        </div>
+        {area("notes", "Proceduri / intervenții efectuate și răspuns", record.notes, 3, true)}
+        {area("subjective", "S · Relatarea clientului", record.subjective)}
+        {area("objective", "O · Observații și măsurători", record.objective)}
+        {area("assessment", "A · Evaluare clinică", record.assessment)}
+        <SheetFieldInputs fields={shownExtra} values={values} editable />
+        {area("treatmentPlan", "P · Plan următoare", record.treatment_plan)}
+        {state?.message && <p className="text-sm text-red-600">{state.message}</p>}
+        <div className="flex gap-2">
+          <Button type="submit" disabled={pending}>{pending ? "Se salvează…" : "Salvează ședința"}</Button>
+          <Button type="button" variant="ghost" onClick={onDone}>Renunță</Button>
+        </div>
+      </form>
+      <div className="border-t border-zinc-100 pt-3">
+        <AddSheetFieldInline templateId={TEMPLATE_TRATAMENT} />
+      </div>
+    </div>
   );
 }
 

@@ -13,21 +13,43 @@ export function PackageFields({
   defaults,
 }: {
   therapies: Therapy[];
-  defaults?: { name?: string; discountPercent?: string | number; items?: { therapy_id: string; sessions_included: number }[] };
+  defaults?: {
+    name?: string;
+    discountPercent?: string | number;
+    priceOverride?: string | null;
+    items?: { therapy_id: string; sessions_included: number }[];
+  };
 }) {
   const [lines, setLines] = useState<Line[]>(
     defaults?.items && defaults.items.length > 0
       ? defaults.items.map((i) => ({ therapyId: i.therapy_id, sessions: i.sessions_included }))
       : [{ therapyId: therapies[0]?.id ?? "", sessions: 1 }]
   );
-  const [discountPercent, setDiscountPercent] = useState<number>(Number(defaults?.discountPercent ?? 0));
+  // Ținut ca text: convertit la număr la fiecare tastă, „12.0” devenea 12 și
+  // nu se mai puteau scrie zecimale (ex. 12.05).
+  const [discountPercent, setDiscountPercent] = useState<string>(String(defaults?.discountPercent ?? 0));
+  // Totalul editat manual după aplicarea reducerii; null = totalul calculat.
+  const [customTotal, setCustomTotal] = useState<string | null>(
+    defaults?.priceOverride != null ? String(Number(defaults.priceOverride)) : null
+  );
 
   const therapyById = useMemo(() => new Map(therapies.map((t) => [t.id, t])), [therapies]);
   const listPrice = lines.reduce((sum, l) => sum + Number(therapyById.get(l.therapyId)?.price ?? 0) * l.sessions, 0);
-  const finalPrice = Math.round(listPrice * (1 - discountPercent / 100) * 100) / 100;
+  // Rotunjit la cel mai apropiat leu întreg — la fel ca pe server (TherapyPackage.computed_price).
+  const computedPrice = Math.round(listPrice * (1 - (Number(discountPercent) || 0) / 100));
+  const finalPrice = customTotal !== null && customTotal !== "" ? Number(customTotal) : computedPrice;
+  const effectiveDiscount = listPrice > 0 ? (1 - finalPrice / listPrice) * 100 : 0;
+
+  // Schimbarea reducerii sau a terapiilor recalculează totalul — un total
+  // editat înainte nu mai corespunde.
+  function changeDiscount(value: string) {
+    setDiscountPercent(value);
+    setCustomTotal(null);
+  }
 
   function updateLine(idx: number, patch: Partial<Line>) {
     setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
+    setCustomTotal(null);
   }
 
   function addLine() {
@@ -36,10 +58,12 @@ export function PackageFields({
     const used = new Set(lines.map((l) => l.therapyId));
     const next = therapies.find((t) => !used.has(t.id)) ?? therapies[0];
     setLines((prev) => [...prev, { therapyId: next?.id ?? "", sessions: 1 }]);
+    setCustomTotal(null);
   }
 
   function removeLine(idx: number) {
     setLines((prev) => prev.filter((_, i) => i !== idx));
+    setCustomTotal(null);
   }
 
   return (
@@ -58,7 +82,7 @@ export function PackageFields({
           max={100}
           required
           value={discountPercent}
-          onChange={(e) => setDiscountPercent(Number(e.target.value))}
+          onChange={(e) => changeDiscount(e.target.value)}
           className="mt-1"
         />
         <p className="mt-1 text-xs text-zinc-400">Se aplică peste suma prețurilor de listă ale terapiilor incluse.</p>
@@ -109,13 +133,37 @@ export function PackageFields({
         </Button>
       </div>
 
-      <div className="col-span-2 flex items-baseline justify-between rounded-md bg-zinc-50 px-3 py-2 text-sm">
-        <span className="text-zinc-500">
-          Preț de listă: <span className="mm-numeric text-zinc-700">{listPrice.toFixed(2)} RON</span>
-        </span>
-        <span className="font-semibold text-zinc-900">
-          Preț pachet: <span className="mm-numeric">{finalPrice.toFixed(2)} RON</span>
-        </span>
+      <div className="col-span-2 flex flex-wrap items-end justify-between gap-3 rounded-md bg-zinc-50 px-3 py-2 text-sm">
+        <div className="text-zinc-500">
+          <p>
+            Preț de listă: <span className="mm-numeric text-zinc-700">{listPrice.toFixed(2)} RON</span>
+          </p>
+          <p>
+            Cu reducerea aplicată: <span className="mm-numeric text-zinc-700">{computedPrice.toFixed(2)} RON</span>
+          </p>
+          {customTotal !== null && (
+            <p className="text-xs">
+              Reducere efectivă: <span className="mm-numeric">{effectiveDiscount.toFixed(2)}%</span> ·{" "}
+              <button type="button" onClick={() => setCustomTotal(null)} className="text-sky-600 hover:underline">
+                revino la totalul calculat
+              </button>
+            </p>
+          )}
+        </div>
+        <label className="block text-xs font-medium text-zinc-700">
+          Preț pachet (RON) — se poate modifica
+          <Input
+            type="number"
+            min={0}
+            step="0.01"
+            required
+            value={customTotal ?? String(computedPrice)}
+            onChange={(e) => setCustomTotal(e.target.value)}
+            className="mt-1 w-40 font-semibold"
+          />
+        </label>
+        {/* Trimis doar dacă totalul a fost editat manual. */}
+        <input type="hidden" name="priceOverride" value={customTotal ?? ""} />
       </div>
     </>
   );

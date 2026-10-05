@@ -251,7 +251,15 @@ def get_own_client_data(db: DBSession = Depends(get_db), user: User = Depends(re
         raise HTTPException(status_code=404, detail="Fișă inexistentă.")
 
     log_audit(db, actor_id=user.id, action="medical_record.read_own", target_type="ClientProfile", target_id=client.id)
-    return _serialize_client_detail(client)
+    result = _serialize_client_detail(client)
+    # Pacientul vede (și descarcă în PDF) doar tipurile de fișe marcate vizibile
+    # pentru el; conținutul complet e în PDF, aici doar lista.
+    result["consultation_sheets"] = [
+        {"id": cs.id, "sheet_date": cs.sheet_date, "sheet_number": cs.sheet_number, "template_name": cs.template.name}
+        for cs in sorted(client.consultation_sheets, key=lambda cs: cs.sheet_date, reverse=True)
+        if cs.template.visible_to_client and not cs.template.archived
+    ]
+    return result
 
 
 @router.get("/clients/me/export")
@@ -695,6 +703,7 @@ def _serialize_client_detail(client: ClientProfile) -> dict:
             {
                 "id": cs.id,
                 "sheet_date": cs.sheet_date,
+                "template_id": cs.template_id,
                 "sheet_number": cs.sheet_number,
                 "values": cs.field_values or {},
                 "author": {"email": cs.author.email} if cs.author else None,
@@ -712,6 +721,7 @@ def _serialize_client_detail(client: ClientProfile) -> dict:
                 "notes": r.notes,
                 "treatment_plan": r.treatment_plan,
                 "body_map": r.body_map,
+                "field_values": r.field_values or {},
                 "therapy": {"name": r.therapy.name} if r.therapy else None,
                 "author": {"email": r.author.email} if r.author else None,
             }

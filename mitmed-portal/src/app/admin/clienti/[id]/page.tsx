@@ -6,11 +6,12 @@ import { listClientFidelityCards, listFidelityCardTypes } from "@/actions/fideli
 import { listCoupons } from "@/actions/coupons";
 import { listPackages } from "@/actions/packages";
 import { getClientConsents, listActiveConsentTemplates } from "@/actions/consents";
-import { listConsultationSheetFields } from "@/actions/consultationSheets";
+import { listConsultationSheetFields, listSheetTemplates } from "@/actions/consultationSheets";
+import { TEMPLATE_CONSULTATIE, TEMPLATE_TRATAMENT } from "@/lib/sheetTemplates";
 import Link from "next/link";
 import { MedicalRecordForm } from "./MedicalRecordForm";
 import { PatientDetailsForm } from "./PatientDetailsForm";
-import { ConsultationSheetsPanel, type ConsultationSheet } from "./ConsultationSheetsPanel";
+import { SheetsPanel, type ConsultationSheet } from "./SheetsPanel";
 import { NotesForm } from "./NotesForm";
 import { UnlockedTherapiesForm } from "./UnlockedTherapiesForm";
 import { FidelityCardsPanel } from "./FidelityCardsPanel";
@@ -19,6 +20,7 @@ import { PatientDocumentsPanel } from "./PatientDocumentsPanel";
 import { PaymentForm } from "./PaymentForm";
 import { AppointmentForm } from "./AppointmentForm";
 import { CancelAppointmentButton } from "./CancelAppointmentButton";
+import { AppointmentAdminControls } from "./AppointmentAdminControls";
 import { ResetPasswordButton } from "./ResetPasswordButton";
 import { EditableProfileCard } from "./EditableProfileCard";
 import { Badge } from "@/components/ui/Badge";
@@ -83,6 +85,7 @@ type ClientDetail = {
     notes: string;
     treatment_plan: string | null;
     body_map: { x: number; y: number; label?: string }[] | null;
+    field_values: Record<string, string>;
     therapy: { name: string } | null;
     author: { email: string } | null;
   }[];
@@ -115,7 +118,7 @@ export default async function ClientDetailPage({ params, searchParams }: { param
   const { id } = await params;
   const { tab } = await searchParams;
   const activeTab = ["profil", "dosar", "plati", "programari"].includes(tab ?? "") ? tab! : "profil";
-  const [clientRaw, therapiesRaw, coupons, packagesRaw, consentTemplates, documents, hours, vacations, fidelityCards, fidelityCardTypes, sheetFields] =
+  const [clientRaw, therapiesRaw, coupons, packagesRaw, consentTemplates, documents, hours, vacations, fidelityCards, fidelityCardTypes, sheetFields, sheetTemplates] =
     await Promise.all([
       getClientDetail(id),
       listTherapies(),
@@ -128,6 +131,7 @@ export default async function ClientDetailPage({ params, searchParams }: { param
       listClientFidelityCards(id),
       listFidelityCardTypes(),
       listConsultationSheetFields(true),
+      listSheetTemplates(),
     ]);
 
   if (!clientRaw) notFound();
@@ -161,6 +165,21 @@ export default async function ClientDetailPage({ params, searchParams }: { param
     .filter((t) => t.active)
     .map((t) => ({ id: t.id, name: t.name, price: t.price, duration_minutes: t.duration_minutes }));
   const activePackages = packagesRaw.filter((p) => p.active);
+  const patientHeader = {
+    full_name: client.full_name,
+    cnp: client.cnp,
+    birth_date: client.birth_date,
+    phone: client.phone,
+    gender: client.profile_data?.gender,
+    address: client.profile_data?.address,
+    occupation: client.profile_data?.occupation,
+  };
+  const fieldsOf = (templateId: string) => sheetFields.filter((f) => f.template_id === templateId);
+  const sheetsOf = (templateId: string) => client.consultation_sheets.filter((s) => s.template_id === templateId);
+  const consultationTemplate = sheetTemplates.find((t) => t.id === TEMPLATE_CONSULTATIE);
+  const treatmentTemplate = sheetTemplates.find((t) => t.id === TEMPLATE_TRATAMENT);
+  const customTemplates = sheetTemplates.filter((t) => t.kind === "custom");
+  const treatmentFields = fieldsOf(TEMPLATE_TRATAMENT);
   const tabs = [
     { id: "profil", label: "Profil" }, { id: "dosar", label: "Dosar medical" },
     { id: "plati", label: "Plăți" }, { id: "programari", label: "Programări" },
@@ -348,36 +367,83 @@ export default async function ClientDetailPage({ params, searchParams }: { param
       </section>
       </>}
 
-      {activeTab === "dosar" && <section>
-        <h2 className="text-base font-semibold text-zinc-900">Fișă medicală</h2>
+      {activeTab === "dosar" && <section className="space-y-10">
         <PatientDetailsForm clientId={client.id} client={client} />
-        <ConsultationSheetsPanel
-          clientId={client.id}
-          sheets={client.consultation_sheets}
-          fields={sheetFields}
-          patient={{
-            full_name: client.full_name,
-            cnp: client.cnp,
-            birth_date: client.birth_date,
-            phone: client.phone,
-            gender: client.profile_data?.gender,
-            address: client.profile_data?.address,
-            occupation: client.profile_data?.occupation,
-          }}
-        />
-        <UnlockedTherapiesForm
-          clientId={client.id}
-          therapies={therapiesRaw.map((t) => ({ id: t.id, name: t.name, is_consultation: t.is_consultation }))}
-          unlockedTherapyIds={client.unlocked_therapy_ids}
-        />
-        <FidelityCardsPanel clientId={client.id} cards={fidelityCards} cardTypes={fidelityCardTypes} />
-        <div className="mt-3">
-          <MedicalRecordsPanel records={client.medical_records} />
-        </div>
-        <MedicalRecordForm clientId={client.id} therapies={therapies} />
 
-        <h2 className="mt-8 text-base font-semibold text-zinc-900">Documente</h2>
-        <PatientDocumentsPanel clientId={client.id} documents={documents} />
+        {/* Cele două fișe principale stau separat: consultația (prima vizită /
+            reconsult) și tratamentul (fiecare ședință). */}
+        <div>
+          <h2 className="text-base font-semibold text-zinc-900">Fișa de consultație</h2>
+          <p className="text-sm text-zinc-500">Completată la prima vizită sau la revenire după o perioadă.</p>
+          <div className="mt-3">
+            {consultationTemplate && (
+              <SheetsPanel
+                clientId={client.id}
+                template={consultationTemplate}
+                sheets={sheetsOf(TEMPLATE_CONSULTATIE)}
+                fields={fieldsOf(TEMPLATE_CONSULTATIE)}
+                patient={patientHeader}
+                isAdmin={isAdmin}
+              />
+            )}
+          </div>
+        </div>
+
+        <div>
+          <h2 className="text-base font-semibold text-zinc-900">{treatmentTemplate?.name ?? "Fișa de tratament"}</h2>
+          <p className="text-sm text-zinc-500">Completată la fiecare ședință: procedurile efectuate, cum a decurs ședința, semnele și simptomele întâlnite.</p>
+          <div className="mt-3 mm-card p-4">
+            <MedicalRecordsPanel
+              clientId={client.id}
+              records={client.medical_records}
+              extraFields={treatmentFields}
+              isAdmin={isAdmin}
+            />
+          </div>
+          <MedicalRecordForm
+            clientId={client.id}
+            therapies={therapies}
+            extraFields={treatmentFields.filter((f) => !f.archived)}
+            isAdmin={isAdmin}
+          />
+        </div>
+
+        <div>
+          <h2 className="text-base font-semibold text-zinc-900">Alte fișe medicale</h2>
+          <p className="text-sm text-zinc-500">
+            Fișe construite din Setări → Fișe medicale.
+            {isAdmin && <> <Link href="/admin/fisa-consultatie?t=nou" className="text-sky-600 hover:underline">Construiește o fișă nouă</Link></>}
+          </p>
+          <div className="mt-3 space-y-3">
+            {customTemplates.map((t) => (
+              <SheetsPanel
+                key={t.id}
+                clientId={client.id}
+                template={t}
+                sheets={sheetsOf(t.id)}
+                fields={fieldsOf(t.id)}
+                patient={patientHeader}
+                isAdmin={isAdmin}
+              />
+            ))}
+            {customTemplates.length === 0 && <p className="text-sm text-zinc-400">Nicio altă fișă definită încă.</p>}
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <h2 className="text-base font-semibold text-zinc-900">Terapii și fidelitate</h2>
+          <UnlockedTherapiesForm
+            clientId={client.id}
+            therapies={therapiesRaw.map((t) => ({ id: t.id, name: t.name, is_consultation: t.is_consultation }))}
+            unlockedTherapyIds={client.unlocked_therapy_ids}
+          />
+          <FidelityCardsPanel clientId={client.id} cards={fidelityCards} cardTypes={fidelityCardTypes} />
+        </div>
+
+        <div>
+          <h2 className="text-base font-semibold text-zinc-900">Documente</h2>
+          <PatientDocumentsPanel clientId={client.id} documents={documents} />
+        </div>
       </section>}
 
       {activeTab === "plati" && <section>
@@ -530,12 +596,21 @@ export default async function ClientDetailPage({ params, searchParams }: { param
                 <span>
                   {new Date(a.starts_at).toLocaleString("ro-RO")} · {a.therapy.name} · {a.status}
                 </span>
-                {a.status === "PROGRAMATA" && (
-                  <span className="flex items-center gap-3">
+                {(a.status === "PROGRAMATA" || a.status === "CONFIRMATA") && (
+                  <span className="flex flex-wrap items-center justify-end gap-3">
                     <Link href={`/admin/consult/${a.id}`} className="text-sm text-sky-600 hover:underline">
                       Deschide consult
                     </Link>
-                    <CancelAppointmentButton appointmentId={a.id} clientId={client.id} startsAt={a.starts_at} />
+                    {isAdmin && (
+                      <AppointmentAdminControls
+                        appointmentId={a.id}
+                        clientId={client.id}
+                        startsAt={a.starts_at}
+                        therapyId={a.therapy_id}
+                        therapies={therapies}
+                      />
+                    )}
+                    <CancelAppointmentButton appointmentId={a.id} clientId={client.id} startsAt={a.starts_at} isAdmin={isAdmin} />
                   </span>
                 )}
               </div>

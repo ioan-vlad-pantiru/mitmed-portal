@@ -2,14 +2,19 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getAppointmentForConsult, listAppointmentsInRange } from "@/actions/appointments";
 import { listActiveConsentTemplates } from "@/actions/consents";
+import { listConsultationSheetFields } from "@/actions/consultationSheets";
+import { TEMPLATE_TRATAMENT } from "@/lib/sheetTemplates";
+import { getCurrentUser } from "@/lib/authSession";
 import { ConsultForm } from "./ConsultForm";
 import { IconClose } from "@/components/icons";
 
 export default async function ConsultPage({ params }: { params: Promise<{ appointmentId: string }> }) {
   const { appointmentId } = await params;
-  const [data, consentTemplates] = await Promise.all([
+  const [data, consentTemplates, treatmentFields, user] = await Promise.all([
     getAppointmentForConsult(appointmentId),
     listActiveConsentTemplates(),
+    listConsultationSheetFields(false, TEMPLATE_TRATAMENT),
+    getCurrentUser(),
   ]);
   if (!data) notFound();
 
@@ -181,6 +186,8 @@ export default async function ConsultPage({ params }: { params: Promise<{ appoin
           therapyId={appointment.therapy.id}
           prevAppointmentId={prevAppointmentId}
           nextAppointmentId={nextAppointmentId}
+          extraFields={treatmentFields}
+          isAdmin={user?.role === "ADMIN"}
         />
       </div>
     </div>

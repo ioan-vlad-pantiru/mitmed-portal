@@ -11,6 +11,8 @@ export type TherapyPackage = {
   id: string;
   name: string;
   discount_percent: string;
+  computed_price: string;
+  price_override: string | null;
   list_price: string;
   price: string;
   active: boolean;
@@ -34,6 +36,9 @@ function packagePayloadFrom(formData: FormData) {
   return {
     name: String(formData.get("name") ?? ""),
     discount_percent: Number(formData.get("discountPercent") ?? 0),
+    price_override: String(formData.get("priceOverride") ?? "").trim()
+      ? Number(formData.get("priceOverride"))
+      : null,
     items,
   };
 }

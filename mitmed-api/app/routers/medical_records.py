@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session as DBSession
 from app.audit import log_audit
 from app.database import get_db
 from app.deps import require_roles
-from app.models import Appointment, AppointmentStatus, MedicalRecord, Role, User
+from app.models import TEMPLATE_TRATAMENT, Appointment, AppointmentStatus, MedicalRecord, Role, User
+from app.routers.consultation_sheets import clean_field_values, merge_field_values
 from app.services.packages import consume_package_session
 
 router = APIRouter(prefix="/medical-records", tags=["medical-records"])
@@ -31,6 +32,8 @@ class MedicalRecordIn(BaseModel):
     treatment_plan: str | None = None
     session_date: datetime | None = None
     body_map: list[BodyMapPoint] | None = None
+    # Căsuțele fișei de tratament configurate de admin: {field_id: text}.
+    field_values: dict[str, str | None] = {}
 
 
 class MedicalRecordUpdate(BaseModel):
@@ -41,6 +44,7 @@ class MedicalRecordUpdate(BaseModel):
     notes: str
     treatment_plan: str | None = None
     body_map: list[BodyMapPoint] | None = None
+    field_values: dict[str, str | None] = {}
 
 
 @router.post("")
@@ -65,6 +69,7 @@ def create_medical_record(
         treatment_plan=payload.treatment_plan,
         session_date=payload.session_date or datetime.utcnow(),
         body_map=[p.model_dump() for p in payload.body_map] if payload.body_map else None,
+        field_values=merge_field_values({}, clean_field_values(db, TEMPLATE_TRATAMENT, payload.field_values)) or None,
     )
     db.add(record)
     db.flush()
@@ -99,11 +104,14 @@ def update_medical_record(
     record_id: str,
     payload: MedicalRecordUpdate,
     db: DBSession = Depends(get_db),
-    actor: User = Depends(require_roles(Role.ADMIN, Role.RECEPTIE)),
+    actor: User = Depends(require_roles(Role.ADMIN)),
 ) -> dict:
+    """Doar adminul corectează o ședință deja documentată."""
     record = db.get(MedicalRecord, record_id)
     if not record:
         raise HTTPException(status_code=404, detail="Intrare inexistentă.")
+    if not payload.notes.strip():
+        raise HTTPException(status_code=422, detail="Notele nu pot fi goale.")
 
     record.diagnosis = payload.diagnosis
     record.subjective = payload.subjective
@@ -113,6 +121,9 @@ def update_medical_record(
     record.treatment_plan = payload.treatment_plan
     if payload.body_map is not None:
         record.body_map = [p.model_dump() for p in payload.body_map]
+    record.field_values = (
+        merge_field_values(record.field_values, clean_field_values(db, TEMPLATE_TRATAMENT, payload.field_values)) or None
+    )
     db.commit()
 
     log_audit(

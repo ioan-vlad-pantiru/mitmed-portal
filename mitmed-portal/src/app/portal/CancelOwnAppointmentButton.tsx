@@ -28,7 +28,7 @@ export function CancelOwnAppointmentButton({
   if (tooLateToCancel) {
     return (
       <span className={`text-xs ${variant === "light" ? "text-[var(--mitmed-mist)]/60" : "text-zinc-400"}`}>
-        Nu se mai poate anula (sub 48h)
+        Nu se mai poate anula (sub 48h) — anunță cabinetul telefonic dacă nu poți ajunge
       </span>
     );
   }

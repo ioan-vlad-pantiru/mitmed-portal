@@ -26,7 +26,7 @@ from app.models import (
 )
 from app.services import payu
 from app.services.fidelity import find_active_card, next_session_discount_percent, register_paid_session, unregister_paid_session
-from app.services.pricing import CouponError, calculate_price
+from app.services.pricing import CouponError, calculate_price, round_money
 
 router = APIRouter(prefix="/payments", tags=["payments"])
 
@@ -214,7 +214,7 @@ def create_payment(
 
     if fidelity_discount is not None:
         base_price = Decimal(therapy.price)
-        discount_amount = base_price * fidelity_discount / Decimal(100)
+        discount_amount = round_money(base_price * fidelity_discount / Decimal(100))
         final_price = base_price - discount_amount
     else:
         fidelity_card = None
@@ -669,7 +669,7 @@ def preview_price(
 
     if fidelity_discount is not None:
         base_price = Decimal(therapy.price)
-        discount_amount = base_price * fidelity_discount / Decimal(100)
+        discount_amount = round_money(base_price * fidelity_discount / Decimal(100))
         final_price = base_price - discount_amount
         return {
             "base_price": str(base_price),

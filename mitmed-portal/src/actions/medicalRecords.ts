@@ -6,7 +6,16 @@ import { apiPost, apiPut, ApiError } from "@/lib/apiClient";
 import { requireRole } from "@/lib/authSession";
 import { Role } from "@/lib/enums";
 
-export type MedicalRecordFormState = { message?: string } | undefined;
+export type MedicalRecordFormState = { message?: string; success?: boolean } | undefined;
+
+/** Căsuțele fișei de tratament configurate de admin vin ca `field:<id>`. */
+function fieldValues(formData: FormData): Record<string, string | null> {
+  const values: Record<string, string | null> = {};
+  for (const [name, value] of formData.entries()) {
+    if (name.startsWith("field:")) values[name.slice(6)] = String(value).trim() || null;
+  }
+  return values;
+}
 
 export async function createMedicalRecord(
   _state: MedicalRecordFormState,
@@ -40,6 +49,7 @@ export async function createMedicalRecord(
       treatment_plan: formData.get("treatmentPlan") || null,
       session_date: formData.get("sessionDate") || null,
       body_map: bodyMap,
+      field_values: fieldValues(formData),
     });
   } catch (err) {
     if (err instanceof ApiError) return { message: err.message };
@@ -63,7 +73,11 @@ export async function updateMedicalRecord(
   _state: MedicalRecordFormState,
   formData: FormData
 ): Promise<MedicalRecordFormState> {
-  await requireRole(Role.ADMIN, Role.RECEPTIE);
+  // Doar adminul corectează o ședință deja documentată.
+  await requireRole(Role.ADMIN);
+
+  const notes = String(formData.get("notes") ?? "");
+  if (!notes.trim()) return { message: "Notele nu pot fi goale." };
 
   try {
     await apiPut(`/medical-records/${recordId}`, {
@@ -71,7 +85,9 @@ export async function updateMedicalRecord(
       subjective: formData.get("subjective") || null,
       objective: formData.get("objective") || null,
       assessment: formData.get("assessment") || null,
-      notes: String(formData.get("notes") ?? ""),
+      notes,
+      treatment_plan: formData.get("treatmentPlan") || null,
+      field_values: fieldValues(formData),
     });
   } catch (err) {
     if (err instanceof ApiError) return { message: err.message };
@@ -79,5 +95,5 @@ export async function updateMedicalRecord(
   }
 
   revalidatePath(`/admin/clienti/${clientId}`);
-  return undefined;
+  return { success: true };
 }

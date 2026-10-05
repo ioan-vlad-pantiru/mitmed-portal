@@ -7,7 +7,7 @@ const settings = [
   { href: "/admin/fidelitate", title: "Carduri de fidelitate", description: "Tipuri de carduri, pragul de ședințe și câte oferă gratuit.", icon: IconGift },
   { href: "/admin/pachete", title: "Pachete", description: "Pachete de ședințe și combinații de terapii.", icon: IconPackage },
   { href: "/admin/cupoane", title: "Cupoane", description: "Reduceri, condiții de folosire și valabilitate.", icon: IconTag },
-  { href: "/admin/fisa-consultatie", title: "Fișa de consultație", description: "Câmpurile fișei de consultații și evaluări medicale: adaugă, editează, șterge sau reordonează.", icon: IconEdit },
+  { href: "/admin/fisa-consultatie", title: "Fișe medicale", description: "Fișa de consultație, fișa de tratament și fișe noi construite de tine: căsuțe, ordine, vizibilitate pentru pacient.", icon: IconEdit },
   { href: "/admin/documente", title: "Documente și acorduri", description: "Texte, consimțăminte și documente cerute clienților.", icon: IconFileText },
   { href: "/admin/gdpr", title: "Cereri GDPR", description: "Cereri de ștergere a contului trimise de clienți.", icon: IconShield },
 ];
