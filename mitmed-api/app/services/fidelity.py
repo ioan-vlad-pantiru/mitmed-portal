@@ -24,14 +24,17 @@ def card_stamps(card: ClientFidelityCard, therapy_id: str) -> int:
     return progress.stamps if progress else 0
 
 
-def next_session_discount_percent(card: ClientFidelityCard, therapy_id: str) -> Decimal | None:
+def next_session_discount_percent(card: ClientFidelityCard, therapy_id: str, *, ahead: int = 0) -> Decimal | None:
     """Reducerea care s-ar aplica DACĂ clientul ar plăti acum o nouă ședință
     din terapia dată pe acest card — treapta terapiei care corespunde poziției
-    curente în ciclul ei. None dacă nicio treaptă nu se potrivește."""
+    curente în ciclul ei. `ahead` sare peste atâtea ședințe deja puse în
+    aceeași plată (ex. a 2-a ședință de masaj dintr-o plată cu mai multe
+    terapii e cu o poziție mai departe în ciclu). None dacă nicio treaptă nu
+    se potrivește."""
     cycle_length = card.card_type.cycle_length(therapy_id)
     if cycle_length <= 0:
         return None
-    position = (card_stamps(card, therapy_id) % cycle_length) + 1
+    position = ((card_stamps(card, therapy_id) + ahead) % cycle_length) + 1
     tier = next((t for t in card.card_type.tiers_for(therapy_id) if t.session_number == position), None)
     return Decimal(tier.discount_percent) if tier else None
 

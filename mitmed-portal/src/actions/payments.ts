@@ -194,3 +194,70 @@ export async function previewPrice(therapyId: string, couponCode: string | undef
     error?: string;
   }>("/payments/preview", { therapy_id: therapyId, coupon_code: couponCode, client_id: clientId });
 }
+
+export type PaymentLineInput = { therapyId: string; appointmentId?: string | null };
+
+export type MultiPaymentInput = {
+  clientId: string;
+  lines: PaymentLineInput[];
+  couponCode?: string;
+  method?: string | null;
+  amountPaid?: number | null;
+};
+
+export type PricedPaymentLine = {
+  therapy_id: string;
+  therapy_name: string;
+  appointment_id: string | null;
+  appointment_starts_at: string | null;
+  base_price: string;
+  discount_amount: string;
+  final_price: string;
+  coupon_code: string | null;
+  fidelity_card_name: string | null;
+  fidelity_discount_percent: string | null;
+};
+
+export type MultiPaymentPreview = {
+  lines: PricedPaymentLine[];
+  base_price: string;
+  discount_amount: string;
+  final_price: string;
+};
+
+function multiPaymentPayload(input: MultiPaymentInput) {
+  return {
+    client_id: input.clientId,
+    lines: input.lines.map((l) => ({ therapy_id: l.therapyId, appointment_id: l.appointmentId || null })),
+    coupon_code: input.couponCode || null,
+    method: input.method || null,
+    amount_paid: input.amountPaid ?? null,
+  };
+}
+
+/** Prețul fiecărei linii + totalul, cu fidelitatea calculată în ordinea
+ * liniilor (vezi routers/payments.py:_price_lines) — nu salvează nimic. */
+export async function previewMultiPayment(
+  input: MultiPaymentInput
+): Promise<{ ok: true; preview: MultiPaymentPreview } | { ok: false; message: string }> {
+  await requireRole(Role.ADMIN, Role.RECEPTIE);
+  try {
+    return { ok: true, preview: await apiPost<MultiPaymentPreview>("/payments/multi/preview", multiPaymentPayload(input)) };
+  } catch (err) {
+    if (err instanceof ApiError) return { ok: false, message: err.message };
+    throw err;
+  }
+}
+
+/** O plată pentru mai multe terapii/programări odată — câte un Payment per linie. */
+export async function createMultiPayment(input: MultiPaymentInput): Promise<{ ok: true } | { ok: false; message: string }> {
+  await requireRole(Role.ADMIN, Role.RECEPTIE);
+  try {
+    await apiPost("/payments/multi", multiPaymentPayload(input));
+  } catch (err) {
+    if (err instanceof ApiError) return { ok: false, message: err.message };
+    throw err;
+  }
+  revalidatePath(`/admin/clienti/${input.clientId}`);
+  return { ok: true };
+}

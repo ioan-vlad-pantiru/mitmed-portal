@@ -13,6 +13,8 @@ from app.config import settings
 from app.database import get_db
 from app.deps import require_roles, require_user
 from app.models import (
+    Appointment,
+    AppointmentStatus,
     ClientProfile,
     Coupon,
     PackageItem,
@@ -42,6 +44,25 @@ class PaymentIn(BaseModel):
     # Cât se încasează chiar acum, la creare — None/0 înseamnă neîncasat încă.
     # O sumă sub prețul final înseamnă plată parțială (status PARTIAL); restul
     # se poate încasa mai târziu prin /mark-paid sau online (PayU).
+    amount_paid: float | None = Field(default=None, ge=0)
+
+
+class PaymentLineIn(BaseModel):
+    therapy_id: str
+    # Programarea pe care o acoperă linia, dacă e cazul — dacă programarea are
+    # deja o plată neîncasată (generată la rezervarea online), linia o
+    # recalculează pe aceea în loc să creeze una nouă.
+    appointment_id: str | None = None
+
+
+class MultiPaymentIn(BaseModel):
+    client_id: str
+    lines: list[PaymentLineIn] = Field(min_length=1, max_length=30)
+    coupon_code: str | None = None
+    method: str | None = None
+    # Suma încasată acum pentru TOATE liniile — se repartizează pe linii în
+    # ordine (fiecare achitată integral înainte de următoarea), ca ștampilele
+    # de fidelitate să avanseze în aceeași ordine în care s-au calculat.
     amount_paid: float | None = Field(default=None, ge=0)
 
 
@@ -264,6 +285,179 @@ def create_payment(
         metadata={"client_id": payload.client_id, "final_price": str(final_price)},
     )
     return {"ok": True, "id": payment.id}
+
+
+def _price_lines(db: DBSession, payload: MultiPaymentIn) -> tuple[list[dict], Coupon | None]:
+    """Prețul fiecărei linii dintr-o plată cu mai multe terapii, în ordine.
+
+    Reducerea de fidelitate se calculează ca și cum liniile ar fi ședințe
+    plătite una după alta: a doua ședință din aceeași terapie e cu o poziție
+    mai departe în ciclul cardului. Un cupon se aplică liniilor pentru care e
+    valabil (fără să se cumuleze cu fidelitatea pe aceeași linie) și consumă
+    câte o utilizare per linie."""
+    client = db.get(ClientProfile, payload.client_id)
+    if not client:
+        raise HTTPException(status_code=422, detail="Client inexistent.")
+    coupon = _find_coupon(db, payload.coupon_code)
+    if payload.coupon_code and not coupon:
+        raise HTTPException(status_code=422, detail="Cupon inexistent.")
+
+    appointment_ids = [line.appointment_id for line in payload.lines if line.appointment_id]
+    if len(appointment_ids) != len(set(appointment_ids)):
+        raise HTTPException(status_code=422, detail="O programare apare de două ori în aceeași plată.")
+
+    ahead: dict[tuple[str, str], int] = {}
+    coupon_uses = 0
+    coupon_error: str | None = None
+    priced: list[dict] = []
+    for line in payload.lines:
+        therapy = db.get(Therapy, line.therapy_id)
+        if not therapy:
+            raise HTTPException(status_code=422, detail="Terapie invalidă.")
+        appointment = None
+        existing = None
+        if line.appointment_id:
+            appointment = db.get(Appointment, line.appointment_id)
+            if not appointment or appointment.client_id != payload.client_id:
+                raise HTTPException(status_code=422, detail="Programare invalidă.")
+            if appointment.status == AppointmentStatus.ANULATA:
+                raise HTTPException(status_code=422, detail="O programare anulată nu se mai poate plăti.")
+            if appointment.therapy_id != line.therapy_id:
+                raise HTTPException(status_code=422, detail="Terapia liniei nu corespunde programării.")
+            existing = db.query(Payment).filter(Payment.appointment_id == appointment.id).first()
+            if existing and (existing.status != PaymentStatus.NEPLATIT or existing.package_total_sessions is not None):
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Programarea de {therapy.name} are deja o plată încasată — vezi lista de plăți.",
+                )
+
+        base_price = Decimal(therapy.price)
+        discount_amount = Decimal(0)
+        fidelity_card = None
+        fidelity_percent = None
+        coupon_applied = False
+
+        if coupon:
+            if coupon.max_uses is not None and coupon.uses_count + coupon_uses >= coupon.max_uses:
+                coupon_error = "Cuponul nu mai are destule utilizări pentru toate terapiile."
+            else:
+                try:
+                    base_price, discount_amount, _ = calculate_price(therapy, coupon, therapy.id)
+                    coupon_applied = True
+                    coupon_uses += 1
+                except CouponError as err:
+                    coupon_error = str(err)
+        if not coupon_applied:
+            fidelity_card = find_active_card(db, client_id=payload.client_id, therapy_id=therapy.id)
+            if fidelity_card:
+                key = (fidelity_card.id, therapy.id)
+                fidelity_percent = next_session_discount_percent(fidelity_card, therapy.id, ahead=ahead.get(key, 0))
+                ahead[key] = ahead.get(key, 0) + 1
+                if fidelity_percent is not None:
+                    discount_amount = round_money(base_price * fidelity_percent / Decimal(100))
+                else:
+                    fidelity_card = None
+
+        priced.append(
+            {
+                "therapy": therapy,
+                "appointment": appointment,
+                "existing": existing,
+                "base_price": base_price,
+                "discount_amount": discount_amount,
+                "final_price": base_price - discount_amount,
+                "coupon": coupon if coupon_applied else None,
+                "fidelity_card": fidelity_card,
+                "fidelity_percent": fidelity_percent,
+            }
+        )
+
+    if coupon and coupon_uses == 0:
+        raise HTTPException(status_code=422, detail=coupon_error or "Cuponul nu se aplică niciunei terapii.")
+    return priced, coupon
+
+
+def _line_out(line: dict) -> dict:
+    appointment = line["appointment"]
+    return {
+        "therapy_id": line["therapy"].id,
+        "therapy_name": line["therapy"].name,
+        "appointment_id": appointment.id if appointment else None,
+        "appointment_starts_at": appointment.starts_at if appointment else None,
+        "base_price": str(line["base_price"]),
+        "discount_amount": str(line["discount_amount"]),
+        "final_price": str(line["final_price"]),
+        "coupon_code": line["coupon"].code if line["coupon"] else None,
+        "fidelity_card_name": line["fidelity_card"].card_type.name if line["fidelity_card"] else None,
+        "fidelity_discount_percent": str(line["fidelity_percent"]) if line["fidelity_card"] else None,
+    }
+
+
+def _totals(priced: list[dict]) -> dict:
+    return {
+        "base_price": str(sum((p["base_price"] for p in priced), Decimal(0))),
+        "discount_amount": str(sum((p["discount_amount"] for p in priced), Decimal(0))),
+        "final_price": str(sum((p["final_price"] for p in priced), Decimal(0))),
+    }
+
+
+@router.post("/multi/preview")
+def preview_multi_payment(
+    payload: MultiPaymentIn, db: DBSession = Depends(get_db), _actor: User = Depends(require_roles(Role.ADMIN, Role.RECEPTIE))
+) -> dict:
+    priced, _ = _price_lines(db, payload)
+    return {"lines": [_line_out(p) for p in priced], **_totals(priced)}
+
+
+@router.post("/multi")
+def create_multi_payment(
+    payload: MultiPaymentIn, db: DBSession = Depends(get_db), actor: User = Depends(require_roles(Role.ADMIN, Role.RECEPTIE))
+) -> dict:
+    """O plată pentru mai multe terapii odată (cu sau fără programările lor).
+    Fiecare linie devine un Payment separat — ca istoricul, fidelitatea,
+    exportul și /insights să funcționeze ca la plățile individuale."""
+    priced, coupon = _price_lines(db, payload)
+    remaining = Decimal(str(payload.amount_paid or 0))
+    now = datetime.now(timezone.utc)
+    payments: list[Payment] = []
+    for line in priced:
+        final_price = line["final_price"]
+        amount_paid = min(remaining, final_price)
+        remaining -= amount_paid
+        payment = line["existing"] or Payment(client_id=payload.client_id, therapy_id=line["therapy"].id)
+        if not line["existing"]:
+            db.add(payment)
+        payment.appointment_id = line["appointment"].id if line["appointment"] else None
+        payment.coupon_id = line["coupon"].id if line["coupon"] else None
+        payment.fidelity_card_id = line["fidelity_card"].id if line["fidelity_card"] else None
+        payment.base_price = line["base_price"]
+        payment.discount_amount = line["discount_amount"]
+        payment.final_price = final_price
+        payment.amount_paid = amount_paid
+        payment.method = payload.method
+        payment.status = _status_for_amount(amount_paid, final_price)
+        payment.paid_at = now if amount_paid > 0 else None
+        payments.append(payment)
+    if coupon:
+        coupon.uses_count += sum(1 for line in priced if line["coupon"])
+    db.commit()
+
+    # Ștampilele în ordinea liniilor — aceeași ordine în care s-au calculat
+    # reducerile de fidelitate mai sus.
+    for payment in payments:
+        db.refresh(payment)
+        if payment.status == PaymentStatus.PLATIT:
+            register_paid_session(db, payment)
+
+    log_audit(
+        db,
+        actor_id=actor.id,
+        action="payment.create_multi",
+        target_type="Payment",
+        target_id=payments[0].id,
+        metadata={"client_id": payload.client_id, "payment_ids": [p.id for p in payments], **_totals(priced)},
+    )
+    return {"ok": True, "ids": [p.id for p in payments], **_totals(priced)}
 
 
 @router.post("/{payment_id}/mark-paid")

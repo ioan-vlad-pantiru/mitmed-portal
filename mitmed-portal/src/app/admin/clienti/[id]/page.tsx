@@ -15,9 +15,10 @@ import { SheetsPanel, type ConsultationSheet } from "./SheetsPanel";
 import { NotesForm } from "./NotesForm";
 import { UnlockedTherapiesForm } from "./UnlockedTherapiesForm";
 import { FidelityCardsPanel } from "./FidelityCardsPanel";
+import { FidelityTherapyProgressView } from "@/components/FidelityProgress";
 import { MedicalRecordsPanel } from "./MedicalRecordsPanel";
 import { PatientDocumentsPanel } from "./PatientDocumentsPanel";
-import { PaymentForm } from "./PaymentForm";
+import { PaymentForm, type PayableBooking } from "./PaymentForm";
 import { AppointmentForm } from "./AppointmentForm";
 import { CancelAppointmentButton } from "./CancelAppointmentButton";
 import { AppointmentAdminControls } from "./AppointmentAdminControls";
@@ -100,8 +101,10 @@ type ClientDetail = {
     amount_paid: string;
     paid_via_payu: boolean;
     status: string;
+    therapy_id: string;
     therapy: { name: string };
     coupon: { code: string } | null;
+    appointment_id: string | null;
     package_total_sessions: number | null;
     sessions_used: number;
     package_name: string | null;
@@ -169,6 +172,26 @@ export default async function ClientDetailPage({ params, searchParams }: { param
     .filter((t) => t.active)
     .map((t) => ({ id: t.id, name: t.name, price: t.price, duration_minutes: t.duration_minutes }));
   const activePackages = packagesRaw.filter((p) => p.active);
+  // Programările clientului cu starea plății fiecăreia — în tab-ul Plăți, ca
+  // recepția să le poată bifa direct într-o plată.
+  const paymentByAppointment = new Map(
+    client.payments.filter((p) => p.appointment_id).map((p) => [p.appointment_id as string, p])
+  );
+  const packageTherapyIds = new Set(
+    client.payments
+      .filter((p) => p.package_total_sessions && p.sessions_used < p.package_total_sessions)
+      .map((p) => p.therapy_id)
+  );
+  const payableBookings: PayableBooking[] = client.appointments.map((a) => ({
+    id: a.id,
+    therapyId: a.therapy_id,
+    therapyName: a.therapy.name,
+    startsAt: a.starts_at,
+    status: a.status,
+    paymentStatus: (paymentByAppointment.get(a.id)?.status as PayableBooking["paymentStatus"]) ?? null,
+    coveredByPackage: packageTherapyIds.has(a.therapy_id),
+  }));
+  const activeFidelityCards = fidelityCards.filter((c) => c.active);
   const patientHeader = {
     full_name: client.full_name,
     cnp: client.cnp,
@@ -454,6 +477,27 @@ export default async function ClientDetailPage({ params, searchParams }: { param
       {activeTab === "plati" && <section>
         <h2 className="text-base font-semibold text-zinc-900">Plăți</h2>
 
+        {activeFidelityCards.length > 0 && (
+          <div className="mt-3 mm-card p-4">
+            <h3 className="text-xs font-medium uppercase tracking-wide text-zinc-400">Card de fidelitate</h3>
+            <div className="mt-2 grid gap-4 md:grid-cols-2">
+              {activeFidelityCards.map((card) => (
+                <div key={card.id}>
+                  <p className="text-sm font-semibold text-zinc-800">{card.card_type_name}</p>
+                  <div className="mt-2 space-y-3">
+                    {card.therapies.map((t) => (
+                      <FidelityTherapyProgressView key={t.therapy_id} progress={t} />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="mt-3 text-xs text-zinc-400">
+              Reducerile de fidelitate se aplică automat în totalul de mai jos, în ordinea terapiilor din plată.
+            </p>
+          </div>
+        )}
+
         {packageGroups.length > 0 && (
           <div className="mt-3 space-y-2">
             {packageGroups.map((g) => (
@@ -584,7 +628,13 @@ export default async function ClientDetailPage({ params, searchParams }: { param
             </table>
           </div>
         </div>
-        <PaymentForm clientId={client.id} therapies={therapies} coupons={coupons} packages={activePackages} />
+        <PaymentForm
+          clientId={client.id}
+          therapies={therapies}
+          coupons={coupons}
+          packages={activePackages}
+          bookings={payableBookings}
+        />
       </section>}
 
       {activeTab === "programari" && <section>

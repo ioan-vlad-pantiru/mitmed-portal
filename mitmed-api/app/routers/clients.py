@@ -746,6 +746,7 @@ def _serialize_client_detail(client: ClientProfile) -> dict:
                 # (webhook), nu la simpla inițiere a unui checkout.
                 "paid_via_payu": p.method == "CARD_ONLINE",
                 "status": p.status,
+                "therapy_id": p.therapy_id,
                 "therapy": {"name": p.therapy.name},
                 "coupon": {"code": p.coupon.code} if p.coupon else None,
                 "package_total_sessions": p.package_total_sessions,
