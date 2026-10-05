@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { ChevronRight, LogOut } from "lucide-react";
 import { logout } from "@/actions/auth";
 import { AdminSidebar } from "@/components/AdminSidebar";
 import { CommandPalette } from "@/components/CommandPalette";
+import { AdminNavigation } from "@/components/AdminNavigation";
 import { Logo } from "@/components/Logo";
 import type { ClientSummary } from "@/actions/clients";
 
@@ -86,7 +87,7 @@ export function AdminShell({
           </span>
         </div>
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
-          <CommandPalette clients={clients} todayAppointmentByClient={todayAppointmentByClient} />
+          <CommandPalette clients={clients} todayAppointmentByClient={todayAppointmentByClient} isAdmin={isAdmin} />
           <span className="hidden items-center gap-2 rounded-full bg-white/10 py-1 pl-1 pr-3 text-xs font-medium text-[var(--mitmed-mist)] sm:flex">
             <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--mitmed-sky)] text-[10px] font-bold text-[var(--mitmed-teal-deep)]">
               {email.charAt(0).toUpperCase()}
@@ -139,7 +140,12 @@ export function AdminShell({
           </button>
         )}
 
-        <main className="min-w-0 flex-1 px-4 py-6 sm:px-6">{children}</main>
+        <main className="min-w-0 flex-1 px-4 py-6 sm:px-6">
+          <Suspense fallback={null}>
+            <AdminNavigation clients={clients} isAdmin={isAdmin} />
+          </Suspense>
+          {children}
+        </main>
       </div>
     </div>
   );
