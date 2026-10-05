@@ -36,16 +36,8 @@ export function CardTypeRow({
     <>
       <tr className="transition-colors hover:bg-zinc-50/70">
         <td className="px-4 py-2 text-zinc-900">{cardType.name}</td>
-        <td className="px-4 py-2 text-zinc-600">
-          <ul className="space-y-0.5">
-            {cardType.therapies.map((t) => (
-              <li key={t.therapy_id}>
-                <span className="font-medium text-zinc-700">{t.therapy_name}</span>
-                <span className="text-zinc-500"> · {tiersSummary(t.tiers)}</span>
-              </li>
-            ))}
-          </ul>
-        </td>
+        <td className="px-4 py-2 text-zinc-600">{cardType.therapies.map((t) => t.therapy_name).join(", ")}</td>
+        <td className="px-4 py-2 text-zinc-600">{tiersSummary(cardType.tiers)}</td>
         <td className="px-4 py-2">
           <Badge variant={cardType.active ? "success" : "neutral"}>{cardType.active ? "Da" : "Nu"}</Badge>
         </td>
@@ -96,9 +88,9 @@ export function CardTypeRow({
       </tr>
       {editing && (
         <tr>
-          <td colSpan={4} className="bg-zinc-50/60 px-4 py-4">
+          <td colSpan={5} className="bg-zinc-50/60 px-4 py-4">
             <form action={action} className="grid max-w-2xl grid-cols-2 gap-3">
-              <CardTypeEditor therapies={therapies} defaults={{ name: cardType.name, therapies: cardType.therapies }} />
+              <CardTypeEditor therapies={therapies} defaults={cardType} />
               {state?.message && <p className="col-span-2 text-sm text-red-600">{state.message}</p>}
               <div className="col-span-2 flex gap-2">
                 <Button type="submit" disabled={saving}>

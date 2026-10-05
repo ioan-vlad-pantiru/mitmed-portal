@@ -10,8 +10,6 @@ from app.deps import require_roles
 from app.models import (
     Appointment,
     AppointmentStatus,
-    ClientFidelityCardProgress,
-    FidelityCardTier,
     MedicalRecord,
     PackageItem,
     Payment,
@@ -20,6 +18,8 @@ from app.models import (
     Therapy,
     TherapyPackage,
     User,
+    client_fidelity_card_therapies,
+    fidelity_card_type_therapies,
     medical_record_therapies,
 )
 
@@ -139,7 +139,7 @@ def delete_therapy(
 ) -> dict:
     """Șterge terapia din catalog. Dacă n-a fost folosită niciodată, rândul
     dispare de tot; dacă are deja istoric (programări, plăți, fișe, pachete
-    vândute, cereri de pe site, carduri de fidelitate), e ARHIVATĂ — dispare
+    vândute, cereri de pe site), e ARHIVATĂ — dispare
     din toate listele și nu mai poate fi rezervată, dar istoricul își păstrează
     numele. Refuzată doar cât timp mai are programări viitoare sau face parte
     dintr-un pachet încă în vânzare."""
@@ -184,12 +184,13 @@ def delete_therapy(
         or db.query(medical_record_therapies).filter(medical_record_therapies.c.therapy_id == therapy_id).first()
         or db.query(PackageItem.id).filter(PackageItem.therapy_id == therapy_id).first()
         or db.query(PublicBookingRequest.id).filter(PublicBookingRequest.therapy_id == therapy_id).first()
-        or db.query(ClientFidelityCardProgress.id).filter(ClientFidelityCardProgress.therapy_id == therapy_id).first()
     )
-    # Treptele de fidelitate pentru terapie dispar oricum — un card nu mai
-    # poate acorda reduceri pe o terapie scoasă din catalog.
-    db.query(FidelityCardTier).filter(FidelityCardTier.therapy_id == therapy_id).delete(synchronize_session=False)
     if has_history:
+        # Terapia iese și de pe cardurile de fidelitate — un card nu mai
+        # contorizează o terapie scoasă din catalog. (La ștergerea definitivă
+        # de mai jos, legăturile dispar singure, prin ON DELETE CASCADE.)
+        for table in (fidelity_card_type_therapies, client_fidelity_card_therapies):
+            db.execute(table.delete().where(table.c.therapy_id == therapy_id))
         therapy.active = False
         therapy.archived_at = now
     else:

@@ -2,7 +2,7 @@ import { requireRole } from "@/lib/authSession";
 import { Role } from "@/lib/enums";
 import Link from "next/link";
 import { listFidelityCardTypes, listIssuedFidelityCards } from "@/actions/fidelity";
-import { FidelityTherapyProgressView } from "@/components/FidelityProgress";
+import { FidelityCardProgress } from "@/components/FidelityProgress";
 import { listTherapies } from "@/actions/therapies";
 import { CardTypeForm } from "./CardTypeForm";
 import { CardTypeRow } from "./CardTypeRow";
@@ -21,9 +21,10 @@ export default async function FidelityCardsPage() {
       <div>
         <h1 className="text-lg font-semibold text-zinc-900">Carduri de fidelitate</h1>
         <p className="text-sm text-zinc-500">
-          Un tip de card poate cuprinde mai multe terapii, fiecare cu propriile praguri de reducere (ex. a 5-a ședință de
-          masaj -25%, a 10-a de kinetoterapie -50%) și propriul contor de ședințe plătite. Cardul se aplică doar după ce
-          îl atribui unui client din fișa lui (tab Dosar medical), unde alegi și ce terapii de pe card i se aplică.
+          Un tip de card cuprinde una sau mai multe terapii: ședințele plătite din oricare dintre ele se adună pe același
+          contor, iar reducerea se aplică la pragurile cardului (ex. a 5-a ședință -25%, a 10-a -50%). Ședințele din
+          pachete nu se numără. Cardul se aplică doar după ce îl atribui unui client din fișa lui (tab Dosar medical),
+          unde alegi și ce terapii de pe card i se aplică.
         </p>
       </div>
 
@@ -33,7 +34,8 @@ export default async function FidelityCardsPage() {
             <thead className="border-b border-zinc-100 bg-zinc-50/60 text-left text-xs font-medium uppercase tracking-wide text-zinc-400">
               <tr>
                 <th className="px-4 py-2.5">Nume</th>
-                <th className="px-4 py-2.5">Terapii și praguri</th>
+                <th className="px-4 py-2.5">Terapii</th>
+                <th className="px-4 py-2.5">Program</th>
                 <th className="px-4 py-2.5">Activ</th>
                 <th className="px-4 py-2" />
               </tr>
@@ -44,7 +46,7 @@ export default async function FidelityCardsPage() {
               ))}
               {cardTypes.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-4 py-6 text-center text-zinc-400">
+                  <td colSpan={5} className="px-4 py-6 text-center text-zinc-400">
                     Niciun tip de card încă.
                   </td>
                 </tr>
@@ -71,10 +73,8 @@ export default async function FidelityCardsPage() {
                   </Link>
                   <span className="text-xs text-zinc-500">{card.card_type_name}</span>
                 </div>
-                <div className="mt-3 space-y-4">
-                  {card.therapies.map((t) => (
-                    <FidelityTherapyProgressView key={t.therapy_id} progress={t} />
-                  ))}
+                <div className="mt-3">
+                  <FidelityCardProgress card={card} />
                 </div>
               </div>
             ))}

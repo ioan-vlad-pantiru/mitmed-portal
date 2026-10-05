@@ -7,32 +7,35 @@ import { Role } from "@/lib/enums";
 
 export type FidelityTier = { session_number: number; discount_percent: string };
 
-export type FidelityCardTherapy = { therapy_id: string; therapy_name: string; tiers: FidelityTier[] };
+export type FidelityCardTherapy = { therapy_id: string; therapy_name: string };
 
+/** Un tip de card: terapiile ale căror ședințe se adună pe același contor și
+ * un singur program de trepte pentru tot cardul. */
 export type FidelityCardType = {
   id: string;
   name: string;
   active: boolean;
   therapies: FidelityCardTherapy[];
+  tiers: FidelityTier[];
 };
 
-/** Progresul unui card emis pe UNA dintre terapiile lui — fiecare terapie
- * are propriul contor și propriul program de trepte. */
-export type FidelityTherapyProgress = FidelityCardTherapy & {
+/** Un card emis unui client, cu progresul pe contorul comun al terapiilor lui. */
+export type ClientFidelityCard = {
+  id: string;
+  card_type_id: string;
+  card_type_name: string;
+  /** Terapiile cardului activate pentru acest client. */
+  therapies: FidelityCardTherapy[];
+  tiers: FidelityTier[];
   stamps: number;
   cycle_length: number;
+  /** Din ce terapii provin ședințele din ciclul curent. */
+  cycle_breakdown: { therapy_name: string; sessions: number }[];
   next_discount_percent: string | null;
   /** Următoarea treaptă din ciclul curent; sessions_left = 0 înseamnă că
    * chiar următoarea ședință plătită are reducere. */
   next_reward: { session_number: number; discount_percent: string; sessions_left: number } | null;
   discounted_sessions_used: number;
-};
-
-export type ClientFidelityCard = {
-  id: string;
-  card_type_id: string;
-  card_type_name: string;
-  therapies: FidelityTherapyProgress[];
   active: boolean;
   issued_at: string;
 };
@@ -46,25 +49,27 @@ export async function listFidelityCardTypes(): Promise<FidelityCardType[]> {
 
 export type FidelityCardTypeFormState = { message?: string } | undefined;
 
-type CardTherapyPayload = { therapy_id: string; tiers: { session_number: number; discount_percent: number }[] };
-
-/** Terapiile cardului, fiecare cu treptele ei, vin ca JSON într-un input
- * ascuns (listă variabilă, editată în React) — vezi CardTypeEditor.tsx. */
+/** Terapiile vin ca checkbox-uri (`therapyIds`), iar treptele ca JSON într-un
+ * input ascuns (listă variabilă, editată în React) — vezi CardTypeEditor.tsx. */
 function parseCardTypeForm(formData: FormData) {
-  let therapies: CardTherapyPayload[] = [];
+  let tiers: { session_number: number; discount_percent: number }[] = [];
   try {
-    therapies = JSON.parse(String(formData.get("therapiesJson") ?? "[]"));
+    tiers = JSON.parse(String(formData.get("tiersJson") ?? "[]"));
   } catch {
-    therapies = [];
+    tiers = [];
   }
-  return { name: String(formData.get("name") ?? ""), therapies };
+  return {
+    name: String(formData.get("name") ?? ""),
+    therapy_ids: formData.getAll("therapyIds").map(String),
+    tiers,
+  };
 }
 
 function validateCardTypeForm(payload: ReturnType<typeof parseCardTypeForm>): string | undefined {
-  if (!payload.therapies.length) return "Adaugă cel puțin o terapie.";
-  if (payload.therapies.some((t) => !t.tiers.length)) return "Fiecare terapie are nevoie de cel puțin o treaptă.";
-  if (new Set(payload.therapies.map((t) => t.therapy_id)).size !== payload.therapies.length)
-    return "Fiecare terapie poate apărea o singură dată pe card.";
+  if (!payload.therapy_ids.length) return "Bifează cel puțin o terapie.";
+  if (!payload.tiers.length) return "Adaugă cel puțin o treaptă de reducere.";
+  if (new Set(payload.tiers.map((t) => t.session_number)).size !== payload.tiers.length)
+    return "Fiecare treaptă trebuie să aibă un număr de ședință diferit.";
   return undefined;
 }
 

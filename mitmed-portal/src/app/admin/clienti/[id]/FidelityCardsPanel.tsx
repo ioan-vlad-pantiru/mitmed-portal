@@ -9,7 +9,7 @@ import {
   type ClientFidelityCard,
   type FidelityCardType,
 } from "@/actions/fidelity";
-import { FidelityTherapyProgressView } from "@/components/FidelityProgress";
+import { FidelityCardProgress } from "@/components/FidelityProgress";
 import { useToast } from "@/components/Toast";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -120,8 +120,8 @@ function CardRow({
       {editing && cardType && (
         <div className="mt-2 rounded-md bg-zinc-50 p-3">
           <p className="mb-2 text-xs text-zinc-500">
-            Terapiile de pe card care se aplică acestui client. O terapie debifată e pusă pe pauză — progresul ei se
-            păstrează dacă o bifezi din nou.
+            Terapiile de pe card care se aplică acestui client. Contorul cardului e comun, așa că schimbarea
+            terapiilor nu îi pierde progresul.
           </p>
           <TherapyChecklist cardType={cardType} selected={selected} onChange={setSelected} />
           <Button
@@ -147,10 +147,8 @@ function CardRow({
         </div>
       )}
 
-      <div className="mt-3 space-y-4">
-        {card.therapies.map((t) => (
-          <FidelityTherapyProgressView key={t.therapy_id} progress={t} />
-        ))}
+      <div className="mt-3">
+        <FidelityCardProgress card={card} />
       </div>
       {inactiveCount > 0 && !editing && (
         <p className="mt-2 text-xs text-zinc-400">
@@ -229,8 +227,9 @@ export function FidelityCardsPanel({
     <div className="mt-3 mm-card p-4">
       <h3 className="text-xs font-medium uppercase tracking-wide text-zinc-400">Carduri de fidelitate</h3>
       <p className="mt-1 text-xs text-zinc-500">
-        Cardurile se aplică doar clienților cărora adminul le-a atribuit unul. Fiecare terapie de pe card își numără
-        separat ședințele plătite, iar reducerea se aplică automat la plată când se atinge pragul ei.
+        Cardurile se aplică doar clienților cărora adminul le-a atribuit unul. Ședințele plătite din oricare terapie a
+        cardului se adună pe același contor, iar reducerea se aplică automat la plată când se atinge un prag. Ședințele
+        din pachete nu se numără.
       </p>
 
       {cards.length > 0 && (

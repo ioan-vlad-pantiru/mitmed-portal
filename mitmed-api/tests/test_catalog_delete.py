@@ -120,7 +120,7 @@ def test_therapy_only_on_a_fidelity_card_is_deleted_and_removed_from_the_card(
     tiers = [{"session_number": 5, "discount_percent": 25}]
     client.post(
         "/fidelity-cards/types",
-        json={"name": "Card", "therapies": [{"therapy_id": masaj.id, "tiers": tiers}, {"therapy_id": kineto.id, "tiers": tiers}]},
+        json={"name": "Card", "therapy_ids": [masaj.id, kineto.id], "tiers": tiers},
     )
 
     resp = client.delete(f"/therapies/{masaj.id}")

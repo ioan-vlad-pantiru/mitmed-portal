@@ -1,9 +1,9 @@
 """Carduri de fidelitate: tipuri editabile de admin, cu una sau mai multe
-terapii, fiecare cu propriul program de trepte și propriul contor (ex. Masaj:
-a 5-a ședință plătită -25%, a 6-a -50%) — routers/fidelity.py.
-Reducerea se aplică automat la crearea unei plăți (routers/payments.py),
-iar poziția în ciclu avansează la fiecare plată individuală devenită PLATIT
-(services/fidelity.py)."""
+terapii și un singur program de trepte (ex. a 5-a ședință plătită -25%, a
+10-a -50%). Ședințele plătite din oricare terapie a cardului se adună pe
+același contor — routers/fidelity.py. Reducerea se aplică automat la crearea
+unei plăți (routers/payments.py), iar contorul avansează la fiecare plată
+individuală devenită PLATIT (services/fidelity.py)."""
 
 
 def _login(client, identifier="admin@example.com", password="parola123"):
@@ -11,54 +11,48 @@ def _login(client, identifier="admin@example.com", password="parola123"):
     assert resp.status_code == 200, resp.text
 
 
-def _make_type(client, therapy_id, tiers):
-    resp = client.post(
-        "/fidelity-cards/types", json={"name": "Card", "therapies": [{"therapy_id": therapy_id, "tiers": tiers}]}
-    )
+def _make_type(client, therapy_ids, tiers, name="Card"):
+    if isinstance(therapy_ids, str):
+        therapy_ids = [therapy_ids]
+    resp = client.post("/fidelity-cards/types", json={"name": name, "therapy_ids": therapy_ids, "tiers": tiers})
     assert resp.status_code == 200, resp.text
     return resp.json()["id"]
 
 
 def test_admin_can_crud_card_type_with_tiers(client, make_admin_user, make_therapy):
     make_admin_user(email="admin@example.com", password="parola123", role="ADMIN")
-    therapy = make_therapy(name="Masaj")
+    masaj = make_therapy(name="Masaj")
+    kineto = make_therapy(name="Kinetoterapie")
     _login(client)
 
     create_resp = client.post(
         "/fidelity-cards/types",
         json={
-            "name": "Card Masaj",
-            "therapies": [
-                {
-                    "therapy_id": therapy.id,
-                    "tiers": [{"session_number": 5, "discount_percent": 25}, {"session_number": 6, "discount_percent": 50}],
-                }
-            ],
+            "name": "Card Recuperare",
+            "therapy_ids": [masaj.id, kineto.id],
+            "tiers": [{"session_number": 5, "discount_percent": 25}, {"session_number": 10, "discount_percent": 50}],
         },
     )
     assert create_resp.status_code == 200, create_resp.text
     body = create_resp.json()
     type_id = body["id"]
-    assert body["therapies"][0]["therapy_name"] == "Masaj"
-    assert {t["session_number"] for t in body["therapies"][0]["tiers"]} == {5, 6}
+    assert [t["therapy_name"] for t in body["therapies"]] == ["Kinetoterapie", "Masaj"]
+    assert [t["session_number"] for t in body["tiers"]] == [5, 10]
 
     update_resp = client.put(
         f"/fidelity-cards/types/{type_id}",
         json={
-            "name": "Card Masaj Premium",
-            "therapies": [
-                {
-                    "therapy_id": therapy.id,
-                    "tiers": [{"session_number": 5, "discount_percent": 30}, {"session_number": 3, "discount_percent": 10}],
-                }
-            ],
+            "name": "Card Masaj",
+            "therapy_ids": [masaj.id],
+            "tiers": [{"session_number": 5, "discount_percent": 30}, {"session_number": 3, "discount_percent": 10}],
         },
     )
     assert update_resp.status_code == 200, update_resp.text
-    tiers = update_resp.json()["therapies"][0]["tiers"]
+    body = update_resp.json()
+    assert [t["therapy_name"] for t in body["therapies"]] == ["Masaj"]
     # Treapta 5 rămâne (cu alt procent) — editarea nu trebuie să se lovească
-    # de indexul unic pe (card, terapie, ședință).
-    assert [(t["session_number"], float(t["discount_percent"])) for t in tiers] == [(3, 10.0), (5, 30.0)]
+    # de indexul unic pe (card, ședință).
+    assert [(t["session_number"], float(t["discount_percent"])) for t in body["tiers"]] == [(3, 10.0), (5, 30.0)]
 
     toggle_resp = client.post(f"/fidelity-cards/types/{type_id}/toggle?active=false")
     assert toggle_resp.status_code == 200
@@ -69,20 +63,17 @@ def test_admin_can_crud_card_type_with_tiers(client, make_admin_user, make_thera
     assert client.get("/fidelity-cards/types").json() == []
 
 
-def test_card_type_requires_at_least_one_tier(client, make_admin_user, make_therapy):
+def test_card_type_requires_a_therapy_and_a_tier(client, make_admin_user, make_therapy):
     make_admin_user(email="admin@example.com", password="parola123", role="ADMIN")
     therapy = make_therapy()
     _login(client)
 
-    resp = client.post(
-        "/fidelity-cards/types", json={"name": "Card", "therapies": [{"therapy_id": therapy.id, "tiers": []}]}
-    )
-    assert resp.status_code == 422
-    resp = client.post("/fidelity-cards/types", json={"name": "Card", "therapies": []})
-    assert resp.status_code == 422
+    tier = [{"session_number": 5, "discount_percent": 25}]
+    assert client.post("/fidelity-cards/types", json={"name": "Card", "therapy_ids": [therapy.id], "tiers": []}).status_code == 422
+    assert client.post("/fidelity-cards/types", json={"name": "Card", "therapy_ids": [], "tiers": tier}).status_code == 422
 
 
-def test_card_type_rejects_duplicate_session_numbers(client, make_admin_user, make_therapy):
+def test_card_type_rejects_duplicate_session_numbers_and_therapies(client, make_admin_user, make_therapy):
     make_admin_user(email="admin@example.com", password="parola123", role="ADMIN")
     therapy = make_therapy()
     _login(client)
@@ -91,13 +82,14 @@ def test_card_type_rejects_duplicate_session_numbers(client, make_admin_user, ma
         "/fidelity-cards/types",
         json={
             "name": "Card",
-            "therapies": [
-                {
-                    "therapy_id": therapy.id,
-                    "tiers": [{"session_number": 5, "discount_percent": 25}, {"session_number": 5, "discount_percent": 50}],
-                }
-            ],
+            "therapy_ids": [therapy.id],
+            "tiers": [{"session_number": 5, "discount_percent": 25}, {"session_number": 5, "discount_percent": 50}],
         },
+    )
+    assert resp.status_code == 422
+    resp = client.post(
+        "/fidelity-cards/types",
+        json={"name": "Card", "therapy_ids": [therapy.id, therapy.id], "tiers": [{"session_number": 5, "discount_percent": 25}]},
     )
     assert resp.status_code == 422
 
@@ -109,7 +101,7 @@ def test_receptie_cannot_create_or_edit_card_type(client, make_admin_user, make_
 
     resp = client.post(
         "/fidelity-cards/types",
-        json={"name": "Card", "therapies": [{"therapy_id": therapy.id, "tiers": [{"session_number": 5, "discount_percent": 25}]}]},
+        json={"name": "Card", "therapy_ids": [therapy.id], "tiers": [{"session_number": 5, "discount_percent": 25}]},
     )
     assert resp.status_code == 403
 
@@ -161,7 +153,7 @@ def test_admin_can_issue_and_revoke_client_card(client, make_admin_user, make_cl
     issue_resp = client.post(f"/clients/{profile.id}/fidelity-cards", json={"card_type_id": type_id})
     assert issue_resp.status_code == 201, issue_resp.text
     card_id = issue_resp.json()["id"]
-    progress = issue_resp.json()["therapies"][0]
+    progress = issue_resp.json()
     assert progress["stamps"] == 0
     assert progress["cycle_length"] == 5
     assert progress["next_reward"] == {"session_number": 5, "discount_percent": "25.00", "sessions_left": 4}
@@ -273,7 +265,7 @@ def test_unpaid_payment_does_not_advance_cycle(client, make_admin_user, make_cli
     client.post("/payments", json={"client_id": profile.id, "therapy_id": therapy.id})
 
     card = client.get(f"/clients/{profile.id}/fidelity-cards").json()[0]
-    assert card["therapies"][0]["stamps"] == 0
+    assert card["stamps"] == 0
 
 
 def test_mark_paid_later_also_advances_cycle(client, make_admin_user, make_client_user, make_therapy):
@@ -291,7 +283,7 @@ def test_mark_paid_later_also_advances_cycle(client, make_admin_user, make_clien
     client.post(f"/payments/{payment_id}/mark-paid")
 
     card = client.get(f"/clients/{profile.id}/fidelity-cards").json()[0]
-    assert card["therapies"][0]["stamps"] == 1
+    assert card["stamps"] == 1
 
 
 def test_package_payment_does_not_advance_cycle(client, make_admin_user, make_client_user, make_therapy):
@@ -315,7 +307,7 @@ def test_package_payment_does_not_advance_cycle(client, make_admin_user, make_cl
     client.post("/payments", json={"client_id": profile.id, "package_id": package_id, "amount_paid": 999999})
 
     card = client.get(f"/clients/{profile.id}/fidelity-cards").json()[0]
-    assert card["therapies"][0]["stamps"] == 0
+    assert card["stamps"] == 0
 
 
 def test_own_fidelity_cards_endpoint_only_shows_own_active_cards(client, make_admin_user, make_client_user, make_therapy):
@@ -351,7 +343,7 @@ def _setup_paid_card(client, make_admin_user, make_client_user, make_therapy):
 
 
 def _stamps(client, profile):
-    return client.get(f"/clients/{profile.id}/fidelity-cards").json()[0]["therapies"][0]["stamps"]
+    return client.get(f"/clients/{profile.id}/fidelity-cards").json()[0]["stamps"]
 
 
 def test_deleting_a_paid_payment_rolls_back_the_stamp(client, make_admin_user, make_client_user, make_therapy):
@@ -405,12 +397,6 @@ def test_correcting_paid_payment_down_and_up_stamps_once(client, make_admin_user
     assert _stamps(client, profile) == 1
 
 
-def _make_multi_type(client, therapies):
-    resp = client.post("/fidelity-cards/types", json={"name": "Card Recuperare", "therapies": therapies})
-    assert resp.status_code == 200, resp.text
-    return resp.json()["id"]
-
-
 def _pay(client, profile, therapy):
     resp = client.post("/payments", json={"client_id": profile.id, "therapy_id": therapy.id, "amount_paid": 999999})
     assert resp.status_code == 200, resp.text
@@ -418,40 +404,31 @@ def _pay(client, profile, therapy):
     return float(next(p for p in detail["payments"] if p["id"] == resp.json()["id"])["final_price"])
 
 
-def test_card_with_several_therapies_counts_each_separately(client, make_admin_user, make_client_user, make_therapy):
-    """Masaj -25% la a 3-a ședință de masaj, Kinetoterapie -50% la a 2-a
-    ședință de kineto — ședințele unei terapii nu avansează contorul
-    celeilalte."""
+def test_sessions_of_all_card_therapies_add_up(client, make_admin_user, make_client_user, make_therapy):
+    """Card Masaj + Kinetoterapie, -50% la a 3-a ședință: două masaje și un
+    kineto ajung împreună la a 3-a ședință, oricare ar fi terapia ei."""
     make_admin_user(email="admin@example.com", password="parola123", role="ADMIN")
     _, profile = make_client_user(email="c@example.com", password="parola123")
     masaj = make_therapy(name="Masaj", price=100)
     kineto = make_therapy(name="Kinetoterapie", price=200)
     _login(client)
-    type_id = _make_multi_type(
-        client,
-        [
-            {"therapy_id": masaj.id, "tiers": [{"session_number": 3, "discount_percent": 25}]},
-            {"therapy_id": kineto.id, "tiers": [{"session_number": 2, "discount_percent": 50}]},
-        ],
-    )
-    listed = client.get("/fidelity-cards/types").json()[0]
-    assert [t["therapy_name"] for t in listed["therapies"]] == ["Kinetoterapie", "Masaj"]
+    type_id = _make_type(client, [masaj.id, kineto.id], [{"session_number": 3, "discount_percent": 50}])
     client.post(f"/clients/{profile.id}/fidelity-cards", json={"card_type_id": type_id})
 
     assert _pay(client, profile, masaj) == 100
-    assert _pay(client, profile, masaj) == 100
     assert _pay(client, profile, kineto) == 200
-    assert _pay(client, profile, masaj) == 75  # a 3-a de masaj
-    assert _pay(client, profile, kineto) == 100  # a 2-a de kineto
-    assert _pay(client, profile, kineto) == 200  # ciclul de kineto reluat
-
     card = client.get(f"/clients/{profile.id}/fidelity-cards").json()[0]
-    by_name = {t["therapy_name"]: t for t in card["therapies"]}
-    assert by_name["Masaj"]["stamps"] == 0
-    assert by_name["Masaj"]["discounted_sessions_used"] == 1
-    assert by_name["Kinetoterapie"]["stamps"] == 1
-    assert by_name["Kinetoterapie"]["next_discount_percent"] == "50.00"
-    assert by_name["Kinetoterapie"]["next_reward"]["sessions_left"] == 0
+    assert card["stamps"] == 2
+    assert card["next_discount_percent"] == "50.00"
+    assert card["next_reward"]["sessions_left"] == 0
+    assert {b["therapy_name"]: b["sessions"] for b in card["cycle_breakdown"]} == {"Masaj": 1, "Kinetoterapie": 1}
+
+    assert _pay(client, profile, kineto) == 100  # a 3-a ședință a cardului
+    assert _pay(client, profile, masaj) == 100  # ciclul reluat
+    card = client.get(f"/clients/{profile.id}/fidelity-cards").json()[0]
+    assert card["stamps"] == 1
+    assert card["discounted_sessions_used"] == 1
+    assert card["cycle_breakdown"] == [{"therapy_name": "Masaj", "sessions": 1}]
 
 
 def test_therapy_outside_the_card_is_not_counted(client, make_admin_user, make_client_user, make_therapy):
@@ -460,25 +437,13 @@ def test_therapy_outside_the_card_is_not_counted(client, make_admin_user, make_c
     masaj = make_therapy(name="Masaj", price=100)
     other = make_therapy(name="Altceva", price=100)
     _login(client)
-    type_id = _make_type(client, masaj.id, [{"session_number": 1, "discount_percent": 25}])
+    type_id = _make_type(client, masaj.id, [{"session_number": 2, "discount_percent": 25}])
     client.post(f"/clients/{profile.id}/fidelity-cards", json={"card_type_id": type_id})
 
     assert _pay(client, profile, other) == 100
     card = client.get(f"/clients/{profile.id}/fidelity-cards").json()[0]
     assert [t["therapy_name"] for t in card["therapies"]] == ["Masaj"]
-    assert card["therapies"][0]["stamps"] == 0
-
-
-def test_card_type_rejects_duplicate_therapy(client, make_admin_user, make_therapy):
-    make_admin_user(email="admin@example.com", password="parola123", role="ADMIN")
-    therapy = make_therapy()
-    _login(client)
-    tier = [{"session_number": 5, "discount_percent": 25}]
-    resp = client.post(
-        "/fidelity-cards/types",
-        json={"name": "Card", "therapies": [{"therapy_id": therapy.id, "tiers": tier}, {"therapy_id": therapy.id, "tiers": tier}]},
-    )
-    assert resp.status_code == 422
+    assert card["stamps"] == 0
 
 
 def test_admin_sees_progress_of_all_issued_cards(client, make_admin_user, make_client_user, make_therapy):
@@ -493,8 +458,8 @@ def test_admin_sees_progress_of_all_issued_cards(client, make_admin_user, make_c
     issued = client.get("/fidelity-cards/issued").json()
     assert len(issued) == 1
     assert issued[0]["client_name"] == "Ana Pop"
-    assert issued[0]["therapies"][0]["stamps"] == 1
-    assert issued[0]["therapies"][0]["next_reward"]["sessions_left"] == 2
+    assert issued[0]["stamps"] == 1
+    assert issued[0]["next_reward"]["sessions_left"] == 2
 
 
 def test_admin_picks_which_card_therapies_apply_to_the_client(client, make_admin_user, make_client_user, make_therapy):
@@ -503,13 +468,7 @@ def test_admin_picks_which_card_therapies_apply_to_the_client(client, make_admin
     masaj = make_therapy(name="Masaj", price=100)
     kineto = make_therapy(name="Kinetoterapie", price=100)
     _login(client)
-    type_id = _make_multi_type(
-        client,
-        [
-            {"therapy_id": masaj.id, "tiers": [{"session_number": 2, "discount_percent": 25}]},
-            {"therapy_id": kineto.id, "tiers": [{"session_number": 1, "discount_percent": 50}]},
-        ],
-    )
+    type_id = _make_type(client, [masaj.id, kineto.id], [{"session_number": 2, "discount_percent": 50}])
     resp = client.post(f"/clients/{profile.id}/fidelity-cards", json={"card_type_id": type_id, "therapy_ids": [masaj.id]})
     assert resp.status_code == 201, resp.text
     card_id = resp.json()["id"]
@@ -519,19 +478,13 @@ def test_admin_picks_which_card_therapies_apply_to_the_client(client, make_admin
     assert _pay(client, profile, kineto) == 100
     assert _pay(client, profile, masaj) == 100
 
-    # Adminul activează kineto ulterior; scoaterea masajului îi păstrează contorul.
-    resp = client.put(f"/clients/{profile.id}/fidelity-cards/{card_id}/therapies", json={"therapy_ids": [kineto.id]})
-    assert resp.status_code == 200, resp.text
-    assert [t["therapy_name"] for t in resp.json()["therapies"]] == ["Kinetoterapie"]
-    assert _pay(client, profile, kineto) == 50
-    assert _pay(client, profile, masaj) == 100  # masaj pe pauză — nici reducere, nici ștampilă
-
+    # Adminul activează și kineto — contorul comun continuă de unde era.
     resp = client.put(
         f"/clients/{profile.id}/fidelity-cards/{card_id}/therapies", json={"therapy_ids": [kineto.id, masaj.id]}
     )
-    masaj_progress = next(t for t in resp.json()["therapies"] if t["therapy_name"] == "Masaj")
-    assert masaj_progress["stamps"] == 1
-    assert _pay(client, profile, masaj) == 75
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["stamps"] == 1
+    assert _pay(client, profile, kineto) == 50
 
 
 def test_cannot_pick_a_therapy_outside_the_card_type(client, make_admin_user, make_client_user, make_therapy):

@@ -1,7 +1,7 @@
 import { CreditCard, Gift, PackageCheck } from "lucide-react";
 import { getOwnClientData } from "@/actions/clients";
 import { listOwnFidelityCards } from "@/actions/fidelity";
-import { FidelityTherapyProgressView } from "@/components/FidelityProgress";
+import { FidelityCardProgress } from "@/components/FidelityProgress";
 import { PayOnlineButton } from "@/components/PayOnlineButton";
 
 type PaymentStatus = "NEPLATIT" | "PARTIAL" | "PLATIT";
@@ -92,10 +92,8 @@ export default async function PaymentsPage() {
                     <span>{card.therapies.map((t) => t.therapy_name).join(", ")}</span>
                   </div>
                 </div>
-                <div className="mt-3 space-y-4">
-                  {card.therapies.map((t) => (
-                    <FidelityTherapyProgressView key={t.therapy_id} progress={t} audience="client" />
-                  ))}
+                <div className="mt-3">
+                  <FidelityCardProgress card={card} audience="client" />
                 </div>
               </div>
             ))}

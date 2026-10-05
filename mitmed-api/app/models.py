@@ -687,15 +687,30 @@ class ClinicVacation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+# Terapiile contorizate de un tip de card de fidelitate.
+fidelity_card_type_therapies = Table(
+    "fidelity_card_type_therapies",
+    Base.metadata,
+    Column("card_type_id", String, ForeignKey("fidelity_card_types.id", ondelete="CASCADE"), primary_key=True),
+    Column("therapy_id", String, ForeignKey("therapies.id", ondelete="CASCADE"), primary_key=True),
+)
+
+# Terapiile tipului de card pe care adminul le-a activat pentru un client anume.
+client_fidelity_card_therapies = Table(
+    "client_fidelity_card_therapies",
+    Base.metadata,
+    Column("card_id", String, ForeignKey("client_fidelity_cards.id", ondelete="CASCADE"), primary_key=True),
+    Column("therapy_id", String, ForeignKey("therapies.id", ondelete="CASCADE"), primary_key=True),
+)
+
+
 class FidelityCardType(Base):
     """Un TIP de card de fidelitate ("cartelă"), definit de admin — ce
-    terapii contorizează și, pentru FIECARE terapie în parte, ce reducere se
-    aplică la a N-a ședință PLĂTITĂ din acea terapie (vezi FidelityCardTier:
-    ex. Masaj: a 5-a -25%; Kinetoterapie: a 10-a -50%). Terapiile cardului
-    sunt cele care au cel puțin o treaptă. Fiecare terapie își are propriul
-    contor pe cardul emis (ClientFidelityCardProgress). Complet editabil de
-    admin; un tip se dezactivează (nu se șterge) dacă a fost deja emis unui
-    client, ca istoricul cardurilor emise să rămână coerent."""
+    terapii contorizează și un singur program de trepte pentru tot cardul
+    (vezi FidelityCardTier: ex. a 5-a ședință plătită -25%, a 10-a -50%).
+    Ședințele plătite din ORICARE dintre terapiile cardului se adună pe același
+    contor. Complet editabil de admin; un tip se dezactivează (nu se șterge)
+    dacă a fost deja emis unui client, ca istoricul să rămână coerent."""
 
     __tablename__ = "fidelity_card_types"
 
@@ -705,57 +720,48 @@ class FidelityCardType(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
+    therapies: Mapped[list[Therapy]] = relationship(secondary=fidelity_card_type_therapies)
     tiers: Mapped[list["FidelityCardTier"]] = relationship(
         back_populates="card_type", cascade="all, delete-orphan", order_by="FidelityCardTier.session_number"
     )
 
     @property
-    def therapy_ids(self) -> list[str]:
-        """Terapiile contorizate de card, alfabetic după nume."""
-        names = {t.therapy_id: t.therapy.name for t in self.tiers}
-        return sorted(names, key=lambda therapy_id: names[therapy_id].lower())
+    def sorted_therapies(self) -> list[Therapy]:
+        return sorted(self.therapies, key=lambda t: t.name.lower())
 
-    def tiers_for(self, therapy_id: str) -> list["FidelityCardTier"]:
-        return [t for t in self.tiers if t.therapy_id == therapy_id]
-
-    def cycle_length(self, therapy_id: str) -> int:
-        """Numărul de ședințe din terapia dată după care programul ei de
-        trepte se reia de la capăt — cea mai mare treaptă definită pentru
-        acea terapie. 0 dacă terapia nu (mai) face parte din card."""
-        return max((t.session_number for t in self.tiers_for(therapy_id)), default=0)
+    @property
+    def cycle_length(self) -> int:
+        """Numărul de ședințe după care programul se reia de la capăt — cea
+        mai mare treaptă definită. Un card fără trepte n-are niciodată reducere."""
+        return max((t.session_number for t in self.tiers), default=0)
 
 
 class FidelityCardTier(Base):
-    """O treaptă a programului de fidelitate pentru o terapie a cardului: la
-    a `session_number`-a ședință PLĂTITĂ din acea terapie, în ciclul curent,
-    se aplică `discount_percent`. Ex: Masaj, session_number=5,
-    discount_percent=25 + Masaj, session_number=6, discount_percent=50 — "a
-    5-a ședință de masaj -25%, a 6-a -50%". Programul fiecărei terapii se reia
-    ciclic după cea mai mare treaptă a ei (vezi FidelityCardType.cycle_length
-    și services/fidelity.py)."""
+    """O treaptă a programului de fidelitate: la a `session_number`-a ședință
+    PLĂTITĂ din ciclul curent (din oricare terapie a cardului), se aplică
+    `discount_percent`. Ex: session_number=5, discount_percent=25 +
+    session_number=10, discount_percent=50 — "a 5-a ședință -25%, a 10-a
+    -50%". Programul se reia ciclic după cea mai mare treaptă (vezi
+    FidelityCardType.cycle_length și services/fidelity.py)."""
 
     __tablename__ = "fidelity_card_tiers"
     __table_args__ = (
-        Index(
-            "ux_fidelity_card_tiers_type_therapy_session", "card_type_id", "therapy_id", "session_number", unique=True
-        ),
+        Index("ux_fidelity_card_tiers_type_session", "card_type_id", "session_number", unique=True),
     )
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_id)
     card_type_id: Mapped[str] = mapped_column(String, ForeignKey("fidelity_card_types.id", ondelete="CASCADE"), index=True)
-    therapy_id: Mapped[str] = mapped_column(String, ForeignKey("therapies.id"), nullable=False)
     session_number: Mapped[int] = mapped_column(Integer, nullable=False)
     discount_percent: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False)
 
     card_type: Mapped[FidelityCardType] = relationship(back_populates="tiers")
-    therapy: Mapped[Therapy] = relationship()
 
 
 class ClientFidelityCard(Base):
     """Un card EMIS de admin unui client anume, dintr-un FidelityCardType. Un
     client poate avea mai multe carduri simultan. Adminul alege la emitere
-    care dintre terapiile tipului se aplică acestui client — fiecare are un
-    rând ClientFidelityCardProgress cu propriul contor. Vezi
+    care dintre terapiile tipului se aplică acestui client; ședințele plătite
+    din oricare dintre ele avansează același contor (`stamps`). Vezi
     services/fidelity.py pentru logica de acumulare/reducere."""
 
     __tablename__ = "client_fidelity_cards"
@@ -766,47 +772,25 @@ class ClientFidelityCard(Base):
     issued_by_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"))
     issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Ședințe plătite acumulate în ciclul curent, din oricare terapie a
+    # cardului — se reia de la 0 după ce atinge FidelityCardType.cycle_length.
+    stamps: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Contor istoric, doar informativ — de câte ori a primit o reducere prin
+    # acest card, nu afectează logica de calcul.
+    discounted_sessions_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     client: Mapped[ClientProfile] = relationship(back_populates="fidelity_cards")
     card_type: Mapped[FidelityCardType] = relationship()
     issued_by: Mapped[User] = relationship()
-    progress: Mapped[list["ClientFidelityCardProgress"]] = relationship(
-        back_populates="card", cascade="all, delete-orphan"
-    )
-
-    def progress_for(self, therapy_id: str) -> "ClientFidelityCardProgress | None":
-        return next((p for p in self.progress if p.therapy_id == therapy_id), None)
+    therapies: Mapped[list[Therapy]] = relationship(secondary=client_fidelity_card_therapies)
 
     @property
     def therapy_ids(self) -> list[str]:
         """Terapiile care contează efectiv pentru acest client — cele ale
         tipului de card pe care adminul le-a activat pe cardul emis."""
-        enabled = {p.therapy_id for p in self.progress if p.enabled}
-        return [tid for tid in self.card_type.therapy_ids if tid in enabled]
-
-
-class ClientFidelityCardProgress(Base):
-    """Poziția unui card emis în ciclul UNEI terapii. Rândul se creează când
-    adminul activează terapia pe cardul clientului; dezactivarea doar pune
-    terapia pe pauză (`enabled=False`), ca o reactivare să continue de unde
-    rămăsese."""
-
-    __tablename__ = "client_fidelity_card_progress"
-    __table_args__ = (Index("ux_client_fidelity_card_progress_card_therapy", "card_id", "therapy_id", unique=True),)
-
-    id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_id)
-    card_id: Mapped[str] = mapped_column(String, ForeignKey("client_fidelity_cards.id", ondelete="CASCADE"), index=True)
-    therapy_id: Mapped[str] = mapped_column(String, ForeignKey("therapies.id"), nullable=False)
-    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    # Ședințe plătite acumulate în ciclul curent — se reia de la 0 după ce
-    # atinge FidelityCardType.cycle_length(therapy_id).
-    stamps: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    # Contor istoric, doar informativ — de câte ori a primit o reducere din
-    # această terapie prin card, nu afectează logica de calcul.
-    discounted_sessions_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-
-    card: Mapped[ClientFidelityCard] = relationship(back_populates="progress")
+        enabled = {t.id for t in self.therapies}
+        return [t.id for t in self.card_type.sorted_therapies if t.id in enabled]
 
 
 class PendingRegistration(Base):

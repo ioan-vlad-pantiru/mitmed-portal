@@ -62,8 +62,12 @@ function formatSession(iso: string) {
   });
 }
 
+// O programare acoperită de un pachet activ se scade din pachet la consult —
+// nu se plătește separat (și deci nu contează la cardul de fidelitate).
 function isPayable(b: PayableBooking) {
-  return b.status !== "ANULATA" && (b.paymentStatus === null || b.paymentStatus === "NEPLATIT");
+  if (b.status === "ANULATA") return false;
+  if (b.paymentStatus === "NEPLATIT") return true;
+  return b.paymentStatus === null && !b.coveredByPackage;
 }
 
 function BookingPaymentBadge({ booking }: { booking: PayableBooking }) {

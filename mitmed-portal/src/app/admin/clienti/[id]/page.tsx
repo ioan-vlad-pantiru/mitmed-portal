@@ -15,7 +15,7 @@ import { SheetsPanel, type ConsultationSheet } from "./SheetsPanel";
 import { NotesForm } from "./NotesForm";
 import { UnlockedTherapiesForm } from "./UnlockedTherapiesForm";
 import { FidelityCardsPanel } from "./FidelityCardsPanel";
-import { FidelityTherapyProgressView } from "@/components/FidelityProgress";
+import { FidelityCardProgress } from "@/components/FidelityProgress";
 import { MedicalRecordsPanel } from "./MedicalRecordsPanel";
 import { PatientDocumentsPanel } from "./PatientDocumentsPanel";
 import { PaymentForm, type PayableBooking } from "./PaymentForm";
@@ -484,16 +484,14 @@ export default async function ClientDetailPage({ params, searchParams }: { param
               {activeFidelityCards.map((card) => (
                 <div key={card.id}>
                   <p className="text-sm font-semibold text-zinc-800">{card.card_type_name}</p>
-                  <div className="mt-2 space-y-3">
-                    {card.therapies.map((t) => (
-                      <FidelityTherapyProgressView key={t.therapy_id} progress={t} />
-                    ))}
+                  <div className="mt-2">
+                    <FidelityCardProgress card={card} />
                   </div>
                 </div>
               ))}
             </div>
             <p className="mt-3 text-xs text-zinc-400">
-              Reducerile de fidelitate se aplică automat în totalul de mai jos, în ordinea terapiilor din plată.
+              Reducerile de fidelitate se aplică automat în totalul de mai jos, în ordinea terapiilor din plată. Ședințele din pachete nu se numără.
             </p>
           </div>
         )}
