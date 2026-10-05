@@ -749,3 +749,17 @@ class PendingRegistration(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class SiteAnnouncement(Base):
+    """Bara portocalie de anunț de pe site-ul de prezentare (mitmed.ro) — un
+    singur rând (id=1), editat de admin din Setări → Site de prezentare."""
+
+    __tablename__ = "site_announcement"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    text: Mapped[str] = mapped_column(String(300), nullable=False, default="")
+    # Variantă scurtă pentru telefon (bara are un singur rând acolo); gol = `text`.
+    mobile_text: Mapped[str | None] = mapped_column(String(120))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

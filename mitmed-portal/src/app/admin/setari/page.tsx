@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { IconClock, IconEdit, IconFileText, IconGift, IconPackage, IconShield, IconTag, IconTherapy } from "@/components/icons";
+import { IconClock, IconEdit, IconFileText, IconGift, IconImage, IconPackage, IconShield, IconTag, IconTherapy } from "@/components/icons";
 
 const settings = [
   { href: "/admin/program", title: "Program și concedii", description: "Orele cabinetului pe zile ale săptămânii și perioadele de vacanță.", icon: IconClock },
@@ -8,6 +8,7 @@ const settings = [
   { href: "/admin/pachete", title: "Pachete", description: "Pachete de ședințe și combinații de terapii.", icon: IconPackage },
   { href: "/admin/cupoane", title: "Cupoane", description: "Reduceri, condiții de folosire și valabilitate.", icon: IconTag },
   { href: "/admin/fisa-consultatie", title: "Fișe medicale", description: "Fișa de consultație, fișa de tratament și fișe noi construite de tine: căsuțe, ordine, vizibilitate pentru pacient.", icon: IconEdit },
+  { href: "/admin/site", title: "Site de prezentare", description: "Bara portocalie de anunț de pe mitmed.ro: text sau ascunsă.", icon: IconImage },
   { href: "/admin/documente", title: "Documente și acorduri", description: "Texte, consimțăminte și documente cerute clienților.", icon: IconFileText },
   { href: "/admin/gdpr", title: "Cereri GDPR", description: "Cereri de ștergere a contului trimise de clienți.", icon: IconShield },
 ];

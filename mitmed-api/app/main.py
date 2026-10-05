@@ -15,6 +15,7 @@ from app.routers import (
     client_documents,
     clients,
     consultation_sheets,
+    site,
     clinic,
     config_public,
     fidelity,
@@ -83,6 +84,7 @@ app.include_router(fidelity.router)
 app.include_router(insights.router)
 app.include_router(consents.router)
 app.include_router(public.router)
+app.include_router(site.router)
 app.include_router(config_public.router)
 app.include_router(webhooks.router)
 
