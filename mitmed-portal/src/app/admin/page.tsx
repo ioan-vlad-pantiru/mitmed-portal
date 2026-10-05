@@ -1,12 +1,12 @@
 import Link from "next/link";
-import { listAppointmentsInRange } from "@/actions/appointments";
+import { listAppointmentsInRange, listRecentClientCancellations } from "@/actions/appointments";
 import { listTherapies } from "@/actions/therapies";
 import { getDashboardStats } from "@/actions/clients";
 import { listBookingRequests } from "@/actions/publicBookings";
 import { WeekCalendar, getWeekRange, type CalendarAppointment } from "@/components/WeekCalendar";
 import { TodayAppointments } from "./TodayAppointments";
 import { ConsultSavedToast } from "./ConsultSavedToast";
-import { IconUsers, IconCalendar, IconPending, IconInbox } from "@/components/icons";
+import { IconUsers, IconCalendar, IconPending, IconInbox, IconAlert } from "@/components/icons";
 
 export default async function AdminBoardPage({
   searchParams,
@@ -16,11 +16,12 @@ export default async function AdminBoardPage({
   const { week } = await searchParams;
   const { start, end } = getWeekRange(week);
 
-  const [appointmentsRaw, therapiesRaw, stats, bookingRequests] = await Promise.all([
+  const [appointmentsRaw, therapiesRaw, stats, bookingRequests, cancellations] = await Promise.all([
     listAppointmentsInRange(start, end),
     listTherapies(),
     getDashboardStats(),
     listBookingRequests(),
+    listRecentClientCancellations(),
   ]);
   const newBookingRequests = bookingRequests.filter((r) => r.status === "NOU").length;
 
@@ -88,6 +89,34 @@ export default async function AdminBoardPage({
       </div>
 
       <TodayAppointments appointments={appointments} />
+
+      {cancellations.length > 0 && (
+        <section className="mm-card border-amber-200 bg-amber-50/60 p-4">
+          <div className="flex items-center gap-2">
+            <IconAlert className="h-4 w-4 text-amber-600" />
+            <h2 className="text-sm font-semibold text-zinc-900">Anulate de clienți în ultimele 7 zile</h2>
+          </div>
+          <ul className="mt-2 divide-y divide-amber-100 text-sm">
+            {cancellations.map((c) => (
+              <li key={c.appointment_id} className="flex flex-wrap items-baseline justify-between gap-2 py-2">
+                <span>
+                  <Link href={`/admin/clienti/${c.client_id}?tab=programari`} className="font-medium text-zinc-900 hover:underline">
+                    {c.client_name}
+                  </Link>{" "}
+                  <span className="text-zinc-600">
+                    · {c.therapy_name} ·{" "}
+                    {new Date(c.starts_at).toLocaleString("ro-RO", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                  {c.client_phone && <a href={`tel:${c.client_phone}`} className="ml-2 text-sky-600 hover:underline">{c.client_phone}</a>}
+                </span>
+                <span className="text-xs text-zinc-500">
+                  anulat {new Date(c.cancelled_at).toLocaleString("ro-RO", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {tiles.map((tile) => {

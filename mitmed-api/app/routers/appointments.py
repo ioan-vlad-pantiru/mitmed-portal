@@ -2,7 +2,7 @@ import logging
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DBSession, joinedload
@@ -12,6 +12,7 @@ from app.database import get_db
 from app.deps import require_roles, require_user
 from app.models import (
     Appointment,
+    AuditLog,
     AppointmentStatus,
     ClientProfile,
     ClinicVacation,
@@ -25,6 +26,7 @@ from app.models import (
     WeekdayHours,
 )
 from app.services.google_calendar import sync_appointment_cancelled, sync_appointment_created
+from app.services.notifications import format_local, send_cancellation_notice
 
 logger = logging.getLogger("mitmed.appointments")
 
@@ -510,7 +512,10 @@ def delete_appointment(
 
 @router.post("/{appointment_id}/cancel/me")
 def cancel_own_appointment(
-    appointment_id: str, db: DBSession = Depends(get_db), user: User = Depends(require_user)
+    appointment_id: str,
+    background_tasks: BackgroundTasks,
+    db: DBSession = Depends(get_db),
+    user: User = Depends(require_user),
 ) -> dict:
     """Clientul își anulează propria programare — aceeași regulă de 48h ca
     la anularea făcută de recepție, plus verificarea că programarea chiar
@@ -530,7 +535,47 @@ def cancel_own_appointment(
     sync_appointment_cancelled(appointment.google_calendar_event_id)
 
     log_audit(db, actor_id=user.id, action="appointment.cancel_own", target_type="Appointment", target_id=appointment_id)
+
+    # Medicul află imediat (WhatsApp), după ce răspunsul a plecat spre client.
+    background_tasks.add_task(
+        send_cancellation_notice,
+        client_name=appointment.client.full_name,
+        client_phone=appointment.client.phone,
+        therapy_name=appointment.therapy.name,
+        starts_at_local=format_local(appointment.starts_at),
+    )
     return {"ok": True}
+
+
+@router.get("/cancelled-by-clients")
+def list_recent_client_cancellations(
+    days: int = 7,
+    db: DBSession = Depends(get_db),
+    _: User = Depends(require_roles(Role.ADMIN, Role.RECEPTIE)),
+) -> list[dict]:
+    """Programările anulate de clienți din portal în ultimele `days` zile —
+    pentru bordul adminului, ca anularea să fie văzută și fără WhatsApp."""
+    since = datetime.now(timezone.utc) - timedelta(days=max(1, min(days, 60)))
+    rows = (
+        db.query(AuditLog, Appointment)
+        .join(Appointment, Appointment.id == AuditLog.target_id)
+        .options(joinedload(Appointment.client), joinedload(Appointment.therapy))
+        .filter(AuditLog.action == "appointment.cancel_own", AuditLog.created_at >= since)
+        .order_by(AuditLog.created_at.desc())
+        .all()
+    )
+    return [
+        {
+            "appointment_id": appointment.id,
+            "client_id": appointment.client_id,
+            "client_name": appointment.client.full_name,
+            "client_phone": appointment.client.phone,
+            "therapy_name": appointment.therapy.name,
+            "starts_at": appointment.starts_at,
+            "cancelled_at": log.created_at,
+        }
+        for log, appointment in rows
+    ]
 
 
 @router.get("")

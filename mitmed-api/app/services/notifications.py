@@ -1,5 +1,6 @@
 """Trimitere WhatsApp (Meta WhatsApp Business Cloud API) — remindere de
-programare și coduri de verificare la înregistrare.
+programare, coduri de verificare la înregistrare și anunțul către medic când un
+client își anulează programarea.
 
 Rămâne no-op (doar logare) până se completează WHATSAPP_PHONE_NUMBER_ID și
 WHATSAPP_ACCESS_TOKEN în .env. Mesajele inițiate de noi (nu răspunsuri în
@@ -9,6 +10,8 @@ textul lor e fixat acolo, aici trimitem doar valorile variabilelor, în ordinea
 """
 
 import logging
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from app.config import settings
 
@@ -89,6 +92,16 @@ def send_otp(to_phone: str, code: str) -> bool:
     )
 
 
+CLINIC_TIMEZONE = ZoneInfo("Europe/Bucharest")
+
+
+def format_local(starts_at: datetime) -> str:
+    """Data și ora programării în ora cabinetului (în DB e UTC)."""
+    if starts_at.tzinfo is not None:
+        starts_at = starts_at.astimezone(CLINIC_TIMEZONE)
+    return starts_at.strftime("%d.%m.%Y %H:%M")
+
+
 def send_appointment_reminder(
     to_phone: str, *, client_name: str, therapy_name: str, starts_at_local: str, when_label: str
 ) -> bool:
@@ -115,4 +128,18 @@ def send_appointment_reminder(
                 ),
             }
         ],
+    )
+
+
+def send_cancellation_notice(*, client_name: str, client_phone: str | None, therapy_name: str, starts_at_local: str) -> bool:
+    """Anunță medicul (STAFF_NOTIFY_PHONE) că un client și-a anulat singur
+    programarea din portal. Template UTILITY: {{1}} client, {{2}} terapie,
+    {{3}} data și ora, {{4}} telefonul clientului."""
+    if not settings.staff_notify_phone:
+        logger.info("STAFF_NOTIFY_PHONE necompletat — anunțul de anulare nu s-a trimis")
+        return False
+    return send_whatsapp_template(
+        settings.staff_notify_phone,
+        settings.whatsapp_cancellation_template,
+        [{"type": "body", "parameters": _text_params(client_name, therapy_name, starts_at_local, client_phone or "—")}],
     )

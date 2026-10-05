@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     whatsapp_template_language: str = "ro"
     whatsapp_otp_template: str = "mitmed_otp"
     whatsapp_reminder_template: str = "mitmed_reminder"
+    whatsapp_cancellation_template: str = "mitmed_cancellation"
+    # Telefonul medicului — primește pe WhatsApp un mesaj când un client își
+    # anulează singur programarea din portal. Gol = nu se trimite nimic.
+    staff_notify_phone: str | None = None
     # Ferestrele (ore) înainte de programare la care se trimite câte un
     # reminder — două remindere distincte per programare, nu unul singur.
     reminder_day_before_hours: int = 24

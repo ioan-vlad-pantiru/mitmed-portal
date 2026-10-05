@@ -192,3 +192,19 @@ export async function getAppointmentForConsult(appointmentId: string): Promise<C
     throw err;
   }
 }
+
+export type ClientCancellation = {
+  appointment_id: string;
+  client_id: string;
+  client_name: string;
+  client_phone: string | null;
+  therapy_name: string;
+  starts_at: string;
+  cancelled_at: string;
+};
+
+/** Programările anulate de clienți din portal în ultimele 7 zile (pentru bord). */
+export async function listRecentClientCancellations(): Promise<ClientCancellation[]> {
+  await requireRole(Role.ADMIN, Role.RECEPTIE);
+  return apiGet<ClientCancellation[]>("/appointments/cancelled-by-clients", { days: 7 });
+}

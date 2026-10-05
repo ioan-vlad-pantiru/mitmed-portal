@@ -102,3 +102,35 @@ def test_send_returns_false_on_network_error(monkeypatch):
 
     monkeypatch.setattr(requests, "post", boom)
     assert notifications.send_otp("0722111222", "123456") is False
+
+
+def test_cancellation_notice_goes_to_staff_phone(monkeypatch):
+    from app.services.notifications import send_cancellation_notice
+
+    _configure(monkeypatch)
+    monkeypatch.setattr(settings, "staff_notify_phone", "0722 000 111")
+    calls = _capture_post(monkeypatch)
+
+    assert send_cancellation_notice(client_name="Ana Pop", client_phone=None, therapy_name="Masaj", starts_at_local="04.03.2030 10:30")
+    body = calls[0]["json"]
+    assert body["to"] == "40722000111"
+    assert body["template"]["name"] == settings.whatsapp_cancellation_template
+    assert [p["text"] for p in body["template"]["components"][0]["parameters"]] == ["Ana Pop", "Masaj", "04.03.2030 10:30", "—"]
+
+
+def test_cancellation_notice_skipped_without_staff_phone(monkeypatch):
+    from app.services.notifications import send_cancellation_notice
+
+    _configure(monkeypatch)
+    monkeypatch.setattr(settings, "staff_notify_phone", None)
+    calls = _capture_post(monkeypatch)
+    assert send_cancellation_notice(client_name="A", client_phone="1", therapy_name="M", starts_at_local="x") is False
+    assert calls == []
+
+
+def test_format_local_uses_clinic_timezone():
+    from datetime import datetime, timezone
+
+    from app.services.notifications import format_local
+
+    assert format_local(datetime(2030, 7, 1, 7, 0, tzinfo=timezone.utc)) == "01.07.2030 10:00"

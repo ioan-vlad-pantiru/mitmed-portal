@@ -107,3 +107,34 @@ def test_documented_appointment_cannot_be_deleted(client, db_session, make_admin
     _login(client, "admin@example.com")
 
     assert client.delete(f"/appointments/{appointment.id}").status_code == 409
+
+
+def test_client_cancellation_notifies_medic_and_shows_on_board(
+    client, db_session, make_admin_user, make_client_user, make_therapy, monkeypatch
+):
+    from app.config import settings
+    from app.routers import appointments as appointments_router
+
+    sent: list[dict] = []
+    monkeypatch.setattr(appointments_router, "send_cancellation_notice", lambda **kw: sent.append(kw))
+    monkeypatch.setattr(settings, "staff_notify_phone", "0722000000")
+    admin = make_admin_user(email="admin@example.com")
+    _, profile = make_client_user(email="pacient@example.com", full_name="Ana Pop")
+    profile.phone = "0733111222"
+    db_session.commit()
+    therapy = make_therapy(name="Masaj")
+    starts_at = datetime(2030, 3, 4, 8, 30, tzinfo=timezone.utc)  # 10:30 ora României
+    appointment = Appointment(client_id=profile.id, therapy_id=therapy.id, starts_at=starts_at, created_by_id=admin.id)
+    db_session.add(appointment)
+    db_session.commit()
+
+    _login(client, "pacient@example.com")
+    assert client.post(f"/appointments/{appointment.id}/cancel/me").status_code == 200
+    assert sent == [
+        {"client_name": "Ana Pop", "client_phone": "0733111222", "therapy_name": "Masaj", "starts_at_local": "04.03.2030 10:30"}
+    ]
+    client.post("/auth/logout")
+
+    _login(client, "admin@example.com")
+    rows = client.get("/appointments/cancelled-by-clients").json()
+    assert [r["client_name"] for r in rows] == ["Ana Pop"]

@@ -16,7 +16,7 @@ from sqlalchemy.orm.attributes import InstrumentedAttribute
 from app.config import settings
 from app.database import SessionLocal
 from app.models import Appointment, AppointmentStatus, PendingRegistration
-from app.services.notifications import send_appointment_reminder
+from app.services.notifications import format_local, send_appointment_reminder
 
 logger = logging.getLogger("mitmed.scheduler")
 
@@ -53,7 +53,7 @@ def _send_reminder_batch(
                 client.phone,
                 client_name=client.full_name,
                 therapy_name=therapy.name,
-                starts_at_local=appointment.starts_at.strftime("%d.%m.%Y %H:%M"),
+                starts_at_local=format_local(appointment.starts_at),
                 when_label=when_label,
             )
         # Marcat ca trimis chiar și fără telefon pe fișă — altfel job-ul ar
