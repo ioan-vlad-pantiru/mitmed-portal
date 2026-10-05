@@ -24,6 +24,7 @@ export const ADMIN_PAGES: AdminPage[] = [
   { href: "/admin/fisa-consultatie", label: "Fișe medicale", parent: "/admin/setari", adminOnly: true, keywords: "fisa consultatie tratament campuri" },
   { href: "/admin/site", label: "Site de prezentare", parent: "/admin/setari", adminOnly: true, keywords: "bara anunt mitmed.ro" },
   { href: "/admin/documente", label: "Documente și acorduri", parent: "/admin/setari", adminOnly: true, keywords: "consimtaminte gdpr" },
+  { href: "/admin/personal", label: "Conturi de personal", parent: "/admin/setari", adminOnly: true, keywords: "receptie utilizatori staff angajati" },
   { href: "/admin/gdpr", label: "Cereri GDPR", parent: "/admin/setari", adminOnly: true, keywords: "stergere date" },
   { href: "/admin/cont", label: "Contul meu", parent: "/admin", keywords: "parola" },
 ];
