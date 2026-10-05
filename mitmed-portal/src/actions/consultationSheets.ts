@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { apiDelete, apiGet, apiPost, apiPut, ApiError } from "@/lib/apiClient";
 import { requireRole } from "@/lib/authSession";
 import { Role } from "@/lib/enums";
@@ -67,6 +68,11 @@ function toPayload(formData: FormData) {
   };
 }
 
+/** Programarea din ecranul de Consult — doar la creare (leagă fișa de ședință). */
+function appointmentIdFrom(formData: FormData): string | null {
+  return String(formData.get("appointmentId") ?? "").trim() || null;
+}
+
 /** O fișă nouă pentru pacient (consultație sau o fișă construită de admin). */
 export async function createConsultationSheet(
   clientId: string,
@@ -76,12 +82,20 @@ export async function createConsultationSheet(
 ): Promise<ConsultationSheetFormState> {
   await requireRole(Role.ADMIN, Role.RECEPTIE);
   try {
-    await apiPost("/consultation-sheets", { client_id: clientId, template_id: templateId, ...toPayload(formData) });
+    await apiPost("/consultation-sheets", {
+      client_id: clientId,
+      template_id: templateId,
+      appointment_id: appointmentIdFrom(formData),
+      ...toPayload(formData),
+    });
   } catch (err) {
     if (err instanceof ApiError) return { message: err.message };
     throw err;
   }
   revalidatePath(`/admin/clienti/${clientId}`);
+  // Din ecranul de Consult fluxul e „următorul pacient”, ca la notițele de
+  // tratament: înapoi la bord, cu toast (vezi ConsultSavedToast).
+  if (formData.get("fromConsult")) redirect("/admin?consultSaved=1");
   return { success: true, message: "Fișa a fost salvată." };
 }
 

@@ -2,18 +2,19 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getAppointmentForConsult, listAppointmentsInRange } from "@/actions/appointments";
 import { listActiveConsentTemplates } from "@/actions/consents";
-import { listConsultationSheetFields } from "@/actions/consultationSheets";
-import { TEMPLATE_TRATAMENT } from "@/lib/sheetTemplates";
+import { listConsultationSheetFields, listSheetTemplates } from "@/actions/consultationSheets";
+import { TEMPLATE_CONSULTATIE, TEMPLATE_TRATAMENT } from "@/lib/sheetTemplates";
 import { getCurrentUser } from "@/lib/authSession";
-import { ConsultForm } from "./ConsultForm";
+import { ConsultWorkspace } from "./ConsultWorkspace";
 import { IconClose } from "@/components/icons";
 
 export default async function ConsultPage({ params }: { params: Promise<{ appointmentId: string }> }) {
   const { appointmentId } = await params;
-  const [data, consentTemplates, treatmentFields, user] = await Promise.all([
+  const [data, consentTemplates, sheetFields, sheetTemplates, user] = await Promise.all([
     getAppointmentForConsult(appointmentId),
     listActiveConsentTemplates(),
-    listConsultationSheetFields(false, TEMPLATE_TRATAMENT),
+    listConsultationSheetFields(false),
+    listSheetTemplates(),
     getCurrentUser(),
   ]);
   if (!data) notFound();
@@ -180,13 +181,18 @@ export default async function ConsultPage({ params }: { params: Promise<{ appoin
           </section>
         </aside>
 
-        <ConsultForm
+        <ConsultWorkspace
+          templates={sheetTemplates}
+          fields={sheetFields}
+          latestValues={data.latest_sheet_values}
+          // O programare de consultație deschide direct fișa de consultație.
+          defaultTemplateId={appointment.therapy.is_consultation ? TEMPLATE_CONSULTATIE : TEMPLATE_TRATAMENT}
           clientId={client.id}
           appointmentId={appointment.id}
           therapyId={appointment.therapy.id}
           prevAppointmentId={prevAppointmentId}
           nextAppointmentId={nextAppointmentId}
-          extraFields={treatmentFields}
+          extraFields={sheetFields.filter((f) => f.template_id === TEMPLATE_TRATAMENT)}
           isAdmin={user?.role === "ADMIN"}
         />
       </div>

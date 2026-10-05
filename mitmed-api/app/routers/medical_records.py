@@ -7,9 +7,10 @@ from sqlalchemy.orm import Session as DBSession
 from app.audit import log_audit
 from app.database import get_db
 from app.deps import require_roles
-from app.models import TEMPLATE_TRATAMENT, Appointment, AppointmentStatus, MedicalRecord, Role, User
+from app.models import TEMPLATE_TRATAMENT, Appointment, MedicalRecord, Role, User
 from app.routers.consultation_sheets import clean_field_values, merge_field_values
 from app.services.packages import consume_package_session
+from app.services.sessions import complete_appointment
 
 router = APIRouter(prefix="/medical-records", tags=["medical-records"])
 
@@ -74,16 +75,14 @@ def create_medical_record(
     db.add(record)
     db.flush()
 
-    # Scrierea notițelor pentru o programare o consideră "ținută" — ședința
-    # iese din contorul de ședințe active (programate, neefectuate încă).
-    if payload.appointment_id:
-        appointment = db.get(Appointment, payload.appointment_id)
-        if appointment and appointment.status == AppointmentStatus.PROGRAMATA:
-            appointment.status = AppointmentStatus.FINALIZATA
-
-    # O notiță de ședință pentru o terapie = o ședință "ținută" — dacă
-    # clientul are un pachet activ pentru acea terapie, se scade automat 1.
-    if payload.therapy_id:
+    # Notițele pentru o programare o consideră "ținută" (iese din ședințele
+    # active) și scad ședința din pachet — o singură dată per programare, chiar
+    # dacă în aceeași vizită s-a completat și o fișă (vezi services/sessions.py).
+    appointment = db.get(Appointment, payload.appointment_id) if payload.appointment_id else None
+    if appointment:
+        complete_appointment(db, appointment)
+    elif payload.therapy_id:
+        # Ședință notată direct din dosar, fără programare.
         consume_package_session(db, client_id=payload.client_id, therapy_id=payload.therapy_id)
 
     db.commit()

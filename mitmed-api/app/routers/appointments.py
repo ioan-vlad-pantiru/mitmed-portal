@@ -17,6 +17,7 @@ from app.models import (
     ClientProfile,
     ClinicVacation,
     Consent,
+    ConsultationSheet,
     MedicalRecord,
     Payment,
     PaymentStatus,
@@ -636,6 +637,16 @@ def get_appointment_for_consult(
         .all()
     )
 
+    # Ultima fișă a pacientului din fiecare tip — pentru precompletarea
+    # câmpurilor „carry over” când medicul alege o fișă în ecranul de Consult.
+    latest_sheet_values: dict[str, dict] = {}
+    for sheet in (
+        db.query(ConsultationSheet)
+        .filter(ConsultationSheet.client_id == client.id)
+        .order_by(ConsultationSheet.sheet_date.desc())
+    ):
+        latest_sheet_values.setdefault(sheet.template_id, sheet.field_values or {})
+
     consents = (
         db.query(Consent)
         .filter(Consent.client_id == client.id)
@@ -662,8 +673,13 @@ def get_appointment_for_consult(
             "id": appointment.id,
             "starts_at": appointment.starts_at,
             "status": appointment.status,
-            "therapy": {"id": appointment.therapy_id, "name": appointment.therapy.name},
+            "therapy": {
+                "id": appointment.therapy_id,
+                "name": appointment.therapy.name,
+                "is_consultation": appointment.therapy.is_consultation,
+            },
         },
+        "latest_sheet_values": latest_sheet_values,
         "client": {
             "id": client.id,
             "full_name": client.full_name,

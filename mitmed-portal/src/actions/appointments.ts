@@ -155,7 +155,14 @@ export async function listAppointmentsInRange(start: Date, end: Date): Promise<C
 }
 
 export type ConsultData = {
-  appointment: { id: string; starts_at: string; status: string; therapy: { id: string; name: string } };
+  appointment: {
+    id: string;
+    starts_at: string;
+    status: string;
+    therapy: { id: string; name: string; is_consultation: boolean };
+  };
+  /** Valorile ultimei fișe a pacientului, pe tip de fișă (pentru precompletare). */
+  latest_sheet_values: Record<string, Record<string, string>>;
   client: {
     id: string;
     full_name: string;

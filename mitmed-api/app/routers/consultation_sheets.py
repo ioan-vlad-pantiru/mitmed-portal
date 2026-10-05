@@ -13,6 +13,7 @@ from app.database import get_db
 from app.deps import require_roles, require_user
 from app.models import (
     TEMPLATE_CONSULTATIE,
+    Appointment,
     TEMPLATE_TRATAMENT,
     ClientProfile,
     ConsultationSheet,
@@ -22,6 +23,7 @@ from app.models import (
     SheetTemplate,
     User,
 )
+from app.services.sessions import complete_appointment
 from app.services.sheet_pdf import render_sheet_pdf, render_treatment_pdf
 
 router = APIRouter(prefix="/consultation-sheets", tags=["consultation-sheets"])
@@ -283,6 +285,9 @@ class ConsultationSheetFields(BaseModel):
 class ConsultationSheetCreate(ConsultationSheetFields):
     client_id: str
     template_id: str = TEMPLATE_CONSULTATIE
+    # Completată din ecranul de Consult: fișa se leagă de programare, iar
+    # programarea se finalizează (ca la notițele de tratament).
+    appointment_id: str | None = None
 
 
 def clean_field_values(db: DBSession, template_id: str, values: dict[str, str | None]) -> dict[str, str | None]:
@@ -332,15 +337,23 @@ def create_consultation_sheet(
     if template.kind == "tratament":
         # Fișa de tratament se completează per ședință (MedicalRecord), nu aici.
         raise HTTPException(status_code=422, detail="Fișa de tratament se completează din ședințe.")
+    appointment = None
+    if payload.appointment_id:
+        appointment = db.get(Appointment, payload.appointment_id)
+        if not appointment or appointment.client_id != payload.client_id:
+            raise HTTPException(status_code=422, detail="Programarea nu aparține acestui client.")
     sheet = ConsultationSheet(
         client_id=payload.client_id,
         template_id=template.id,
+        appointment_id=appointment.id if appointment else None,
         author_id=actor.id,
         sheet_date=payload.sheet_date or datetime.now(timezone.utc),
         sheet_number=(payload.sheet_number or "").strip() or None,
         field_values=merge_field_values({}, clean_field_values(db, template.id, payload.values)),
     )
     db.add(sheet)
+    if appointment:
+        complete_appointment(db, appointment)
     db.commit()
     log_audit(
         db,

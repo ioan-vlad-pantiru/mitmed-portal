@@ -286,6 +286,10 @@ class ConsultationSheet(Base):
     template_id: Mapped[str] = mapped_column(
         String, ForeignKey("sheet_templates.id"), nullable=False, default=TEMPLATE_CONSULTATIE, index=True
     )
+    # Programarea în timpul căreia s-a completat fișa (din ecranul de Consult).
+    appointment_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("appointments.id", ondelete="SET NULL"), index=True
+    )
     author_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"))
     sheet_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     sheet_number: Mapped[str | None] = mapped_column(String(30))
