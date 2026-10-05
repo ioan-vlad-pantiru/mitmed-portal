@@ -1,6 +1,7 @@
 import { CreditCard, Gift, PackageCheck } from "lucide-react";
 import { getOwnClientData } from "@/actions/clients";
 import { listOwnFidelityCards } from "@/actions/fidelity";
+import { FidelityTherapyProgressView } from "@/components/FidelityProgress";
 import { PayOnlineButton } from "@/components/PayOnlineButton";
 
 type PaymentStatus = "NEPLATIT" | "PARTIAL" | "PLATIT";
@@ -80,43 +81,24 @@ export default async function PaymentsPage() {
             <h2>Cardurile mele de fidelitate</h2>
           </div>
           <div className="portal-package-grid">
-            {fidelityCards.map((card) => {
-              const position = card.cycle_length > 0 ? (card.stamps % card.cycle_length) + 1 : card.stamps + 1;
-              const progress = card.cycle_length > 0 ? Math.min(100, (position / card.cycle_length) * 100) : 0;
-              const program = card.tiers
-                .slice()
-                .sort((a, b) => a.session_number - b.session_number)
-                .map((t) => `a ${t.session_number}-a -${Number(t.discount_percent)}%`)
-                .join(", ");
-              return (
-                <div key={card.id}>
-                  <div className="portal-package-head">
-                    <span className="portal-package-icon">
-                      <Gift size={16} />
-                    </span>
-                    <div>
-                      <strong>{card.card_type_name}</strong>
-                      <span>{card.therapy_name}</span>
-                    </div>
+            {fidelityCards.map((card) => (
+              <div key={card.id}>
+                <div className="portal-package-head">
+                  <span className="portal-package-icon">
+                    <Gift size={16} />
+                  </span>
+                  <div>
+                    <strong>{card.card_type_name}</strong>
+                    <span>{card.therapies.map((t) => t.therapy_name).join(", ")}</span>
                   </div>
-                  {card.next_discount_percent && (
-                    <p className="mt-1 text-sm font-medium text-emerald-700">
-                      Următoarea ședință are -{Number(card.next_discount_percent)}%!
-                    </p>
-                  )}
-                  <div className="portal-package-progress-row">
-                    <span>
-                      Ședința {position} din {card.cycle_length}
-                    </span>
-                    <b>{Math.round(progress)}%</b>
-                  </div>
-                  <div className="portal-package-track">
-                    <i style={{ width: `${progress}%` }} />
-                  </div>
-                  <p className="mt-1 text-xs text-zinc-400">Program: {program}</p>
                 </div>
-              );
-            })}
+                <div className="mt-3 space-y-4">
+                  {card.therapies.map((t) => (
+                    <FidelityTherapyProgressView key={t.therapy_id} progress={t} audience="client" />
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         </section>
       )}

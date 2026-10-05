@@ -4,7 +4,7 @@ import { IconClock, IconEdit, IconFileText, IconGift, IconImage, IconPackage, Ic
 const settings = [
   { href: "/admin/program", title: "Program și concedii", description: "Orele cabinetului pe zile ale săptămânii și perioadele de vacanță.", icon: IconClock },
   { href: "/admin/terapii", title: "Terapii", description: "Servicii, durate, prețuri și disponibilitate.", icon: IconTherapy },
-  { href: "/admin/fidelitate", title: "Carduri de fidelitate", description: "Tipuri de carduri, pragul de ședințe și câte oferă gratuit.", icon: IconGift },
+  { href: "/admin/fidelitate", title: "Carduri de fidelitate", description: "Tipuri de carduri, terapiile și pragurile de reducere, progresul clienților.", icon: IconGift },
   { href: "/admin/pachete", title: "Pachete", description: "Pachete de ședințe și combinații de terapii.", icon: IconPackage },
   { href: "/admin/cupoane", title: "Cupoane", description: "Reduceri, condiții de folosire și valabilitate.", icon: IconTag },
   { href: "/admin/fisa-consultatie", title: "Fișe medicale", description: "Fișa de consultație, fișa de tratament și fișe noi construite de tine: căsuțe, ordine, vizibilitate pentru pacient.", icon: IconEdit },

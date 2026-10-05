@@ -162,7 +162,10 @@ def test_fidelity_stamp_only_registers_when_payment_reaches_full(
     # face ca `stamps` să rămână mereu 0 (0 % 1 == 0), ambiguu pentru test.
     type_resp = client.post(
         "/fidelity-cards/types",
-        json={"name": "Card", "therapy_id": therapy.id, "tiers": [{"session_number": 2, "discount_percent": 10}]},
+        json={
+            "name": "Card",
+            "therapies": [{"therapy_id": therapy.id, "tiers": [{"session_number": 2, "discount_percent": 10}]}],
+        },
     )
     type_id = type_resp.json()["id"]
     client.post(f"/clients/{profile.id}/fidelity-cards", json={"card_type_id": type_id})
@@ -171,11 +174,11 @@ def test_fidelity_stamp_only_registers_when_payment_reaches_full(
         "/payments", json={"client_id": profile.id, "therapy_id": therapy.id, "amount_paid": 50}
     ).json()["id"]
     card = client.get(f"/clients/{profile.id}/fidelity-cards").json()[0]
-    assert card["stamps"] == 0  # plată parțială — nu contează încă
+    assert card["therapies"][0]["stamps"] == 0  # plată parțială — nu contează încă
 
     client.post(f"/payments/{payment_id}/mark-paid")  # completează restul -> PLATIT
     card = client.get(f"/clients/{profile.id}/fidelity-cards").json()[0]
-    assert card["stamps"] == 1
+    assert card["therapies"][0]["stamps"] == 1
 
 
 def test_payu_checkout_charges_only_remaining_balance(client, make_admin_user, make_client_user, make_therapy, monkeypatch):

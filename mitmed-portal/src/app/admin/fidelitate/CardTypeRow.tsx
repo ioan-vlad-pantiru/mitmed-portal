@@ -3,15 +3,15 @@
 import { useActionState, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { deleteFidelityCardType, toggleFidelityCardTypeActive, updateFidelityCardType, type FidelityCardType } from "@/actions/fidelity";
-import { TierEditor } from "./TierEditor";
+import { CardTypeEditor } from "./CardTypeEditor";
 import { useToast } from "@/components/Toast";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { IconButton } from "@/components/ui/IconButton";
 import { IconEdit, IconPower, IconTrash, IconClose } from "@/components/icons";
 
-function tiersSummary(cardType: FidelityCardType): string {
-  return cardType.tiers
+export function tiersSummary(tiers: { session_number: number; discount_percent: string }[]): string {
+  return tiers
     .slice()
     .sort((a, b) => a.session_number - b.session_number)
     .map((t) => `a ${t.session_number}-a -${Number(t.discount_percent)}%`)
@@ -36,8 +36,16 @@ export function CardTypeRow({
     <>
       <tr className="transition-colors hover:bg-zinc-50/70">
         <td className="px-4 py-2 text-zinc-900">{cardType.name}</td>
-        <td className="px-4 py-2 text-zinc-600">{cardType.therapy_name}</td>
-        <td className="px-4 py-2 text-zinc-600">{tiersSummary(cardType)}</td>
+        <td className="px-4 py-2 text-zinc-600">
+          <ul className="space-y-0.5">
+            {cardType.therapies.map((t) => (
+              <li key={t.therapy_id}>
+                <span className="font-medium text-zinc-700">{t.therapy_name}</span>
+                <span className="text-zinc-500"> · {tiersSummary(t.tiers)}</span>
+              </li>
+            ))}
+          </ul>
+        </td>
         <td className="px-4 py-2">
           <Badge variant={cardType.active ? "success" : "neutral"}>{cardType.active ? "Da" : "Nu"}</Badge>
         </td>
@@ -88,12 +96,9 @@ export function CardTypeRow({
       </tr>
       {editing && (
         <tr>
-          <td colSpan={5} className="bg-zinc-50/60 px-4 py-4">
+          <td colSpan={4} className="bg-zinc-50/60 px-4 py-4">
             <form action={action} className="grid max-w-2xl grid-cols-2 gap-3">
-              <TierEditor
-                therapies={therapies}
-                defaults={{ name: cardType.name, therapyId: cardType.therapy_id, tiers: cardType.tiers }}
-              />
+              <CardTypeEditor therapies={therapies} defaults={{ name: cardType.name, therapies: cardType.therapies }} />
               {state?.message && <p className="col-span-2 text-sm text-red-600">{state.message}</p>}
               <div className="col-span-2 flex gap-2">
                 <Button type="submit" disabled={saving}>

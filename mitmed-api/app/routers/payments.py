@@ -210,7 +210,7 @@ def create_payment(
     # ciclu are o treaptă cu reducere (vezi services/fidelity.py). Un cupon
     # ales explicit de personal are prioritate — cele două nu se cumulează.
     fidelity_card = None if coupon else find_active_card(db, client_id=payload.client_id, therapy_id=payload.therapy_id)
-    fidelity_discount = next_session_discount_percent(fidelity_card) if fidelity_card else None
+    fidelity_discount = next_session_discount_percent(fidelity_card, therapy.id) if fidelity_card else None
 
     if fidelity_discount is not None:
         base_price = Decimal(therapy.price)
@@ -665,7 +665,7 @@ def preview_price(
     # Aceeași regulă ca la crearea plății: reducerea de fidelitate e automată
     # și doar când nu s-a ales explicit un cupon — vezi create_payment.
     fidelity_card = None if coupon or not client_id else find_active_card(db, client_id=client_id, therapy_id=therapy_id)
-    fidelity_discount = next_session_discount_percent(fidelity_card) if fidelity_card else None
+    fidelity_discount = next_session_discount_percent(fidelity_card, therapy.id) if fidelity_card else None
 
     if fidelity_discount is not None:
         base_price = Decimal(therapy.price)

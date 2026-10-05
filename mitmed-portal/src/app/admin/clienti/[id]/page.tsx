@@ -439,7 +439,7 @@ export default async function ClientDetailPage({ params, searchParams }: { param
             therapies={therapiesRaw.map((t) => ({ id: t.id, name: t.name, is_consultation: t.is_consultation }))}
             unlockedTherapyIds={client.unlocked_therapy_ids}
           />
-          <FidelityCardsPanel clientId={client.id} cards={fidelityCards} cardTypes={fidelityCardTypes} />
+          <FidelityCardsPanel clientId={client.id} cards={fidelityCards} cardTypes={fidelityCardTypes} isAdmin={isAdmin} />
         </div>
 
         <div>
