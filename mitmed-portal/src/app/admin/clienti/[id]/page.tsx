@@ -28,6 +28,7 @@ import { MarkPaidControl } from "@/components/MarkPaidControl";
 import { CorrectPaymentControl } from "@/components/CorrectPaymentControl";
 import { DeletePaymentControl } from "@/components/DeletePaymentControl";
 import { getCurrentUser } from "@/lib/authSession";
+import { formatBooking } from "@/lib/clinic";
 import { PackageCheck } from "lucide-react";
 
 type PaymentStatus = "NEPLATIT" | "PARTIAL" | "PLATIT";
@@ -112,6 +113,8 @@ type ClientDetail = {
     status: string;
     therapy_id: string;
     therapy: { name: string };
+    booked_at: string;
+    booked_by_client: boolean;
   }[];
 };
 
@@ -597,6 +600,7 @@ export default async function ClientDetailPage({ params, searchParams }: { param
               <div className="flex items-center justify-between">
                 <span>
                   {new Date(a.starts_at).toLocaleString("ro-RO")} · {a.therapy.name} · {a.status}
+                  <span className="block text-xs text-zinc-400">Programată pe {formatBooking(a.booked_at, a.booked_by_client)}</span>
                 </span>
                 {(a.status === "PROGRAMATA" || a.status === "CONFIRMATA") && (
                   <span className="flex flex-wrap items-center justify-end gap-3">

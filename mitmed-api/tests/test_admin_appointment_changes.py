@@ -138,3 +138,30 @@ def test_client_cancellation_notifies_medic_and_shows_on_board(
     _login(client, "admin@example.com")
     rows = client.get("/appointments/cancelled-by-clients").json()
     assert [r["client_name"] for r in rows] == ["Ana Pop"]
+
+
+def test_board_lists_recent_bookings_with_booking_time(client, db_session, make_admin_user, make_client_user, make_therapy):
+    """Momentul rezervării (nu doar data ședinței) și cine a făcut-o — vizibile
+    pe bord, în calendar și pe fișa clientului."""
+    admin = make_admin_user(email="admin@example.com")
+    user, profile = make_client_user(email="pacient@example.com", full_name="Ana Pop")
+    therapy = make_therapy(name="Masaj")
+    old = _appointment_in(db_session, profile, therapy, timedelta(days=20), admin.id)
+    old.created_at = datetime.now(timezone.utc) - timedelta(days=10)
+    by_staff = _appointment_in(db_session, profile, therapy, timedelta(days=3), admin.id)
+    by_client = _appointment_in(db_session, profile, therapy, timedelta(days=5), user.id)
+    db_session.commit()
+
+    _login(client, "admin@example.com")
+    rows = client.get("/appointments/recently-booked").json()
+    assert [(r["id"], r["booked_by_client"]) for r in rows] == [(by_client.id, True), (by_staff.id, False)]
+    assert rows[0]["booked_at"] is not None
+
+    start = (datetime.now(timezone.utc)).isoformat()
+    end = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
+    calendar = {a["id"]: a for a in client.get("/appointments", params={"start": start, "end": end}).json()}
+    assert calendar[by_client.id]["booked_by_client"] is True
+    assert calendar[old.id]["booked_at"].startswith(old.created_at.date().isoformat())
+
+    detail = client.get(f"/clients/{profile.id}").json()
+    assert {a["id"]: a["booked_by_client"] for a in detail["appointments"]}[by_staff.id] is False

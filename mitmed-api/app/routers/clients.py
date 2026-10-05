@@ -763,6 +763,8 @@ def _serialize_client_detail(client: ClientProfile) -> dict:
                 "status": a.status,
                 "therapy_id": a.therapy_id,
                 "therapy": {"name": a.therapy.name},
+                "booked_at": a.created_at,
+                "booked_by_client": a.booked_by_client,
             }
             for a in sorted(client.appointments, key=lambda a: a.starts_at, reverse=True)
         ],

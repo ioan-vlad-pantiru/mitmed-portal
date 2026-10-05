@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { CalendarAppointment } from "@/components/WeekCalendar";
+import { formatBooking } from "@/lib/clinic";
 
 /** Listă compactă a programărilor de azi, cu acces direct la ecranul de
  * Consult — gândită pentru "următorul pacient", nu pentru navigare prin listă. */
@@ -34,7 +35,9 @@ export function TodayAppointments({ appointments }: { appointments: CalendarAppo
                   </span>
                   <span className="truncate font-medium text-zinc-900">{a.clientName}</span>
                 </div>
-                <p className="truncate text-xs text-zinc-500">{a.therapyName}</p>
+                <p className="truncate text-xs text-zinc-500">
+                  {a.therapyName} · programată {formatBooking(a.bookedAt, a.bookedByClient)}
+                </p>
               </div>
               {done ? (
                 <span data-variant="success" className="mm-badge shrink-0">

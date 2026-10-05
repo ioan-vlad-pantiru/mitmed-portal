@@ -514,6 +514,12 @@ class Appointment(Base):
     client: Mapped[ClientProfile] = relationship(back_populates="appointments")
     therapy: Mapped[Therapy] = relationship()
 
+    @property
+    def booked_by_client(self) -> bool:
+        """True dacă a rezervat-o clientul însuși din portal, False dacă a
+        introdus-o personalul (`created_at` = momentul rezervării)."""
+        return self.created_by_id == self.client.user_id
+
     __table_args__ = (
         # Interzice două programări ACTIVE pe aceeași terapie + oră exactă la
         # nivel de bază de date — ultima linie de apărare împotriva

@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { listAppointmentsInRange, listRecentClientCancellations } from "@/actions/appointments";
+import { listAppointmentsInRange, listRecentBookings, listRecentClientCancellations } from "@/actions/appointments";
+import { CLINIC_TIME_ZONE, formatBooking } from "@/lib/clinic";
 import { listTherapies } from "@/actions/therapies";
 import { getDashboardStats } from "@/actions/clients";
 import { listBookingRequests } from "@/actions/publicBookings";
@@ -16,12 +17,13 @@ export default async function AdminBoardPage({
   const { week } = await searchParams;
   const { start, end } = getWeekRange(week);
 
-  const [appointmentsRaw, therapiesRaw, stats, bookingRequests, cancellations] = await Promise.all([
+  const [appointmentsRaw, therapiesRaw, stats, bookingRequests, cancellations, recentBookings] = await Promise.all([
     listAppointmentsInRange(start, end),
     listTherapies(),
     getDashboardStats(),
     listBookingRequests(),
     listRecentClientCancellations(),
+    listRecentBookings(),
   ]);
   const newBookingRequests = bookingRequests.filter((r) => r.status === "NOU").length;
 
@@ -34,6 +36,8 @@ export default async function AdminBoardPage({
     therapyId: a.therapy_id,
     therapyName: a.therapy_name,
     startsAt: a.starts_at,
+    bookedAt: a.booked_at,
+    bookedByClient: a.booked_by_client,
     durationMinutes: a.duration_minutes,
     status: a.status,
   }));
@@ -112,6 +116,38 @@ export default async function AdminBoardPage({
                 <span className="text-xs text-zinc-500">
                   anulat {new Date(c.cancelled_at).toLocaleString("ro-RO", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
                 </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {recentBookings.length > 0 && (
+        <section className="mm-card p-4">
+          <div className="flex items-center gap-2">
+            <IconCalendar className="h-4 w-4 text-[var(--mitmed-teal)]" />
+            <h2 className="text-sm font-semibold text-zinc-900">Programări noi în ultimele 7 zile</h2>
+          </div>
+          <ul className="mt-2 max-h-72 divide-y divide-zinc-100 overflow-y-auto text-sm">
+            {recentBookings.map((b) => (
+              <li key={b.id} className="flex flex-wrap items-baseline justify-between gap-2 py-2">
+                <span className={b.status === "ANULATA" ? "text-zinc-400 line-through" : undefined}>
+                  <Link href={`/admin/clienti/${b.client_id}?tab=programari`} className="font-medium text-zinc-900 hover:underline">
+                    {b.client_name}
+                  </Link>{" "}
+                  <span className="text-zinc-600">
+                    · {b.therapy_name} ·{" "}
+                    {new Date(b.starts_at).toLocaleString("ro-RO", {
+                      weekday: "short",
+                      day: "numeric",
+                      month: "short",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      timeZone: CLINIC_TIME_ZONE,
+                    })}
+                  </span>
+                </span>
+                <span className="text-xs text-zinc-500">programată {formatBooking(b.booked_at, b.booked_by_client)}</span>
               </li>
             ))}
           </ul>

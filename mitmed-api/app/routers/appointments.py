@@ -548,6 +548,38 @@ def cancel_own_appointment(
     return {"ok": True}
 
 
+@router.get("/recently-booked")
+def list_recently_booked(
+    days: int = 7,
+    db: DBSession = Depends(get_db),
+    _: User = Depends(require_roles(Role.ADMIN, Role.RECEPTIE)),
+) -> list[dict]:
+    """Programările FĂCUTE în ultimele `days` zile (după momentul rezervării,
+    nu după data ședinței), cele mai noi primele — pentru bordul adminului."""
+    since = datetime.now(timezone.utc) - timedelta(days=max(1, min(days, 60)))
+    appointments = (
+        db.query(Appointment)
+        .options(joinedload(Appointment.client), joinedload(Appointment.therapy))
+        .filter(Appointment.created_at >= since)
+        .order_by(Appointment.created_at.desc())
+        .limit(50)
+        .all()
+    )
+    return [
+        {
+            "id": a.id,
+            "client_id": a.client_id,
+            "client_name": a.client.full_name,
+            "therapy_name": a.therapy.name,
+            "starts_at": a.starts_at,
+            "status": a.status,
+            "booked_at": a.created_at,
+            "booked_by_client": a.booked_by_client,
+        }
+        for a in appointments
+    ]
+
+
 @router.get("/cancelled-by-clients")
 def list_recent_client_cancellations(
     days: int = 7,
@@ -603,6 +635,8 @@ def list_appointments_in_range(
             "starts_at": a.starts_at,
             "duration_minutes": a.therapy.duration_minutes,
             "status": a.status,
+            "booked_at": a.created_at,
+            "booked_by_client": a.booked_by_client,
         }
         for a in appointments
     ]

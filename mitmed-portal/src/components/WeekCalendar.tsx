@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { IconChevronLeft, IconChevronRight } from "@/components/icons";
 import { CalendarNowLine } from "@/components/CalendarNowLine";
+import { formatBooking } from "@/lib/clinic";
 
 const DAY_NAMES = ["Luni", "Marți", "Miercuri", "Joi", "Vineri"];
 const DAY_START_HOUR = 9;
@@ -15,6 +16,8 @@ export type CalendarAppointment = {
   therapyId: string;
   therapyName: string;
   startsAt: string; // ISO
+  bookedAt: string; // ISO — momentul rezervării
+  bookedByClient: boolean;
   durationMinutes: number;
   status: string;
 };
@@ -204,7 +207,11 @@ export function WeekCalendar({
                       className={`group absolute left-1 right-1 overflow-hidden rounded-lg border-l-[3px] shadow-sm transition-all hover:z-10 hover:shadow-md ${color.bg} ${color.border} ${cancelled ? "opacity-40 line-through" : ""}`}
                       style={{ top, height }}
                     >
-                      <Link href={href} className={`block h-full px-2 py-1 text-[11px] leading-tight ${color.text}`}>
+                      <Link
+                        href={href}
+                        title={`Programată pe ${formatBooking(a.bookedAt, a.bookedByClient)}`}
+                        className={`block h-full px-2 py-1 text-[11px] leading-tight ${color.text}`}
+                      >
                         <div className="truncate font-semibold">{new Date(a.startsAt).toLocaleTimeString("ro-RO", { hour: "2-digit", minute: "2-digit" })}–{endsAt.toLocaleTimeString("ro-RO", { hour: "2-digit", minute: "2-digit" })}</div>
                         <div className="truncate font-semibold">{a.clientName}</div>
                         <div className="truncate opacity-80">{a.therapyName}</div>

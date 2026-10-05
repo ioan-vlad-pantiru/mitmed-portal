@@ -143,6 +143,9 @@ export type CalendarAppointmentApi = {
   starts_at: string;
   duration_minutes: number;
   status: string;
+  /** Momentul rezervării (nu al ședinței). */
+  booked_at: string;
+  booked_by_client: boolean;
 };
 
 /** Toate programările dintr-un interval (folosit de bordul/calendarul admin). */
@@ -214,4 +217,21 @@ export type ClientCancellation = {
 export async function listRecentClientCancellations(): Promise<ClientCancellation[]> {
   await requireRole(Role.ADMIN, Role.RECEPTIE);
   return apiGet<ClientCancellation[]>("/appointments/cancelled-by-clients", { days: 7 });
+}
+
+export type RecentBooking = {
+  id: string;
+  client_id: string;
+  client_name: string;
+  therapy_name: string;
+  starts_at: string;
+  status: string;
+  booked_at: string;
+  booked_by_client: boolean;
+};
+
+/** Programările făcute în ultimele 7 zile, după momentul rezervării — pe bord. */
+export async function listRecentBookings(): Promise<RecentBooking[]> {
+  await requireRole(Role.ADMIN, Role.RECEPTIE);
+  return apiGet<RecentBooking[]>("/appointments/recently-booked", { days: 7 });
 }
