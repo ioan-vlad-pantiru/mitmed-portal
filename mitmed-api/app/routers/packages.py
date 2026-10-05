@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session as DBSession, joinedload
@@ -75,6 +77,7 @@ def list_packages(
     packages = (
         db.query(TherapyPackage)
         .options(joinedload(TherapyPackage.items).joinedload(PackageItem.therapy))
+        .filter(TherapyPackage.archived_at.is_(None))
         .order_by(TherapyPackage.name.asc())
         .all()
     )
@@ -136,7 +139,7 @@ def toggle_package_active(
     actor: User = Depends(require_roles(Role.ADMIN)),
 ) -> dict:
     package = db.get(TherapyPackage, package_id)
-    if not package:
+    if not package or package.archived_at:
         raise HTTPException(status_code=404, detail="Pachet inexistent.")
     package.active = active
     db.commit()
@@ -156,19 +159,25 @@ def delete_package(
     db: DBSession = Depends(get_db),
     actor: User = Depends(require_roles(Role.ADMIN)),
 ) -> dict:
-    """Ștergere reală — permisă doar dacă pachetul n-a fost vândut
-    niciodată. Altfel, dezactivarea e calea corectă — șterge-l ar strica
-    achizițiile deja înregistrate ale clienților."""
+    """Șterge pachetul din catalog. Dacă n-a fost vândut niciodată, dispare de
+    tot; dacă a fost deja vândut, e ARHIVAT — nu mai apare la vânzare, dar
+    achizițiile clienților (cu ședințele rămase) rămân neatinse."""
     package = db.get(TherapyPackage, package_id)
-    if not package:
+    if not package or package.archived_at:
         raise HTTPException(status_code=404, detail="Pachet inexistent.")
 
-    if db.query(Payment).filter(Payment.package_id == package_id).first():
-        raise HTTPException(
-            status_code=409, detail="Pachetul a fost deja vândut — dezactivează-l în loc să-l ștergi."
-        )
-
-    db.delete(package)  # PackageItem-urile lui se șterg automat (cascade).
+    sold = db.query(Payment.id).filter(Payment.package_id == package_id).first() is not None
+    if sold:
+        package.active = False
+        package.archived_at = datetime.now(timezone.utc)
+    else:
+        db.delete(package)  # PackageItem-urile lui se șterg automat (cascade).
     db.commit()
-    log_audit(db, actor_id=actor.id, action="package.delete", target_type="TherapyPackage", target_id=package_id)
-    return {"ok": True}
+    log_audit(
+        db,
+        actor_id=actor.id,
+        action="package.archive" if sold else "package.delete",
+        target_type="TherapyPackage",
+        target_id=package_id,
+    )
+    return {"ok": True, "archived": sold}

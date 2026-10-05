@@ -192,7 +192,7 @@ def list_fidelity_card_types(
 
 def _apply_tiers(db: DBSession, card_type: FidelityCardType, therapies: list[CardTherapyIn]) -> None:
     therapy_ids = [t.therapy_id for t in therapies]
-    found = db.query(Therapy.id).filter(Therapy.id.in_(therapy_ids)).count()
+    found = db.query(Therapy.id).filter(Therapy.id.in_(therapy_ids), Therapy.archived_at.is_(None)).count()
     if found != len(therapy_ids):
         raise HTTPException(status_code=422, detail="Terapie invalidă.")
     # La flush, SQLAlchemy inserează rândurile noi ÎNAINTE să le șteargă pe

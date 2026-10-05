@@ -196,6 +196,10 @@ class Therapy(Base):
     # terapie obișnuită din punct de vedere al prețului/duratei, editabilă de
     # admin la fel ca oricare alta.
     is_consultation: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Setat când adminul "șterge" o terapie care are deja istoric (programări,
+    # plăți, fișe) — dispare din toate listele, dar rândul rămâne ca istoricul
+    # să-și păstreze numele. O terapie arhivată e mereu și inactivă.
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
@@ -385,6 +389,9 @@ class TherapyPackage(Base):
     # „frumoasă”). Gol = se folosește totalul calculat din reducere.
     price_override: Mapped[float | None] = mapped_column(Numeric(10, 2))
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Setat când adminul "șterge" un pachet deja vândut — dispare din liste,
+    # dar achizițiile existente (și ședințele lor rămase) rămân neatinse.
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 

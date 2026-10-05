@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session as DBSession
@@ -5,7 +7,21 @@ from sqlalchemy.orm import Session as DBSession
 from app.audit import log_audit
 from app.database import get_db
 from app.deps import require_roles
-from app.models import Appointment, MedicalRecord, PackageItem, Payment, Role, Therapy, User, medical_record_therapies
+from app.models import (
+    Appointment,
+    AppointmentStatus,
+    ClientFidelityCardProgress,
+    FidelityCardTier,
+    MedicalRecord,
+    PackageItem,
+    Payment,
+    PublicBookingRequest,
+    Role,
+    Therapy,
+    TherapyPackage,
+    User,
+    medical_record_therapies,
+)
 
 router = APIRouter(prefix="/therapies", tags=["therapies"])
 
@@ -50,7 +66,7 @@ class TherapyIn(BaseModel):
 def list_therapies(
     db: DBSession = Depends(get_db), actor: User = Depends(require_roles(Role.ADMIN, Role.RECEPTIE, Role.CLIENT))
 ) -> list[TherapyOut]:
-    therapies = db.query(Therapy).order_by(Therapy.name.asc()).all()
+    therapies = db.query(Therapy).filter(Therapy.archived_at.is_(None)).order_by(Therapy.name.asc()).all()
     if actor.role == Role.CLIENT:
         # Un client nou nu are nicio terapie deblocată — poate rezerva singur
         # doar consultația (sau alte terapii marcate `is_consultation`), până
@@ -101,7 +117,7 @@ def toggle_therapy_active(
     actor: User = Depends(require_roles(Role.ADMIN)),
 ) -> dict:
     therapy = db.get(Therapy, therapy_id)
-    if not therapy:
+    if not therapy or therapy.archived_at:
         raise HTTPException(status_code=404, detail="Terapie inexistentă.")
     therapy.active = active
     db.commit()
@@ -121,28 +137,69 @@ def delete_therapy(
     db: DBSession = Depends(get_db),
     actor: User = Depends(require_roles(Role.ADMIN)),
 ) -> dict:
-    """Ștergere reală — permisă doar dacă terapia n-a fost folosită
-    niciodată (nicio programare, plată, fișă medicală sau pachet care o
-    include). Altfel, dezactivarea (toggle) e calea corectă — șterge istoric
-    real ar strica programări/plăți/fișe deja existente."""
+    """Șterge terapia din catalog. Dacă n-a fost folosită niciodată, rândul
+    dispare de tot; dacă are deja istoric (programări, plăți, fișe, pachete
+    vândute, cereri de pe site, carduri de fidelitate), e ARHIVATĂ — dispare
+    din toate listele și nu mai poate fi rezervată, dar istoricul își păstrează
+    numele. Refuzată doar cât timp mai are programări viitoare sau face parte
+    dintr-un pachet încă în vânzare."""
     therapy = db.get(Therapy, therapy_id)
-    if not therapy:
+    if not therapy or therapy.archived_at:
         raise HTTPException(status_code=404, detail="Terapie inexistentă.")
 
-    in_use = (
-        db.query(Appointment).filter(Appointment.therapy_id == therapy_id).first()
-        or db.query(Payment).filter(Payment.therapy_id == therapy_id).first()
-        or db.query(MedicalRecord).filter(MedicalRecord.therapy_id == therapy_id).first()
-        or db.query(medical_record_therapies).filter(medical_record_therapies.c.therapy_id == therapy_id).first()
-        or db.query(PackageItem).filter(PackageItem.therapy_id == therapy_id).first()
+    now = datetime.now(timezone.utc)
+    upcoming = (
+        db.query(Appointment)
+        .filter(
+            Appointment.therapy_id == therapy_id,
+            Appointment.starts_at >= now,
+            Appointment.status.in_([AppointmentStatus.PROGRAMATA, AppointmentStatus.CONFIRMATA]),
+        )
+        .count()
     )
-    if in_use:
+    if upcoming:
         raise HTTPException(
             status_code=409,
-            detail="Terapia este deja folosită (programări, plăți, fișe sau pachete) — dezactiveaz-o în loc s-o ștergi.",
+            detail=f"Terapia are {upcoming} {'programare viitoare' if upcoming == 1 else 'programări viitoare'} — "
+            "anulează-le sau mută-le pe altă terapie întâi.",
+        )
+    live_packages = (
+        db.query(TherapyPackage.name)
+        .join(PackageItem, PackageItem.package_id == TherapyPackage.id)
+        .filter(PackageItem.therapy_id == therapy_id, TherapyPackage.archived_at.is_(None))
+        .distinct()
+        .all()
+    )
+    if live_packages:
+        names = ", ".join(sorted(name for (name,) in live_packages))
+        raise HTTPException(
+            status_code=409,
+            detail=f"Terapia face parte din pachetele: {names}. Scoate-o din pachet sau șterge pachetul întâi.",
         )
 
-    db.delete(therapy)
+    has_history = (
+        db.query(Appointment.id).filter(Appointment.therapy_id == therapy_id).first()
+        or db.query(Payment.id).filter(Payment.therapy_id == therapy_id).first()
+        or db.query(MedicalRecord.id).filter(MedicalRecord.therapy_id == therapy_id).first()
+        or db.query(medical_record_therapies).filter(medical_record_therapies.c.therapy_id == therapy_id).first()
+        or db.query(PackageItem.id).filter(PackageItem.therapy_id == therapy_id).first()
+        or db.query(PublicBookingRequest.id).filter(PublicBookingRequest.therapy_id == therapy_id).first()
+        or db.query(ClientFidelityCardProgress.id).filter(ClientFidelityCardProgress.therapy_id == therapy_id).first()
+    )
+    # Treptele de fidelitate pentru terapie dispar oricum — un card nu mai
+    # poate acorda reduceri pe o terapie scoasă din catalog.
+    db.query(FidelityCardTier).filter(FidelityCardTier.therapy_id == therapy_id).delete(synchronize_session=False)
+    if has_history:
+        therapy.active = False
+        therapy.archived_at = now
+    else:
+        db.delete(therapy)
     db.commit()
-    log_audit(db, actor_id=actor.id, action="therapy.delete", target_type="Therapy", target_id=therapy_id)
-    return {"ok": True}
+    log_audit(
+        db,
+        actor_id=actor.id,
+        action="therapy.archive" if has_history else "therapy.delete",
+        target_type="Therapy",
+        target_id=therapy_id,
+    )
+    return {"ok": True, "archived": bool(has_history)}

@@ -102,5 +102,10 @@ def test_session_with_several_therapies_consumes_each_package(client, db_session
     db_session.refresh(packages[1])
     assert packages[1].sessions_used == 1
 
-    # O terapie folosită într-o ședință nu se mai poate șterge.
-    assert client.delete(f"/therapies/{masaj.id}").status_code == 409
+    # O terapie folosită într-o ședință se arhivează la ștergere — fișa își
+    # păstrează numele terapiei.
+    resp = client.delete(f"/therapies/{masaj.id}")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["archived"] is True
+    assert "Masaj" not in [t["name"] for t in client.get("/therapies").json()]
+    assert client.get(f"/clients/{profile.id}").json()["medical_records"][0]["therapy"]["name"] == "Masaj"

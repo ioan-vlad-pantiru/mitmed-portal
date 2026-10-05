@@ -73,11 +73,16 @@ export function TherapyRow({ therapy }: { therapy: Therapy }) {
               variant="danger"
               disabled={pending}
               onClick={() => {
-                if (!window.confirm(`Ștergi definitiv terapia „${therapy.name}"? Nu poate fi anulat.`)) return;
+                if (
+                  !window.confirm(
+                    `Ștergi terapia „${therapy.name}"? Dispare din catalog și nu mai poate fi rezervată. Programările, plățile și fișele vechi o păstrează în istoric.`
+                  )
+                )
+                  return;
                 startTransition(async () => {
                   const result = await deleteTherapy(therapy.id);
                   if (result.ok) {
-                    toast.success("Terapie ștearsă.");
+                    toast.success(result.archived ? "Terapie ștearsă din catalog (istoricul rămâne)." : "Terapie ștearsă.");
                     router.refresh();
                   } else {
                     toast.error(result.message);

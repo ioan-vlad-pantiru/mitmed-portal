@@ -73,11 +73,16 @@ export function PackageRow({ pkg, therapies }: { pkg: TherapyPackage; therapies:
               variant="danger"
               disabled={pending}
               onClick={() => {
-                if (!window.confirm(`Ștergi definitiv pachetul „${pkg.name}"? Nu poate fi anulat.`)) return;
+                if (
+                  !window.confirm(
+                    `Ștergi pachetul „${pkg.name}"? Nu mai poate fi vândut. Clienții care l-au cumpărat deja își păstrează ședințele rămase.`
+                  )
+                )
+                  return;
                 startTransition(async () => {
                   const result = await deletePackage(pkg.id);
                   if (result.ok) {
-                    toast.success("Pachet șters.");
+                    toast.success(result.archived ? "Pachet șters din catalog (achizițiile rămân)." : "Pachet șters.");
                     router.refresh();
                   } else {
                     toast.error(result.message);

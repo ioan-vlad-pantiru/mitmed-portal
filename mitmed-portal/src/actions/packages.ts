@@ -90,18 +90,19 @@ export async function togglePackageActive(packageId: string, active: boolean) {
   revalidatePath("/admin/pachete");
 }
 
-export type DeleteResult = { ok: true } | { ok: false; message: string };
+/** `archived` = pachetul fusese vândut, deci a fost scos din catalog, nu șters de tot. */
+export type DeleteResult = { ok: true; archived: boolean } | { ok: false; message: string };
 
-/** Ștergere reală — backend-ul refuză (409) dacă pachetul a fost deja
- * vândut; returnăm mesajul lui, nu unul generic. */
+/** Șterge pachetul — backend-ul îl arhivează dacă a fost deja vândut, ca
+ * achizițiile clienților să rămână neatinse. */
 export async function deletePackage(packageId: string): Promise<DeleteResult> {
   await requireRole(Role.ADMIN);
   try {
-    await apiDelete(`/packages/${packageId}`);
+    const result = await apiDelete<{ archived?: boolean }>(`/packages/${packageId}`);
+    revalidatePath("/admin/pachete");
+    return { ok: true, archived: Boolean(result?.archived) };
   } catch (err) {
     if (err instanceof ApiError) return { ok: false, message: err.message };
     throw err;
   }
-  revalidatePath("/admin/pachete");
-  return { ok: true };
 }

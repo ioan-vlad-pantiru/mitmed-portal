@@ -69,19 +69,20 @@ export async function toggleTherapyActive(therapyId: string, active: boolean) {
   revalidatePath("/admin/terapii");
 }
 
-export type DeleteResult = { ok: true } | { ok: false; message: string };
+/** `archived` = terapia avea istoric, deci a fost scoasă din catalog, nu ștearsă de tot. */
+export type DeleteResult = { ok: true; archived: boolean } | { ok: false; message: string };
 
-/** Ștergere reală — backend-ul refuză (409) dacă terapia a fost deja
- * folosită; returnăm mesajul lui, nu unul generic, ca admin să știe să
- * dezactiveze în loc să șteargă. */
+/** Șterge terapia — backend-ul o arhivează (în loc s-o șteargă de tot) dacă
+ * are deja istoric; refuză doar cât are programări viitoare sau e într-un
+ * pachet în vânzare, iar atunci returnăm mesajul lui, nu unul generic. */
 export async function deleteTherapy(therapyId: string): Promise<DeleteResult> {
   await requireRole(Role.ADMIN);
   try {
-    await apiDelete(`/therapies/${therapyId}`);
+    const result = await apiDelete<{ archived?: boolean }>(`/therapies/${therapyId}`);
+    revalidatePath("/admin/terapii");
+    return { ok: true, archived: Boolean(result?.archived) };
   } catch (err) {
     if (err instanceof ApiError) return { ok: false, message: err.message };
     throw err;
   }
-  revalidatePath("/admin/terapii");
-  return { ok: true };
 }
