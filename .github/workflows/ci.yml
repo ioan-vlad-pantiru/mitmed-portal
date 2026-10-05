@@ -82,6 +82,15 @@ jobs:
             --exclude 'node_modules' --exclude '.next' --exclude '.venv' --exclude '.git' \
             --exclude '__pycache__' --exclude '.pytest_cache' --exclude '*.pyc' --exclude '.DS_Store' \
             ./ "root@${{ secrets.DEPLOY_HOST }}:/root/mitmed-portal/"
+          # The sync above never deletes, so a file removed/renamed in git would
+          # linger on the server and still be built. Mirror deletions only inside
+          # the source folders — they hold no server-only files (the .env files
+          # sit at the project roots, uploads live in a Docker volume).
+          for dir in mitmed-portal/src mitmed-portal/public mitmed-api/app mitmed-api/alembic mitmed-api/tests; do
+            rsync -az --delete -e "ssh -i ~/.ssh/deploy_key" \
+              --exclude '__pycache__' --exclude '*.pyc' --exclude '.DS_Store' \
+              "./$dir/" "root@${{ secrets.DEPLOY_HOST }}:/root/mitmed-portal/$dir/"
+          done
       - name: Rebuild and restart stack
         run: |
           ssh -i ~/.ssh/deploy_key "root@${{ secrets.DEPLOY_HOST }}" \
