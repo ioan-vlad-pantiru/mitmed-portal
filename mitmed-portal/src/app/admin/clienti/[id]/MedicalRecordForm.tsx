@@ -6,7 +6,8 @@ import type { ConsultationSheetField } from "@/actions/consultationSheets";
 import { TEMPLATE_TRATAMENT } from "@/lib/sheetTemplates";
 import { AddSheetFieldInline, SheetFieldInputs } from "@/components/SheetFields";
 import { BodyMapPicker, type BodyMapPoint } from "@/components/BodyMap";
-import { Input, Select, Textarea } from "@/components/ui/Input";
+import { Input, Textarea } from "@/components/ui/Input";
+import { TherapyCheckboxes } from "@/components/TherapyCheckboxes";
 import { Button } from "@/components/ui/Button";
 
 type Therapy = { id: string; name: string };
@@ -33,22 +34,10 @@ export function MedicalRecordForm({
       <input type="hidden" name="clientId" value={clientId} />
       <input type="hidden" name="bodyMap" value={JSON.stringify(bodyMap)} />
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div>
-          <label className="block text-xs font-medium text-zinc-700">Terapie (opțional)</label>
-          <Select name="therapyId" className="mt-1">
-            <option value="">—</option>
-            {therapies.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-zinc-700">Diagnostic</label>
-          <Input name="diagnosis" className="mt-1" />
-        </div>
+      <TherapyCheckboxes therapies={therapies} />
+      <div className="sm:max-w-sm">
+        <label className="block text-xs font-medium text-zinc-700">Diagnostic</label>
+        <Input name="diagnosis" className="mt-1" />
       </div>
 
       <div>

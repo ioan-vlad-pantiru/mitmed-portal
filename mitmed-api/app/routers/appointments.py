@@ -694,7 +694,7 @@ def get_appointment_for_consult(
                 "diagnosis": r.diagnosis,
                 "notes": r.notes,
                 "treatment_plan": r.treatment_plan,
-                "therapy_name": r.therapy.name if r.therapy else None,
+                "therapy_name": r.therapy_names,
             }
             for r in recent_records
         ],

@@ -239,6 +239,7 @@ def get_own_client_data(db: DBSession = Depends(get_db), user: User = Depends(re
     client = (
         db.query(ClientProfile)
         .options(
+            joinedload(ClientProfile.medical_records).joinedload(MedicalRecord.therapies),
             joinedload(ClientProfile.medical_records).joinedload(MedicalRecord.therapy),
             joinedload(ClientProfile.payments).joinedload(Payment.therapy),
             joinedload(ClientProfile.appointments).joinedload(Appointment.therapy),
@@ -275,6 +276,7 @@ def export_own_data(db: DBSession = Depends(get_db), user: User = Depends(requir
     client = (
         db.query(ClientProfile)
         .options(
+            joinedload(ClientProfile.medical_records).joinedload(MedicalRecord.therapies),
             joinedload(ClientProfile.medical_records).joinedload(MedicalRecord.therapy),
             joinedload(ClientProfile.payments).joinedload(Payment.therapy),
             joinedload(ClientProfile.appointments).joinedload(Appointment.therapy),
@@ -432,6 +434,7 @@ def get_client_detail(
         db.query(ClientProfile)
         .options(
             joinedload(ClientProfile.user),
+            joinedload(ClientProfile.medical_records).joinedload(MedicalRecord.therapies),
             joinedload(ClientProfile.medical_records).joinedload(MedicalRecord.therapy),
             joinedload(ClientProfile.medical_records).joinedload(MedicalRecord.author),
             joinedload(ClientProfile.payments).joinedload(Payment.therapy),
@@ -722,7 +725,9 @@ def _serialize_client_detail(client: ClientProfile) -> dict:
                 "treatment_plan": r.treatment_plan,
                 "body_map": r.body_map,
                 "field_values": r.field_values or {},
-                "therapy": {"name": r.therapy.name} if r.therapy else None,
+                # `therapy.name` = toate terapiile ședinței, ca afișajele existente să le arate.
+                "therapy": {"name": r.therapy_names} if r.therapy_names else None,
+                "therapies": [{"id": t.id, "name": t.name} for t in r.therapy_list],
                 "author": {"email": r.author.email} if r.author else None,
             }
             for r in sorted(client.medical_records, key=lambda r: r.session_date, reverse=True)

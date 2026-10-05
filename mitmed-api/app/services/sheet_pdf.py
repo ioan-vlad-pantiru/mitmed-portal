@@ -223,7 +223,7 @@ def render_treatment_pdf(
     if not records:
         pdf.long_field("Ședințe", "Nicio ședință înregistrată.")
     for n, record in enumerate(sorted(records, key=lambda r: r.session_date), start=1):
-        therapy = record.therapy.name if record.therapy else None
+        therapy = record.therapy_names
         heading = f"Ședința {n} · {_local_date(record.session_date)}"
         pdf.section_heading(f"{heading} · {therapy}" if therapy else heading)
         if record.diagnosis:

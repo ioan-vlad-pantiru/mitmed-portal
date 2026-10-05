@@ -8,6 +8,12 @@ import { Role } from "@/lib/enums";
 
 export type MedicalRecordFormState = { message?: string; success?: boolean } | undefined;
 
+/** Terapiile bifate în ședință (pot fi mai multe); undefined = câmpul lipsește din formular. */
+function therapyIds(formData: FormData): string[] | undefined {
+  if (!formData.has("therapyIdsField")) return undefined;
+  return formData.getAll("therapyIds").map(String).filter(Boolean);
+}
+
 /** Căsuțele fișei de tratament configurate de admin vin ca `field:<id>`. */
 function fieldValues(formData: FormData): Record<string, string | null> {
   const values: Record<string, string | null> = {};
@@ -40,6 +46,7 @@ export async function createMedicalRecord(
     await apiPost("/medical-records", {
       client_id: clientId,
       therapy_id: formData.get("therapyId") || null,
+      therapy_ids: therapyIds(formData),
       appointment_id: formData.get("appointmentId") || null,
       diagnosis: formData.get("diagnosis") || null,
       subjective: formData.get("subjective") || null,
@@ -81,6 +88,7 @@ export async function updateMedicalRecord(
 
   try {
     await apiPut(`/medical-records/${recordId}`, {
+      therapy_ids: therapyIds(formData),
       diagnosis: formData.get("diagnosis") || null,
       subjective: formData.get("subjective") || null,
       objective: formData.get("objective") || null,

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session as DBSession
 from app.audit import log_audit
 from app.database import get_db
 from app.deps import require_roles
-from app.models import TEMPLATE_TRATAMENT, Appointment, MedicalRecord, Role, User
+from app.models import TEMPLATE_TRATAMENT, Appointment, MedicalRecord, Role, Therapy, User
 from app.routers.consultation_sheets import clean_field_values, merge_field_values
 from app.services.packages import consume_package_session
 from app.services.sessions import complete_appointment
@@ -24,6 +24,8 @@ class BodyMapPoint(BaseModel):
 class MedicalRecordIn(BaseModel):
     client_id: str
     therapy_id: str | None = None
+    # Mai multe terapii făcute în aceeași ședință; are prioritate față de `therapy_id`.
+    therapy_ids: list[str] | None = None
     appointment_id: str | None = None
     diagnosis: str | None = None
     subjective: str | None = None
@@ -38,6 +40,8 @@ class MedicalRecordIn(BaseModel):
 
 
 class MedicalRecordUpdate(BaseModel):
+    # None = terapiile rămân neschimbate.
+    therapy_ids: list[str] | None = None
     diagnosis: str | None = None
     subjective: str | None = None
     objective: str | None = None
@@ -46,6 +50,15 @@ class MedicalRecordUpdate(BaseModel):
     treatment_plan: str | None = None
     body_map: list[BodyMapPoint] | None = None
     field_values: dict[str, str | None] = {}
+
+
+def _resolve_therapies(db: DBSession, therapy_ids: list[str]) -> list[Therapy]:
+    unique = list(dict.fromkeys(tid for tid in therapy_ids if tid))
+    therapies = db.query(Therapy).filter(Therapy.id.in_(unique)).all() if unique else []
+    if len(therapies) != len(unique):
+        raise HTTPException(status_code=422, detail="O terapie selectată nu există.")
+    by_id = {t.id: t for t in therapies}
+    return [by_id[tid] for tid in unique]
 
 
 @router.post("")
@@ -57,10 +70,14 @@ def create_medical_record(
     if not payload.notes.strip():
         raise HTTPException(status_code=422, detail="Notele nu pot fi goale.")
 
+    therapies = _resolve_therapies(
+        db, payload.therapy_ids if payload.therapy_ids is not None else [payload.therapy_id or ""]
+    )
     record = MedicalRecord(
         client_id=payload.client_id,
         author_id=actor.id,
-        therapy_id=payload.therapy_id,
+        therapy_id=therapies[0].id if therapies else None,
+        therapies=therapies,
         appointment_id=payload.appointment_id,
         diagnosis=payload.diagnosis,
         subjective=payload.subjective,
@@ -78,12 +95,18 @@ def create_medical_record(
     # Notițele pentru o programare o consideră "ținută" (iese din ședințele
     # active) și scad ședința din pachet — o singură dată per programare, chiar
     # dacă în aceeași vizită s-a completat și o fișă (vezi services/sessions.py).
+    # Fiecare terapie făcută în plus față de cea programată scade și ea câte o
+    # ședință din pachetul ei.
     appointment = db.get(Appointment, payload.appointment_id) if payload.appointment_id else None
     if appointment:
-        complete_appointment(db, appointment)
-    elif payload.therapy_id:
+        if complete_appointment(db, appointment):
+            for therapy in therapies:
+                if therapy.id != appointment.therapy_id:
+                    consume_package_session(db, client_id=payload.client_id, therapy_id=therapy.id)
+    else:
         # Ședință notată direct din dosar, fără programare.
-        consume_package_session(db, client_id=payload.client_id, therapy_id=payload.therapy_id)
+        for therapy in therapies:
+            consume_package_session(db, client_id=payload.client_id, therapy_id=therapy.id)
 
     db.commit()
 
@@ -112,6 +135,10 @@ def update_medical_record(
     if not payload.notes.strip():
         raise HTTPException(status_code=422, detail="Notele nu pot fi goale.")
 
+    if payload.therapy_ids is not None:
+        therapies = _resolve_therapies(db, payload.therapy_ids)
+        record.therapies = therapies
+        record.therapy_id = therapies[0].id if therapies else None
     record.diagnosis = payload.diagnosis
     record.subjective = payload.subjective
     record.objective = payload.objective

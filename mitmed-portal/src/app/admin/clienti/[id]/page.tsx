@@ -87,6 +87,7 @@ type ClientDetail = {
     body_map: { x: number; y: number; label?: string }[] | null;
     field_values: Record<string, string>;
     therapy: { name: string } | null;
+    therapies: { id: string; name: string }[];
     author: { email: string } | null;
   }[];
   payments: {
@@ -397,6 +398,7 @@ export default async function ClientDetailPage({ params, searchParams }: { param
               clientId={client.id}
               records={client.medical_records}
               extraFields={treatmentFields}
+              therapies={therapies}
               isAdmin={isAdmin}
             />
           </div>

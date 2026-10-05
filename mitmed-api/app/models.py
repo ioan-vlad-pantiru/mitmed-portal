@@ -89,6 +89,15 @@ coupon_therapies = Table(
 
 # Terapiile pe care un medic le-a "deblocat" pentru un anumit client, de
 # obicei după consultația inițială — vezi ClientProfile.unlocked_therapies.
+# Terapiile făcute într-o ședință (pot fi mai multe în aceeași vizită).
+# MedicalRecord.therapy_id rămâne prima dintre ele, pentru compatibilitate.
+medical_record_therapies = Table(
+    "medical_record_therapies",
+    Base.metadata,
+    Column("record_id", String, ForeignKey("medical_records.id", ondelete="CASCADE"), primary_key=True),
+    Column("therapy_id", String, ForeignKey("therapies.id"), primary_key=True),
+)
+
 client_unlocked_therapies = Table(
     "client_unlocked_therapies",
     Base.metadata,
@@ -242,6 +251,18 @@ class MedicalRecord(Base):
     client: Mapped[ClientProfile] = relationship(back_populates="medical_records")
     author: Mapped[User] = relationship()
     therapy: Mapped[Therapy | None] = relationship()
+    therapies: Mapped[list[Therapy]] = relationship(secondary=medical_record_therapies)
+
+    @property
+    def therapy_list(self) -> list[Therapy]:
+        """Terapiile ședinței; ședințele vechi au doar `therapy`."""
+        if self.therapies:
+            return sorted(self.therapies, key=lambda t: (t.id != self.therapy_id, t.name))
+        return [self.therapy] if self.therapy else []
+
+    @property
+    def therapy_names(self) -> str | None:
+        return ", ".join(t.name for t in self.therapy_list) or None
 
 
 # Șabloanele de sistem — id-uri fixe, create de migrare, nu pot fi șterse.

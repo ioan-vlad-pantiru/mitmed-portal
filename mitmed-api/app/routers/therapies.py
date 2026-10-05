@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session as DBSession
 from app.audit import log_audit
 from app.database import get_db
 from app.deps import require_roles
-from app.models import Appointment, MedicalRecord, PackageItem, Payment, Role, Therapy, User
+from app.models import Appointment, MedicalRecord, PackageItem, Payment, Role, Therapy, User, medical_record_therapies
 
 router = APIRouter(prefix="/therapies", tags=["therapies"])
 
@@ -133,6 +133,7 @@ def delete_therapy(
         db.query(Appointment).filter(Appointment.therapy_id == therapy_id).first()
         or db.query(Payment).filter(Payment.therapy_id == therapy_id).first()
         or db.query(MedicalRecord).filter(MedicalRecord.therapy_id == therapy_id).first()
+        or db.query(medical_record_therapies).filter(medical_record_therapies.c.therapy_id == therapy_id).first()
         or db.query(PackageItem).filter(PackageItem.therapy_id == therapy_id).first()
     )
     if in_use:

@@ -11,6 +11,7 @@ import { BodyMapView } from "@/components/BodyMap";
 import { TEMPLATE_TRATAMENT } from "@/lib/sheetTemplates";
 import { AddSheetFieldInline, SheetFieldInputs, SheetFieldValues } from "@/components/SheetFields";
 import { useToast } from "@/components/Toast";
+import { TherapyCheckboxes } from "@/components/TherapyCheckboxes";
 
 type MedicalRecord = {
   id: string;
@@ -24,6 +25,7 @@ type MedicalRecord = {
   body_map: { x: number; y: number; label?: string }[] | null;
   field_values: Record<string, string>;
   therapy: { name: string } | null;
+  therapies: { id: string; name: string }[];
   author: { email: string } | null;
 };
 
@@ -35,10 +37,13 @@ export function MedicalRecordsPanel({
   clientId,
   records,
   extraFields,
+  therapies,
   isAdmin,
 }: {
   clientId: string;
   records: MedicalRecord[];
+  /** Terapiile active, pentru corectarea terapiilor unei ședințe. */
+  therapies: { id: string; name: string }[];
   /** Căsuțele fișei de tratament, inclusiv cele șterse (pentru ședințele vechi). */
   extraFields: ConsultationSheetField[];
   isAdmin: boolean;
@@ -114,6 +119,7 @@ export function MedicalRecordsPanel({
             record={selected}
             clientId={clientId}
             extraFields={extraFields}
+            therapies={therapies}
             onDone={() => setEditing(false)}
           />
         )}
@@ -149,11 +155,13 @@ function EditRecordForm({
   record,
   clientId,
   extraFields,
+  therapies,
   onDone,
 }: {
   record: MedicalRecord;
   clientId: string;
   extraFields: ConsultationSheetField[];
+  therapies: { id: string; name: string }[];
   onDone: () => void;
 }) {
   const [state, action, pending] = useActionState(updateMedicalRecord.bind(null, record.id, clientId), undefined);
@@ -178,6 +186,11 @@ function EditRecordForm({
   return (
     <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
       <form action={action} className="space-y-3">
+        <TherapyCheckboxes
+          // Terapiile dezactivate între timp rămân bifabile pe ședința care le are.
+          therapies={[...therapies, ...(record.therapies ?? []).filter((t) => !therapies.some((x) => x.id === t.id))]}
+          selected={(record.therapies ?? []).map((t) => t.id)}
+        />
         <div>
           <label htmlFor="edit-diagnosis" className="block text-xs font-medium text-zinc-700">Diagnostic</label>
           <Input id="edit-diagnosis" name="diagnosis" defaultValue={record.diagnosis ?? ""} className="mt-1" />
