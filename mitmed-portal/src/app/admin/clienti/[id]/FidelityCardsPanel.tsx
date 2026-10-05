@@ -26,8 +26,18 @@ function TherapyChecklist({
   onChange: (next: Set<string>) => void;
   name?: string;
 }) {
+  const allSelected = cardType.therapies.every((t) => selected.has(t.therapy_id));
   return (
-    <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+      {cardType.therapies.length > 1 && (
+        <button
+          type="button"
+          onClick={() => onChange(new Set(allSelected ? [] : cardType.therapies.map((t) => t.therapy_id)))}
+          className="text-xs font-medium text-[var(--mitmed-teal)] hover:underline"
+        >
+          {allSelected ? "Debifează toate" : "Bifează toate"}
+        </button>
+      )}
       {cardType.therapies.map((t) => (
         <label key={t.therapy_id} className="flex items-center gap-1.5 text-sm text-zinc-700">
           <input

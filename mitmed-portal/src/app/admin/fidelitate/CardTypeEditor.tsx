@@ -53,6 +53,15 @@ export function CardTypeEditor({
     setBlocks((current) => [...current, { therapyId: next.id, tiers: DEFAULT_TIERS }]);
   }
 
+  function addAllTherapies() {
+    const used = new Set(blocks.map((b) => b.therapyId));
+    const missing = therapies.filter((t) => !used.has(t.id));
+    // Fiecare terapie nouă pornește cu programul primei terapii de pe card,
+    // ca "toate terapiile, același prag" să fie un singur click.
+    const template = blocks[0]?.tiers ?? DEFAULT_TIERS;
+    setBlocks((current) => [...current, ...missing.map((t) => ({ therapyId: t.id, tiers: template.map((tier) => ({ ...tier })) }))]);
+  }
+
   const therapiesJson = JSON.stringify(
     blocks.map((b) => ({
       therapy_id: b.therapyId,
@@ -148,13 +157,22 @@ export function CardTypeEditor({
           ))}
         </div>
         {blocks.length < therapies.length && (
-          <button
-            type="button"
-            onClick={addTherapy}
-            className="mt-3 text-xs font-medium text-[var(--mitmed-teal)] hover:underline"
-          >
-            + Adaugă încă o terapie pe card
-          </button>
+          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1">
+            <button
+              type="button"
+              onClick={addTherapy}
+              className="text-xs font-medium text-[var(--mitmed-teal)] hover:underline"
+            >
+              + Adaugă încă o terapie pe card
+            </button>
+            <button
+              type="button"
+              onClick={addAllTherapies}
+              className="text-xs font-medium text-[var(--mitmed-teal)] hover:underline"
+            >
+              + Adaugă toate terapiile (cu pragurile primei terapii)
+            </button>
+          </div>
         )}
       </div>
     </>
