@@ -114,9 +114,9 @@ def test_receptie_cannot_create_or_edit_card_type(client, make_admin_user, make_
     assert resp.status_code == 403
 
 
-def test_cannot_delete_card_type_already_issued(client, make_admin_user, make_client_user, make_therapy):
+def test_cannot_delete_card_type_while_assigned_to_a_client(client, make_admin_user, make_client_user, make_therapy):
     make_admin_user(email="admin@example.com", password="parola123", role="ADMIN")
-    _, profile = make_client_user(email="c@example.com", password="parola123")
+    _, profile = make_client_user(email="c@example.com", password="parola123", full_name="Ana Pop")
     therapy = make_therapy()
     _login(client)
     type_id = _make_type(client, therapy.id, [{"session_number": 5, "discount_percent": 25}])
@@ -124,6 +124,31 @@ def test_cannot_delete_card_type_already_issued(client, make_admin_user, make_cl
 
     resp = client.delete(f"/fidelity-cards/types/{type_id}")
     assert resp.status_code == 409
+    assert "Ana Pop" in resp.json()["detail"]
+
+
+def test_can_delete_card_type_once_every_card_is_revoked(client, make_admin_user, make_client_user, make_therapy):
+    """Un card revocat nu mai e atribuit nimănui — tipul se poate șterge, chiar
+    dacă reducerea lui a fost deja folosită (plata își păstrează prețul)."""
+    make_admin_user(email="admin@example.com", password="parola123", role="ADMIN")
+    _, profile = make_client_user(email="c@example.com", password="parola123")
+    therapy = make_therapy(price=100)
+    _login(client)
+    type_id = _make_type(client, therapy.id, [{"session_number": 1, "discount_percent": 25}])
+    card_id = client.post(f"/clients/{profile.id}/fidelity-cards", json={"card_type_id": type_id}).json()["id"]
+    payment_id = client.post(
+        "/payments", json={"client_id": profile.id, "therapy_id": therapy.id, "amount_paid": 999999}
+    ).json()["id"]
+    client.post(f"/clients/{profile.id}/fidelity-cards/{card_id}/toggle?active=false")
+
+    resp = client.delete(f"/fidelity-cards/types/{type_id}")
+    assert resp.status_code == 200, resp.text
+    assert client.get("/fidelity-cards/types").json() == []
+    assert client.get(f"/clients/{profile.id}/fidelity-cards").json() == []
+    payment = next(p for p in client.get(f"/clients/{profile.id}").json()["payments"] if p["id"] == payment_id)
+    assert float(payment["final_price"]) == 75.0
+    # Plata rămâne ștergibilă după dispariția cardului.
+    assert client.delete(f"/payments/{payment_id}").status_code == 200
 
 
 def test_admin_can_issue_and_revoke_client_card(client, make_admin_user, make_client_user, make_therapy):

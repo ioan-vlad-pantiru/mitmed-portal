@@ -266,16 +266,31 @@ def toggle_fidelity_card_type(
 def delete_fidelity_card_type(
     type_id: str, db: DBSession = Depends(get_db), actor: User = Depends(require_roles(Role.ADMIN))
 ) -> dict:
-    """Ștergere reală — permisă doar dacă tipul n-a fost emis niciodată unui
-    client. Altfel, dezactivarea (toggle) e calea corectă."""
+    """Ștergere reală — blocată doar cât timp tipul e atribuit ACTIV unui
+    client (adminul trebuie întâi să-i revoce cardul). Cardurile revocate din
+    acest tip se șterg odată cu el; plățile care primiseră reducere prin ele
+    își păstrează prețul și reducerea, doar legătura spre card dispare."""
     card_type = db.get(FidelityCardType, type_id)
     if not card_type:
         raise HTTPException(status_code=404, detail="Tip de card inexistent.")
-    in_use = db.query(ClientFidelityCard).filter(ClientFidelityCard.card_type_id == type_id).first()
-    if in_use:
+    cards = db.query(ClientFidelityCard).filter(ClientFidelityCard.card_type_id == type_id).all()
+    holders = sorted({c.client.full_name for c in cards if c.active})
+    if holders:
         raise HTTPException(
-            status_code=409, detail="Acest tip de card a fost deja emis unor clienți — dezactivează-l în loc să-l ștergi."
+            status_code=409,
+            detail=f"Cardul e încă atribuit la: {', '.join(holders)}. Revocă-l din fișa clientului sau dezactivează "
+            "tipul de card.",
         )
+    card_ids = [c.id for c in cards]
+    if card_ids:
+        db.query(Payment).filter(Payment.fidelity_card_id.in_(card_ids)).update(
+            {Payment.fidelity_card_id: None}, synchronize_session=False
+        )
+        db.query(Payment).filter(Payment.fidelity_stamped_card_id.in_(card_ids)).update(
+            {Payment.fidelity_stamped_card_id: None}, synchronize_session=False
+        )
+        for card in cards:
+            db.delete(card)
     db.delete(card_type)
     db.commit()
     log_audit(db, actor_id=actor.id, action="fidelity_card_type.delete", target_type="FidelityCardType", target_id=type_id)
