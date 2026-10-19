@@ -1,6 +1,6 @@
 from decimal import ROUND_HALF_UP, Decimal
 
-from app.models import Coupon, Therapy
+from app.models import Coupon, Therapy, TherapyPackage
 
 
 class CouponError(Exception):
@@ -14,13 +14,7 @@ def round_money(value: Decimal) -> Decimal:
     return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
-def calculate_price(therapy: Therapy, coupon: Coupon | None, therapy_id: str) -> tuple[Decimal, Decimal, Decimal]:
-    """Returnează (base_price, discount_amount, final_price). Oglindește lib/pricing.ts."""
-    base_price = Decimal(therapy.price)
-
-    if coupon is None:
-        return base_price, Decimal(0), base_price
-
+def _check_coupon_usable(coupon: Coupon) -> None:
     if not coupon.active:
         raise CouponError("Acest cupon nu mai este activ.")
 
@@ -34,18 +28,48 @@ def calculate_price(therapy: Therapy, coupon: Coupon | None, therapy_id: str) ->
     if coupon.max_uses is not None and coupon.uses_count >= coupon.max_uses:
         raise CouponError("Acest cupon a fost deja folosit de numărul maxim de ori.")
 
-    therapy_ids = {t.id for t in coupon.therapies}
-    if therapy_ids and therapy_id not in therapy_ids:
-        raise CouponError("Acest cupon nu se aplică terapiei selectate.")
 
+def _discount_for(coupon: Coupon, base_price: Decimal) -> Decimal:
     value = Decimal(coupon.value)
     if coupon.type.value == "PROCENT":
         discount_amount = round_money(base_price * value / Decimal(100))
     else:
         discount_amount = round_money(value)
+    return min(discount_amount, base_price)
 
-    if discount_amount > base_price:
-        discount_amount = base_price
 
-    final_price = base_price - discount_amount
-    return base_price, discount_amount, final_price
+def calculate_price(therapy: Therapy, coupon: Coupon | None, therapy_id: str) -> tuple[Decimal, Decimal, Decimal]:
+    """Returnează (base_price, discount_amount, final_price). Oglindește lib/pricing.ts."""
+    base_price = Decimal(therapy.price)
+
+    if coupon is None:
+        return base_price, Decimal(0), base_price
+
+    _check_coupon_usable(coupon)
+
+    therapy_ids = {t.id for t in coupon.therapies}
+    if therapy_ids and therapy_id not in therapy_ids:
+        raise CouponError("Acest cupon nu se aplică terapiei selectate.")
+
+    discount_amount = _discount_for(coupon, base_price)
+    return base_price, discount_amount, base_price - discount_amount
+
+
+def calculate_package_price(package: TherapyPackage, coupon: Coupon | None) -> tuple[Decimal, Decimal, Decimal]:
+    """Ca calculate_price, pentru prețul fix al unui pachet întreg. Un cupon
+    PROCENT se aplică pe prețul pachetului, unul FIX se scade o singură dată.
+    Un cupon limitat la anumite terapii merge pe pachet doar dacă le acoperă
+    pe toate cele incluse — altfel ar reduce și terapii pentru care nu e valabil."""
+    base_price = Decimal(package.price)
+
+    if coupon is None:
+        return base_price, Decimal(0), base_price
+
+    _check_coupon_usable(coupon)
+
+    therapy_ids = {t.id for t in coupon.therapies}
+    if therapy_ids and any(item.therapy_id not in therapy_ids for item in package.items):
+        raise CouponError("Acest cupon nu se aplică tuturor terapiilor din pachet.")
+
+    discount_amount = _discount_for(coupon, base_price)
+    return base_price, discount_amount, base_price - discount_amount

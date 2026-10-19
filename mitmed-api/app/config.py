@@ -83,6 +83,15 @@ class Settings(BaseSettings):
     # URL-ul portalului, pentru redirecționarea clientului înapoi după plată.
     portal_base_url: str = "http://localhost:3000"
 
+    # Email (SMTP) — link-urile de resetare a parolei. No-op (doar logare)
+    # până se completează smtp_host și smtp_from. Port 465 = SSL implicit;
+    # altfel (587) se folosește STARTTLS.
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from: str | None = None
+
     # Director pentru documentele atașate fișei clientului (vezi
     # app/services/file_storage.py) — cale relativă în dev/teste, creat la nevoie;
     # în Docker e suprascris cu un volum montat (vezi docker-compose.yml).

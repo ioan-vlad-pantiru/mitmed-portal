@@ -24,6 +24,7 @@ export async function createPayment(
       ? {
           client_id: clientId,
           package_id: String(formData.get("packageId") ?? ""),
+          coupon_code: String(formData.get("couponCode") ?? "") || null,
           method,
           amount_paid: amountPaid,
         }
@@ -260,4 +261,25 @@ export async function createMultiPayment(input: MultiPaymentInput): Promise<{ ok
   }
   revalidatePath(`/admin/clienti/${input.clientId}`);
   return { ok: true };
+}
+
+export type PackagePricePreview = { base_price: string; discount_amount: string; final_price: string };
+
+/** Prețul unui pachet cu cuponul ales (vezi routers/payments.py:preview_package_price) — nu salvează nimic. */
+export async function previewPackagePayment(
+  packageId: string,
+  couponCode: string
+): Promise<{ ok: true; preview: PackagePricePreview } | { ok: false; message: string }> {
+  await requireRole(Role.ADMIN, Role.RECEPTIE);
+  try {
+    const result = await apiGet<PackagePricePreview | { error: string }>("/payments/package-preview", {
+      package_id: packageId,
+      coupon_code: couponCode.trim() || undefined,
+    });
+    if ("error" in result) return { ok: false, message: result.error };
+    return { ok: true, preview: result };
+  } catch (err) {
+    if (err instanceof ApiError) return { ok: false, message: err.message };
+    throw err;
+  }
 }

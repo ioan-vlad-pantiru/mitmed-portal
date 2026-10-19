@@ -817,6 +817,24 @@ class PendingRegistration(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class PasswordResetToken(Base):
+    """Link de resetare a parolei trimis pe email — de unică folosință, cu
+    expirare scurtă. În DB stă doar hash-ul SHA-256 al tokenului (tokenul în
+    sine e în link-ul din email), ca o scurgere a bazei de date să nu permită
+    resetarea parolelor."""
+
+    __tablename__ = "password_reset_tokens"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_id)
+    user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
+    token_hash: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    user: Mapped[User] = relationship()
+
+
 class SiteAnnouncement(Base):
     """Bara portocalie de anunț de pe site-ul de prezentare (mitmed.ro) — un
     singur rând (id=1), editat de admin din Setări → Site de prezentare."""

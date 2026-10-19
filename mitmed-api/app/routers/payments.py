@@ -28,7 +28,7 @@ from app.models import (
 )
 from app.services import payu
 from app.services.fidelity import find_active_card, next_session_discount_percent, register_paid_session, unregister_paid_session
-from app.services.pricing import CouponError, calculate_price, round_money
+from app.services.pricing import CouponError, calculate_package_price, calculate_price, round_money
 
 router = APIRouter(prefix="/payments", tags=["payments"])
 
@@ -129,7 +129,13 @@ def _find_coupon(db: DBSession, code: str | None) -> Coupon | None:
 
 
 def _create_package_payments(
-    db: DBSession, *, client_id: str, package: TherapyPackage, method: str | None, amount_paid: float | None
+    db: DBSession,
+    *,
+    client_id: str,
+    package: TherapyPackage,
+    coupon: Coupon | None,
+    method: str | None,
+    amount_paid: float | None,
 ) -> list[Payment]:
     """O achiziție de pachet = câte un Payment per terapie inclusă, toate cu
     același package_purchase_id (grupare în UI) — nu o entitate de plată nouă,
@@ -146,25 +152,36 @@ def _create_package_payments(
     # terapie) și pentru export-ul CSV de contabilitate. O plată parțială la
     # cumpărare se împarte cu aceleași ponderi, ca fiecare linie să rămână
     # proporțional achitată — nu doar prima linie plătită integral și restul deloc.
-    weights = [(item, float(item.therapy.price) * item.sessions_included) for item in package.items]
-    total_weight = sum(w for _, w in weights) or 1
+    # Un cupon reduce prețul întregului pachet; reducerea se împarte pe linii
+    # cu aceleași ponderi, ca fiecare linie să rămână base - discount = final.
+    try:
+        base_total, discount_total, final_total = calculate_package_price(package, coupon)
+    except CouponError as err:
+        raise HTTPException(status_code=422, detail=str(err)) from err
+
+    weights = [(item, Decimal(item.therapy.price) * item.sessions_included) for item in package.items]
+    total_weight = sum((w for _, w in weights), Decimal(0)) or Decimal(1)
 
     purchase_id = gen_id()
-    total_price = float(package.price)
-    requested_paid = min(max(amount_paid or 0, 0), total_price)
+    requested_paid = min(max(Decimal(str(amount_paid or 0)), Decimal(0)), final_total)
     now = datetime.now(timezone.utc) if requested_paid > 0 else None
 
+    def split(total: Decimal, allocated: Decimal, weight: Decimal, is_last: bool) -> Decimal:
+        # Restul (nu proporția) pe ultima linie, ca suma exactă a rândurilor
+        # să dea mereu totalul, indiferent de rotunjiri.
+        return total - allocated if is_last else round_money(total * weight / total_weight)
+
     payments: list[Payment] = []
-    allocated_price = 0.0
-    allocated_paid = 0.0
+    allocated_base = allocated_discount = allocated_paid = Decimal(0)
     for idx, (item, weight) in enumerate(weights):
         is_last = idx == len(weights) - 1
-        # Restul (nu proporția) pe ultima linie, ca suma exactă a rândurilor
-        # să dea mereu package.price/suma încasată, indiferent de rotunjiri.
-        share = total_price - allocated_price if is_last else round(total_price * weight / total_weight, 2)
-        allocated_price += share
-        paid_share = requested_paid - allocated_paid if is_last else round(requested_paid * weight / total_weight, 2)
+        base_share = split(base_total, allocated_base, weight, is_last)
+        discount_share = split(discount_total, allocated_discount, weight, is_last)
+        paid_share = split(requested_paid, allocated_paid, weight, is_last)
+        allocated_base += base_share
+        allocated_discount += discount_share
         allocated_paid += paid_share
+        share = base_share - discount_share
 
         payments.append(
             Payment(
@@ -172,17 +189,21 @@ def _create_package_payments(
                 therapy_id=item.therapy_id,
                 package_id=package.id,
                 package_purchase_id=purchase_id,
-                base_price=share,
-                discount_amount=0,
+                coupon_id=coupon.id if coupon else None,
+                base_price=base_share,
+                discount_amount=discount_share,
                 final_price=share,
                 amount_paid=paid_share,
                 method=method,
-                status=_status_for_amount(Decimal(str(paid_share)), Decimal(str(share))),
+                status=_status_for_amount(paid_share, share),
                 paid_at=now if paid_share > 0 else None,
                 package_total_sessions=item.sessions_included,
             )
         )
     db.add_all(payments)
+    if coupon:
+        # O achiziție de pachet = o singură utilizare a cuponului, oricâte linii ar avea.
+        coupon.uses_count += 1
     return payments
 
 
@@ -202,8 +223,16 @@ def create_payment(
         )
         if not package:
             raise HTTPException(status_code=422, detail="Pachet invalid.")
+        coupon = _find_coupon(db, payload.coupon_code)
+        if payload.coupon_code and not coupon:
+            raise HTTPException(status_code=422, detail="Cupon inexistent.")
         payments = _create_package_payments(
-            db, client_id=payload.client_id, package=package, method=payload.method, amount_paid=payload.amount_paid
+            db,
+            client_id=payload.client_id,
+            package=package,
+            coupon=coupon,
+            method=payload.method,
+            amount_paid=payload.amount_paid,
         )
         db.commit()
         for p in payments:
@@ -214,7 +243,11 @@ def create_payment(
             action="payment.create_package",
             target_type="Payment",
             target_id=payments[0].package_purchase_id,
-            metadata={"client_id": payload.client_id, "package_id": package.id},
+            metadata={
+                "client_id": payload.client_id,
+                "package_id": package.id,
+                "coupon_code": coupon.code if coupon else None,
+            },
         )
         return {"ok": True, "ids": [p.id for p in payments]}
 
@@ -861,6 +894,31 @@ def create_payu_checkout(
     )
 
     return PayuCheckoutOut(redirect_url=result["redirect_url"])
+
+
+@router.get("/package-preview")
+def preview_package_price(
+    package_id: str,
+    coupon_code: str | None = None,
+    db: DBSession = Depends(get_db),
+    _actor: User = Depends(require_roles(Role.ADMIN, Role.RECEPTIE)),
+) -> dict:
+    package = (
+        db.query(TherapyPackage)
+        .options(joinedload(TherapyPackage.items))
+        .filter(TherapyPackage.id == package_id)
+        .first()
+    )
+    if not package:
+        return {"error": "Pachet invalid."}
+    coupon = _find_coupon(db, coupon_code)
+    if coupon_code and not coupon:
+        return {"error": "Cupon inexistent."}
+    try:
+        base_price, discount_amount, final_price = calculate_package_price(package, coupon)
+    except CouponError as err:
+        return {"error": str(err)}
+    return {"base_price": str(base_price), "discount_amount": str(discount_amount), "final_price": str(final_price)}
 
 
 @router.get("/preview")

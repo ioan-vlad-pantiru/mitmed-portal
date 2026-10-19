@@ -53,6 +53,11 @@ export default function LoginPage() {
           value={password}
           onChange={setPassword}
         />
+        <div className="-mt-3 text-right">
+          <Link href="/resetare-parola" className="text-sm font-medium text-[var(--mitmed-teal)] hover:underline">
+            Ai uitat parola?
+          </Link>
+        </div>
 
         {state?.message && <p className="text-sm text-red-600">{state.message}</p>}
 

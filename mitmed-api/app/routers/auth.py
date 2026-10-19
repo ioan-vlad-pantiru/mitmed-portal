@@ -1,3 +1,4 @@
+import hashlib
 import secrets
 import string
 from datetime import date, datetime, time, timedelta, timezone
@@ -11,7 +12,7 @@ from app.config import settings
 from app.database import get_db
 from app.deps import get_current_user, require_user
 from app.rate_limit import limiter
-from app.models import AccountStatus, ClientProfile, PendingRegistration, Role, User, UserSession
+from app.models import AccountStatus, ClientProfile, PasswordResetToken, PendingRegistration, Role, User, UserSession
 from app.security import (
     create_session,
     delete_session_cookie,
@@ -21,6 +22,7 @@ from app.security import (
     register_successful_login,
     verify_password,
 )
+from app.services.email import send_password_reset
 from app.services.notifications import send_otp
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -94,6 +96,15 @@ class VerifyRegistrationRequest(BaseModel):
 
 class ResendCodeRequest(BaseModel):
     phone: str = Field(min_length=6)
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(min_length=1)
+    new_password: str = Field(min_length=8)
 
 
 class ChangePasswordRequest(BaseModel):
@@ -352,3 +363,88 @@ def me(user: User = Depends(require_user)) -> MeResponse:
         full_name=user.client_profile.full_name if user.client_profile else None,
         client_profile_id=user.client_profile.id if user.client_profile else None,
     )
+
+
+# Resetarea parolei pe email: /forgot-password trimite un link de unică
+# folosință, /reset-password îl consumă. Doar pentru conturile cu email —
+# un client fără email (cont făcut doar cu telefonul) cere resetarea la recepție.
+RESET_TOKEN_TTL = timedelta(minutes=60)
+
+
+def _hash_reset_token(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+@router.post("/forgot-password")
+@limiter.limit("5/hour")
+def forgot_password(request: Request, payload: ForgotPasswordRequest, db: DBSession = Depends(get_db)) -> dict:
+    """Răspunde mereu la fel, indiferent dacă emailul există — altfel
+    formularul ar spune oricui ce adrese au cont la cabinet."""
+    generic = {
+        "message": "Dacă există un cont cu acest email, ți-am trimis un link pentru resetarea parolei. "
+        "Verifică și folderul Spam."
+    }
+    user = db.query(User).filter(User.email == payload.email.lower()).first()
+    if not user or user.status == AccountStatus.SUSPENDED:
+        return generic
+
+    # Un singur link valabil odată — cererile anterioare devin invalide.
+    db.query(PasswordResetToken).filter(
+        PasswordResetToken.user_id == user.id, PasswordResetToken.used_at.is_(None)
+    ).delete()
+    token = secrets.token_urlsafe(32)
+    db.add(
+        PasswordResetToken(
+            user_id=user.id,
+            token_hash=_hash_reset_token(token),
+            expires_at=datetime.now(timezone.utc) + RESET_TOKEN_TTL,
+        )
+    )
+    db.commit()
+
+    send_password_reset(
+        user.email,
+        name=user.client_profile.full_name if user.client_profile else None,
+        reset_url=f"{settings.portal_base_url.rstrip('/')}/resetare-parola/{token}",
+        valid_minutes=int(RESET_TOKEN_TTL.total_seconds() // 60),
+    )
+    log_audit(db, actor_id=user.id, action="user.password_reset_requested", target_type="User", target_id=user.id)
+    return generic
+
+
+def _valid_reset_token(db: DBSession, token: str) -> PasswordResetToken:
+    reset = db.query(PasswordResetToken).filter(PasswordResetToken.token_hash == _hash_reset_token(token)).first()
+    if not reset or reset.used_at is not None or reset.expires_at < datetime.now(timezone.utc):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Link-ul de resetare nu mai este valabil — cere unul nou.",
+        )
+    return reset
+
+
+@router.get("/reset-password/{token}")
+@limiter.limit("30/hour")
+def check_reset_token(request: Request, token: str, db: DBSession = Depends(get_db)) -> dict:
+    """Pagina de resetare verifică link-ul înainte să arate formularul."""
+    _valid_reset_token(db, token)
+    return {"ok": True}
+
+
+@router.post("/reset-password")
+@limiter.limit("10/hour")
+def reset_password(request: Request, payload: ResetPasswordRequest, db: DBSession = Depends(get_db)) -> dict:
+    reset = _valid_reset_token(db, payload.token)
+    user = reset.user
+    user.password_hash = hash_password(payload.new_password)
+    # Cine a resetat parola prin email și-a dovedit accesul — blocarea după
+    # încercări eșuate nu mai are rost.
+    user.failed_login_attempts = 0
+    user.locked_until = None
+    reset.used_at = datetime.now(timezone.utc)
+    # Deconectează toate sesiunile existente — dacă parola a fost
+    # compromisă, cine o folosea pierde accesul imediat.
+    db.query(UserSession).filter(UserSession.user_id == user.id).delete()
+    db.commit()
+    log_audit(db, actor_id=user.id, action="user.password_reset", target_type="User", target_id=user.id)
+    return {"ok": True}
+

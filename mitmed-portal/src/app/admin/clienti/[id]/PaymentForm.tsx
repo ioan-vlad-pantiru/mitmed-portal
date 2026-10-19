@@ -6,7 +6,10 @@ import {
   createMultiPayment,
   createPayment,
   previewMultiPayment,
+  previewPackagePayment,
   type MultiPaymentPreview,
+  type PackagePricePreview,
+  type PaymentFormState,
 } from "@/actions/payments";
 import { useToast } from "@/components/Toast";
 import { Input, Select } from "@/components/ui/Input";
@@ -92,7 +95,6 @@ export function PaymentForm({
   packages: TherapyPackage[];
   bookings: PayableBooking[];
 }) {
-  const [packageState, packageAction, packagePending] = useActionState(createPayment, undefined);
   const [saleMode, setSaleMode] = useState<"therapy" | "package">("therapy");
   const [packageId, setPackageId] = useState(packages[0]?.id ?? "");
   const [lines, setLines] = useState<Line[]>(() =>
@@ -106,9 +108,24 @@ export function PaymentForm({
   const [preview, setPreview] = useState<MultiPaymentPreview | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
+  const [packagePreview, setPackagePreview] = useState<PackagePricePreview | null>(null);
+  const [packagePreviewError, setPackagePreviewError] = useState<string | null>(null);
   const [saving, startSaving] = useTransition();
   const [showAllBookings, setShowAllBookings] = useState(false);
   const toast = useToast();
+  // Cuponul și suma se golesc după o vânzare de pachet reușită (formularul nu se demontează).
+  const [packageState, packageAction, packagePending] = useActionState(
+    async (state: PaymentFormState, formData: FormData) => {
+      const result = await createPayment(state, formData);
+      if (!result?.message) {
+        setCouponMode(NONE_OPTION);
+        setCouponCode("");
+        setAmountPaid("");
+      }
+      return result;
+    },
+    undefined
+  );
   const router = useRouter();
 
   // Date.now() e impur — nu poate fi apelat direct în timpul randării (nici
@@ -117,7 +134,10 @@ export function PaymentForm({
 
   const lineTherapyIds = useMemo(() => new Set(lines.map((l) => l.therapyId)), [lines]);
 
-  // Cupoane active, valabile acum, neepuizate și aplicabile măcar unei linii.
+  const selectedPackage = packages.find((p) => p.id === packageId);
+
+  // Cupoane active, valabile acum, neepuizate și aplicabile: la terapii,
+  // măcar unei linii; la pachet, tuturor terapiilor incluse (ca în backend).
   const availableCoupons = useMemo(
     () =>
       coupons.filter((c) => {
@@ -125,10 +145,35 @@ export function PaymentForm({
         if (c.valid_from && new Date(c.valid_from).getTime() > now) return false;
         if (c.valid_until && new Date(c.valid_until).getTime() < now) return false;
         if (c.max_uses !== null && c.uses_count >= c.max_uses) return false;
-        return c.therapies.length === 0 || c.therapies.some((t) => lineTherapyIds.has(t.id));
+        if (c.therapies.length === 0) return true;
+        if (saleMode === "package") {
+          const allowed = new Set(c.therapies.map((t) => t.id));
+          return Boolean(selectedPackage?.items.every((i) => allowed.has(i.therapy_id)));
+        }
+        return c.therapies.some((t) => lineTherapyIds.has(t.id));
       }),
-    [coupons, lineTherapyIds, now]
+    [coupons, lineTherapyIds, now, saleMode, selectedPackage]
   );
+
+  // Totalul pachetului cu cuponul ales — tot cu întârziere, ca la terapii.
+  const packageRequestId = useRef(0);
+  useEffect(() => {
+    if (saleMode !== "package" || !packageId) return;
+    const id = ++packageRequestId.current;
+    const timer = setTimeout(() => {
+      previewPackagePayment(packageId, couponCode).then((result) => {
+        if (id !== packageRequestId.current) return;
+        if (result.ok) {
+          setPackagePreview(result.preview);
+          setPackagePreviewError(null);
+        } else {
+          setPackagePreview(null);
+          setPackagePreviewError(result.message);
+        }
+      });
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [packageId, couponCode, saleMode]);
 
   // Recalculează totalul (cu fidelitatea pe fiecare linie, în ordine) la
   // fiecare schimbare — cu o mică întârziere, ca tastarea unui cod de cupon
@@ -188,8 +233,18 @@ export function PaymentForm({
     }
   }
 
-  const selectedPackage = packages.find((p) => p.id === packageId);
-  const total = saleMode === "package" ? Number(selectedPackage?.price ?? 0) : Number(preview?.final_price ?? 0);
+  function switchSaleMode(mode: "therapy" | "package") {
+    // Un cupon ales pe un tab poate să nu fie valabil pe celălalt.
+    setSaleMode(mode);
+    setCouponMode(NONE_OPTION);
+    setCouponCode("");
+  }
+
+
+  const total =
+    saleMode === "package"
+      ? Number(packagePreview?.final_price ?? selectedPackage?.price ?? 0)
+      : Number(preview?.final_price ?? 0);
   const bookingsById = new Map(bookings.map((b) => [b.id, b]));
   const sortedBookings = bookings
     .slice()
@@ -217,6 +272,31 @@ export function PaymentForm({
       router.refresh();
     });
   }
+
+  const couponPicker = (hint: string) => (
+    <div>
+      <label className="block text-xs font-medium text-zinc-700">Cupon de reducere</label>
+      <Select value={couponMode} onChange={(e) => handleCouponModeChange(e.target.value)} className="mt-1.5 max-w-xs">
+        <option value={NONE_OPTION}>Fără cupon</option>
+        {availableCoupons.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.code} — {c.value}
+            {c.type === "PROCENT" ? "%" : " RON"}
+          </option>
+        ))}
+        <option value={MANUAL_OPTION}>Alt cod (introdu manual)…</option>
+      </Select>
+      {couponMode === MANUAL_OPTION && (
+        <Input
+          value={couponCode}
+          onChange={(e) => setCouponCode(e.target.value)}
+          placeholder="Cod cupon"
+          className="mt-2 max-w-xs uppercase"
+        />
+      )}
+      <p className="mt-1 text-xs text-zinc-400">{hint}</p>
+    </div>
+  );
 
   const methodAndAmount = (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -266,7 +346,7 @@ export function PaymentForm({
         <div className="flex gap-1 rounded-md bg-zinc-100 p-1 text-sm">
           <button
             type="button"
-            onClick={() => setSaleMode("therapy")}
+            onClick={() => switchSaleMode("therapy")}
             className={`flex-1 rounded px-3 py-1.5 font-medium transition-colors ${
               saleMode === "therapy" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500"
             }`}
@@ -275,7 +355,7 @@ export function PaymentForm({
           </button>
           <button
             type="button"
-            onClick={() => setSaleMode("package")}
+            onClick={() => switchSaleMode("package")}
             className={`flex-1 rounded px-3 py-1.5 font-medium transition-colors ${
               saleMode === "package" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500"
             }`}
@@ -308,9 +388,27 @@ export function PaymentForm({
               </ul>
             )}
           </div>
+          <input type="hidden" name="couponCode" value={couponCode} />
+          {couponPicker("Reducerea se aplică pe prețul întregului pachet.")}
+          <div className="rounded-lg bg-zinc-50 px-3 py-2 text-sm">
+            {packagePreviewError ? (
+              <p className="text-red-600">{packagePreviewError}</p>
+            ) : (
+              <p className="text-zinc-700">
+                {packagePreview && Number(packagePreview.discount_amount) > 0 && (
+                  <>
+                    Preț pachet: {packagePreview.base_price} RON · Reducere: -{packagePreview.discount_amount} RON ·{" "}
+                  </>
+                )}
+                <strong className="text-zinc-900">
+                  Total: {packagePreview?.final_price ?? selectedPackage?.price ?? "0"} RON
+                </strong>
+              </p>
+            )}
+          </div>
           {methodAndAmount}
           {packageState?.message && <p className="text-sm text-red-600">{packageState.message}</p>}
-          <Button type="submit" disabled={packagePending}>
+          <Button type="submit" disabled={packagePending || Boolean(packagePreviewError)}>
             {packagePending ? "Se salvează…" : "Înregistrează plata pachetului"}
           </Button>
         </form>
@@ -424,30 +522,9 @@ export function PaymentForm({
             </button>
           </div>
 
-          <div>
-            <label className="block text-xs font-medium text-zinc-700">Cupon</label>
-            <Select value={couponMode} onChange={(e) => handleCouponModeChange(e.target.value)} className="mt-1.5 max-w-xs">
-              <option value={NONE_OPTION}>Fără cupon</option>
-              {availableCoupons.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.code} — {c.value}
-                  {c.type === "PROCENT" ? "%" : " RON"}
-                </option>
-              ))}
-              <option value={MANUAL_OPTION}>Alt cod (introdu manual)…</option>
-            </Select>
-            {couponMode === MANUAL_OPTION && (
-              <Input
-                value={couponCode}
-                onChange={(e) => setCouponCode(e.target.value)}
-                placeholder="Cod cupon"
-                className="mt-2 max-w-xs uppercase"
-              />
-            )}
-            <p className="mt-1 text-xs text-zinc-400">
-              Cuponul se aplică terapiilor pentru care e valabil; pe acelea nu se mai adaugă și reducerea de fidelitate.
-            </p>
-          </div>
+          {couponPicker(
+            "Cuponul se aplică terapiilor pentru care e valabil; pe acelea nu se mai adaugă și reducerea de fidelitate."
+          )}
 
           <div className="rounded-lg bg-zinc-50 px-3 py-2 text-sm">
             {previewError ? (

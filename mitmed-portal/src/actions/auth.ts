@@ -1,10 +1,16 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { apiAuthRequest, apiPost, ApiError } from "@/lib/apiClient";
+import { apiAuthRequest, apiGet, apiPost, ApiError } from "@/lib/apiClient";
 import { verifySession } from "@/lib/authSession";
 import { Role } from "@/lib/enums";
-import type { ChangePasswordFormState, LoginFormState, RegisterFormState } from "@/lib/definitions";
+import type {
+  ChangePasswordFormState,
+  ForgotPasswordFormState,
+  LoginFormState,
+  RegisterFormState,
+  ResetPasswordFormState,
+} from "@/lib/definitions";
 
 export async function login(_state: LoginFormState, formData: FormData): Promise<LoginFormState> {
   const identifier = String(formData.get("identifier") ?? "");
@@ -123,4 +129,53 @@ export async function changePassword(
   }
 
   return { success: true, message: "Parola a fost schimbată." };
+}
+
+/** „Ai uitat parola?” — backend-ul răspunde la fel dacă emailul există sau
+ * nu, ca formularul să nu dezvăluie ce adrese au cont. */
+export async function requestPasswordReset(
+  _state: ForgotPasswordFormState,
+  formData: FormData
+): Promise<ForgotPasswordFormState> {
+  const email = String(formData.get("email") ?? "").trim();
+  if (!email) return { message: "Completează adresa de email." };
+
+  try {
+    const result = await apiPost<{ message: string }>("/auth/forgot-password", { email });
+    return { success: true, message: result.message };
+  } catch (err) {
+    if (err instanceof ApiError) return { message: err.message };
+    throw err;
+  }
+}
+
+/** Link-ul din email e încă valabil (nefolosit, neexpirat)? */
+export async function isResetTokenValid(token: string): Promise<boolean> {
+  try {
+    await apiGet(`/auth/reset-password/${encodeURIComponent(token)}`);
+    return true;
+  } catch (err) {
+    if (err instanceof ApiError) return false;
+    throw err;
+  }
+}
+
+export async function resetPassword(
+  _state: ResetPasswordFormState,
+  formData: FormData
+): Promise<ResetPasswordFormState> {
+  const token = String(formData.get("token") ?? "");
+  const newPassword = String(formData.get("newPassword") ?? "");
+  const confirmPassword = String(formData.get("confirmPassword") ?? "");
+
+  if (newPassword.length < 8) return { message: "Parola nouă trebuie să aibă minim 8 caractere." };
+  if (newPassword !== confirmPassword) return { message: "Parolele nu coincid." };
+
+  try {
+    await apiPost("/auth/reset-password", { token, new_password: newPassword });
+  } catch (err) {
+    if (err instanceof ApiError) return { message: err.message };
+    throw err;
+  }
+  return { success: true };
 }
