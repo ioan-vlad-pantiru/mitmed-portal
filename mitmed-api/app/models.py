@@ -847,3 +847,61 @@ class SiteAnnouncement(Base):
     # Variantă scurtă pentru telefon (bara are un singur rând acolo); gol = `text`.
     mobile_text: Mapped[str | None] = mapped_column(String(120))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+# Tipurile de întrebări din sondajul de satisfacție.
+SURVEY_KINDS = ("rating", "choice", "multi", "text")
+
+
+class SurveyQuestion(Base):
+    """O întrebare din sondajul de opinie din portal, configurabilă de admin
+    (Setări → Sondaj de opinie).
+
+    - `rating`: 1-5 stele; `choice`: o singură variantă; `multi`: mai multe
+      variante; `text`: răspuns liber.
+    O întrebare „ștearsă” e doar arhivată: nu mai apare clienților, dar
+    răspunsurile deja date rămân în rezultate.
+    """
+
+    __tablename__ = "survey_questions"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_id)
+    label: Mapped[str] = mapped_column(String(200), nullable=False)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False, default="rating")
+    # Variantele pentru `choice`/`multi`; goală pentru celelalte tipuri.
+    options: Mapped[list | None] = mapped_column(JSON)
+    required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class SurveyResponse(Base):
+    """Răspunsurile unui client la sondaj — cel mult unul per programare
+    finalizată (sondajul întreabă despre ultima vizită)."""
+
+    __tablename__ = "survey_responses"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_id)
+    client_id: Mapped[str] = mapped_column(String, ForeignKey("client_profiles.id", ondelete="CASCADE"), index=True)
+    appointment_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("appointments.id", ondelete="SET NULL"), unique=True
+    )
+    # {question_id: int (rating) | str (choice/text) | list[str] (multi)}
+    answers: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+    client: Mapped[ClientProfile] = relationship()
+    appointment: Mapped["Appointment | None"] = relationship()
+
+
+class SurveySettings(Base):
+    """Setările sondajului — un singur rând (id=1)."""
+
+    __tablename__ = "survey_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Linkul spre recenziile MitMed pe Google Maps, arătat după trimitere.
+    google_review_url: Mapped[str | None] = mapped_column(String(500))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

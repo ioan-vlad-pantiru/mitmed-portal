@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { getOwnClientData } from "@/actions/clients";
 import { getOwnConsents, listActiveConsentTemplates } from "@/actions/consents";
 import { listTherapies } from "@/actions/therapies";
+import { getOwnSurvey } from "@/actions/surveys";
 import { CancelOwnAppointmentButton } from "./CancelOwnAppointmentButton";
 import { PayOnlineButton } from "@/components/PayOnlineButton";
 
@@ -22,11 +23,12 @@ function daysUntilLabel(date: Date): string {
 }
 
 export default async function PortalPage() {
-  const [raw, consents, templates, therapies] = await Promise.all([
+  const [raw, consents, templates, therapies, survey] = await Promise.all([
     getOwnClientData(),
     getOwnConsents(),
     listActiveConsentTemplates(),
     listTherapies(),
+    getOwnSurvey(),
   ]);
   if (!raw) notFound();
   await connection();
@@ -71,6 +73,15 @@ export default async function PortalPage() {
           <span>Câteva detalii despre tine ne ajută să îți oferim o experiență mai bună și o comunicare potrivită.</span>
         </div>
         <Link href="/portal/profil" className="portal-hero-link">Completează profilul <ChevronRight size={16} /></Link>
+      </section>
+    )}
+    {survey?.pending && (
+      <section className="portal-profile-nudge">
+        <div>
+          <p className="portal-profile-nudge-title">Cum a fost vizita ta?</p>
+          <span>Spune-ne în câteva secunde cum ți s-a părut experiența cu {survey.pending.therapy_name} la MitMed.</span>
+        </div>
+        <Link href="/portal/sondaj" className="portal-hero-link">Spune-ți părerea <ChevronRight size={16} /></Link>
       </section>
     )}
     <section className="portal-next-appointment">{next ? <><div className="portal-appointment-mark"><CalendarDays size={23} /></div><div><p className="portal-hero-label">Următoarea programare</p><h2>{daysUntilLabel(new Date(next.starts_at))}</h2><p className="portal-appointment-detail">{new Date(next.starts_at).toLocaleTimeString("ro-RO", { hour: "2-digit", minute: "2-digit" })} · {next.therapy.name}</p></div><div className="portal-next-appointment-actions">{nextUnpaidPaymentId && <PayOnlineButton paymentId={nextUnpaidPaymentId} className="portal-pay-btn portal-pay-btn-hero" />}<CancelOwnAppointmentButton appointmentId={next.id} startsAt={next.starts_at} /></div></> : isConsultationOnly ? <><div className="portal-appointment-mark"><HeartPulse size={23} /></div><div><p className="portal-hero-label">{isFirstVisit ? "Prima ta vizită" : "Programarea ta"}</p><h2>Începe cu o consultație.</h2><p className="portal-appointment-detail">Înainte de orice altă terapie, trebuie să te programezi la o consultație — abia după aceea medicul îți deblochează restul serviciilor.</p></div><Link href="/portal/programari" className="portal-hero-link">Programează consultația <ChevronRight size={17} /></Link></> : <><div className="portal-appointment-mark"><HeartPulse size={23} /></div><div><p className="portal-hero-label">Programarea ta</p><h2>Gata când ești și tu.</h2><p className="portal-appointment-detail">Alege terapia și ora care ți se potrivesc.</p></div><Link href="/portal/programari" className="portal-hero-link">Programează <ChevronRight size={17} /></Link></>}</section>

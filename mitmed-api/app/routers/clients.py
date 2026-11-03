@@ -22,6 +22,8 @@ from app.models import (
     Payment,
     Appointment,
     Role,
+    SurveyQuestion,
+    SurveyResponse,
     Therapy,
     User,
 )
@@ -299,6 +301,14 @@ def export_own_data(db: DBSession = Depends(get_db), user: User = Depends(requir
             "withdrawn_at": c.withdrawn_at,
         }
         for c in sorted(client.consents, key=lambda c: c.signed_at, reverse=True)
+    ]
+    questions = {q.id: q.label for q in db.query(SurveyQuestion).all()}
+    data["survey_responses"] = [
+        {
+            "created_at": r.created_at,
+            "answers": {questions.get(qid, qid): value for qid, value in (r.answers or {}).items()},
+        }
+        for r in db.query(SurveyResponse).filter(SurveyResponse.client_id == client.id).order_by(SurveyResponse.created_at)
     ]
 
     log_audit(db, actor_id=user.id, action="data_request.export", target_type="ClientProfile", target_id=client.id)

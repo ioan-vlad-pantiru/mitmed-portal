@@ -27,6 +27,7 @@ from app.routers import (
     packages,
     payments,
     public,
+    surveys,
     therapies,
     webhooks,
 )
@@ -78,6 +79,7 @@ app.include_router(packages.router)
 app.include_router(coupons.router)
 app.include_router(medical_records.router)
 app.include_router(consultation_sheets.router)
+app.include_router(surveys.router)
 app.include_router(payments.router)
 app.include_router(appointments.router)
 app.include_router(clinic.router)

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronLeft, UserCog } from "lucide-react";
+import { ChevronLeft, Star, UserCog } from "lucide-react";
 import {
   IconCalendar,
   IconUsers,
@@ -41,7 +41,10 @@ export function AdminSidebar({
     },
     {
       label: "Rapoarte",
-      items: [{ href: "/admin/insights", label: "Insights", icon: IconChart }],
+      items: [
+        { href: "/admin/insights", label: "Insights", icon: IconChart },
+        ...(isAdmin ? [{ href: "/admin/sondaj", label: "Satisfacție", icon: Star }] : []),
+      ],
     },
     ...(isAdmin
       ? [

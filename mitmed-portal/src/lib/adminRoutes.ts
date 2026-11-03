@@ -15,6 +15,8 @@ export const ADMIN_PAGES: AdminPage[] = [
   { href: "/admin/cereri", label: "Cereri", parent: "/admin", shortcut: "r", keywords: "programari site" },
   { href: "/admin/clienti", label: "Clienți", parent: "/admin", shortcut: "c", keywords: "pacienti" },
   { href: "/admin/insights", label: "Insights", parent: "/admin", shortcut: "i", keywords: "rapoarte venituri" },
+  { href: "/admin/sondaj", label: "Satisfacția clienților", parent: "/admin/insights", adminOnly: true, keywords: "sondaj opinie recenzii multumiti feedback" },
+  { href: "/admin/sondaj/intrebari", label: "Sondaj de opinie", parent: "/admin/setari", adminOnly: true, keywords: "sondaj intrebari chestionar google recenzie" },
   { href: "/admin/setari", label: "Setări", parent: "/admin", adminOnly: true, shortcut: "s" },
   { href: "/admin/program", label: "Program și concedii", parent: "/admin/setari", adminOnly: true, keywords: "ore vacanta" },
   { href: "/admin/terapii", label: "Terapii", parent: "/admin/setari", adminOnly: true, keywords: "preturi servicii" },
