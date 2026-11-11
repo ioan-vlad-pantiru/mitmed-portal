@@ -33,11 +33,10 @@ export function CreateClientForm() {
 
   return (
     <form
-      id="client-nou"
       key={resetKey}
       action={action}
       autoComplete="off"
-      className="mt-3 grid max-w-2xl scroll-mt-24 grid-cols-2 gap-3 mm-card p-4"
+      className="grid grid-cols-2 gap-3"
     >
       <div className="col-span-2 sm:col-span-1">
         <label className="block text-xs font-medium text-zinc-700">Nume complet</label>

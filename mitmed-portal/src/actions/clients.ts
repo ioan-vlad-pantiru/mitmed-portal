@@ -11,6 +11,13 @@ export type ClientSummary = {
   phone: string | null;
   email: string | null;
   status: string;
+  created_at: string | null;
+  visits: number;
+  last_visit: string | null;
+  next_visit: string | null;
+  amount_due: number;
+  /** Regular client who stopped coming and has nothing booked. */
+  at_risk: boolean;
 };
 
 export type PendingUser = { id: string; email: string | null; full_name: string | null };

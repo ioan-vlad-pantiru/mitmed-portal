@@ -1,8 +1,9 @@
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from sqlalchemy import func
 from sqlalchemy.orm import Session as DBSession, joinedload
 
 import secrets
@@ -11,7 +12,10 @@ import string
 from app.audit import log_audit
 from app.database import get_db
 from app.deps import require_roles, require_user
+from app.services.insights_report import AT_RISK_AFTER_DAYS, AT_RISK_FORGET_AFTER_DAYS
 from app.models import (
+    AppointmentStatus,
+    PaymentStatus,
     TEMPLATE_TRATAMENT,
     AccountStatus,
     ClientProfile,
@@ -41,6 +45,14 @@ class ClientSummary(BaseModel):
     phone: str | None
     email: str | None
     status: AccountStatus
+    created_at: datetime | None = None
+    visits: int = 0
+    last_visit: datetime | None = None
+    next_visit: datetime | None = None
+    amount_due: float = 0
+    # Regular client (2+ visits) not seen for a while and with nothing booked —
+    # same rule as the insights "at risk" list.
+    at_risk: bool = False
 
 
 class PendingUser(BaseModel):
@@ -140,10 +152,54 @@ def list_clients(
     db: DBSession = Depends(get_db), _user: User = Depends(require_roles(Role.ADMIN, Role.RECEPTIE))
 ) -> list[ClientSummary]:
     clients = db.query(ClientProfile).options(joinedload(ClientProfile.user)).order_by(ClientProfile.created_at.desc()).all()
-    return [
-        ClientSummary(id=c.id, full_name=c.full_name, phone=c.phone, email=c.user.email, status=c.user.status)
-        for c in clients
-    ]
+    now = datetime.now(timezone.utc)
+    done = {
+        cid: (count, last)
+        for cid, count, last in db.query(Appointment.client_id, func.count(Appointment.id), func.max(Appointment.starts_at))
+        .filter(Appointment.status == AppointmentStatus.FINALIZATA)
+        .group_by(Appointment.client_id)
+        .all()
+    }
+    upcoming = dict(
+        db.query(Appointment.client_id, func.min(Appointment.starts_at))
+        .filter(
+            Appointment.status.in_([AppointmentStatus.PROGRAMATA, AppointmentStatus.CONFIRMATA]),
+            Appointment.starts_at >= now,
+        )
+        .group_by(Appointment.client_id)
+        .all()
+    )
+    due = dict(
+        db.query(Payment.client_id, func.sum(Payment.final_price - Payment.amount_paid))
+        .filter(Payment.status.in_([PaymentStatus.NEPLATIT, PaymentStatus.PARTIAL]))
+        .group_by(Payment.client_id)
+        .all()
+    )
+
+    def at_risk(visits: int, last: datetime | None, has_next: bool) -> bool:
+        if visits < 2 or not last or has_next:
+            return False
+        return timedelta(days=AT_RISK_AFTER_DAYS) <= now - last <= timedelta(days=AT_RISK_FORGET_AFTER_DAYS)
+
+    result = []
+    for c in clients:
+        visits, last = done.get(c.id, (0, None))
+        result.append(
+            ClientSummary(
+                id=c.id,
+                full_name=c.full_name,
+                phone=c.phone,
+                email=c.user.email,
+                status=c.user.status,
+                created_at=c.created_at,
+                visits=visits,
+                last_visit=last,
+                next_visit=upcoming.get(c.id),
+                amount_due=round(float(due.get(c.id) or 0), 2),
+                at_risk=at_risk(visits, last, c.id in upcoming),
+            )
+        )
+    return result
 
 
 @router.get("/clients/pending")
@@ -718,7 +774,6 @@ def update_client_full_profile(
 def get_dashboard_stats(
     db: DBSession = Depends(get_db), _user: User = Depends(require_roles(Role.ADMIN, Role.RECEPTIE))
 ) -> dict:
-    from app.models import AppointmentStatus
 
     active_clients = db.query(User).filter(User.role == Role.CLIENT, User.status == AccountStatus.ACTIVE).count()
     pending = db.query(User).filter(User.role == Role.CLIENT, User.status == AccountStatus.PENDING).count()

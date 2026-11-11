@@ -87,7 +87,7 @@ export default async function AdminBoardPage({ searchParams }: { searchParams: P
             </p>
           )}
         </div>
-        <Link href="/admin/clienti#client-nou" className="mm-btn" data-variant="secondary">
+        <Link href="/admin/clienti?nou=1" className="mm-btn" data-variant="secondary">
           <UserPlus size={16} /> Client nou
         </Link>
       </header>
