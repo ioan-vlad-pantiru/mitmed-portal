@@ -9,7 +9,7 @@ export default async function ClientsPage() {
   return (
     <div className="space-y-8">
       {pending.length > 0 && (
-        <section className="rounded-lg border border-amber-300 bg-amber-50 p-4">
+        <section className="mm-card border-amber-200 bg-amber-50/60 p-4">
           <h2 className="font-medium text-amber-900">
             Conturi în așteptare de aprobare ({pending.length})
           </h2>

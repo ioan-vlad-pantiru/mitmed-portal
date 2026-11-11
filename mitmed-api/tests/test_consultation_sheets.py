@@ -128,3 +128,31 @@ def test_client_cannot_use_staff_details_endpoint(client, make_client_user):
     _login(client, identifier="c@example.com")
     resp = client.patch(f"/clients/{profile.id}/details", json={"full_name": "X"})
     assert resp.status_code == 403
+
+
+def test_client_sees_only_fields_marked_for_them(client, make_admin_user, make_client_user):
+    """Sheet fields marked visible_to_client reach "Dosarul meu"; the rest
+    (and the clinical S/O/A notes of a session) stay inside the clinic."""
+    make_admin_user(email="admin@example.com", password="parola123", role="ADMIN")
+    _, profile = make_client_user(email="c@example.com", password="parola123")
+    _login(client)
+    advice = _make_field(client, "Recomandări", visible_to_client=True)
+    pulse = _make_field(client, "Puls", field_type="text")
+    resp = client.post(
+        "/consultation-sheets",
+        json={"client_id": profile.id, "values": {advice: "Exerciții zilnic", pulse: "72"}},
+    )
+    assert resp.status_code == 200, resp.text
+    resp = client.post(
+        "/medical-records",
+        json={"client_id": profile.id, "notes": "Masaj lombar", "subjective": "Durere 6/10", "treatment_plan": "Gheață seara"},
+    )
+    assert resp.status_code == 200, resp.text
+    client.cookies.clear()
+
+    _login(client, "c@example.com")
+    me = client.get("/clients/me").json()
+    assert me["consultation_sheets"][0]["shared"] == [{"label": "Recomandări", "value": "Exerciții zilnic"}]
+    record = me["medical_records"][0]
+    assert record["treatment_plan"] == "Gheață seara"
+    assert "subjective" not in record and "field_values" not in record

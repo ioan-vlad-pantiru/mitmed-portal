@@ -33,13 +33,16 @@ export async function createMedicalRecord(
   const notes = String(formData.get("notes") ?? "");
   if (!notes.trim()) return { message: "Notele nu pot fi goale." };
 
-  const bodyMapRaw = String(formData.get("bodyMap") ?? "");
+  // An empty list is sent too: when a Consult is reopened, removing every point
+  // must clear the saved body map.
   let bodyMap: unknown = undefined;
-  try {
-    const parsed = bodyMapRaw ? JSON.parse(bodyMapRaw) : [];
-    bodyMap = Array.isArray(parsed) && parsed.length > 0 ? parsed : undefined;
-  } catch {
-    bodyMap = undefined;
+  if (formData.has("bodyMap")) {
+    try {
+      const parsed = JSON.parse(String(formData.get("bodyMap") || "[]"));
+      bodyMap = Array.isArray(parsed) ? parsed : undefined;
+    } catch {
+      bodyMap = undefined;
+    }
   }
 
   try {

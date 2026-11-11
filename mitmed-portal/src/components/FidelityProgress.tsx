@@ -1,10 +1,12 @@
+import { Check } from "lucide-react";
 import type { ClientFidelityCard } from "@/actions/fidelity";
 
 // Peste atâtea ședințe într-un ciclu, cerculețele devin prea mici — trecem
 // pe o bară continuă cu marcaje la trepte.
 const MAX_STAMPS_AS_DOTS = 12;
 
-function nextRewardLabel(card: ClientFidelityCard, audience: "admin" | "client"): string | null {
+/** One sentence about the next discount, e.g. "Încă 2 ședințe până la -25%". */
+export function nextRewardLabel(card: ClientFidelityCard, audience: "admin" | "client"): string | null {
   const reward = card.next_reward;
   if (!reward) return null;
   const percent = Number(reward.discount_percent);
@@ -27,6 +29,7 @@ export function FidelityCardProgress({
   card: ClientFidelityCard;
   audience?: "admin" | "client";
 }) {
+  if (audience === "client") return <ClientStampCard card={card} />;
   const { stamps, cycle_length: cycle } = card;
   const discountAt = new Map(card.tiers.map((t) => [t.session_number, Number(t.discount_percent)]));
   const label = nextRewardLabel(card, audience);
@@ -96,6 +99,81 @@ export function FidelityCardProgress({
       {audience === "admin" && card.discounted_sessions_used > 0 && (
         <p className="text-xs text-zinc-400">{card.discounted_sessions_used} reduceri acordate până acum</p>
       )}
+    </div>
+  );
+}
+
+/** The client's view of a card: how far along they are, which visits earn a
+ * discount and what happens next — without the staff-only details. */
+function ClientStampCard({ card }: { card: ClientFidelityCard }) {
+  const { stamps, cycle_length: cycle } = card;
+  const discountAt = new Map(card.tiers.map((t) => [t.session_number, Number(t.discount_percent)]));
+  const label = nextRewardLabel(card, "client");
+  const rewardIsNext = card.next_reward?.sessions_left === 0;
+  const asDots = cycle <= MAX_STAMPS_AS_DOTS;
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-zinc-600">
+          <span className="text-lg font-bold tabular-nums text-[var(--mitmed-teal-deep)]">{stamps}</span> din{" "}
+          <span className="tabular-nums">{cycle}</span> ședințe
+        </p>
+        {label && (
+          <p
+            className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+              rewardIsNext ? "bg-emerald-50 text-emerald-700" : "bg-zinc-100 text-zinc-600"
+            }`}
+          >
+            {label}
+          </p>
+        )}
+      </div>
+
+      {asDots ? (
+        <ol className="mt-3 flex flex-wrap gap-3" aria-label={`${stamps} din ${cycle} ședințe`}>
+          {Array.from({ length: cycle }, (_, i) => {
+            const session = i + 1;
+            const filled = session <= stamps;
+            const discount = discountAt.get(session);
+            const isNext = session === stamps + 1;
+            return (
+              <li key={session} className="flex flex-col items-center gap-1">
+                <span
+                  className={[
+                    "flex h-12 w-12 items-center justify-center rounded-full border-2 text-[11px] font-bold tabular-nums",
+                    filled
+                      ? "border-[var(--mitmed-teal)] bg-[var(--mitmed-teal)] text-white"
+                      : discount
+                        ? "border-dashed border-emerald-500 bg-emerald-50 text-emerald-700"
+                        : "border-zinc-200 bg-white text-zinc-400",
+                    isNext ? "ring-2 ring-[var(--mitmed-sky)] ring-offset-2" : "",
+                  ].join(" ")}
+                  title={filled ? `Ședința ${session}: făcută` : discount ? `Ședința ${session}: -${discount}%` : `Ședința ${session}`}
+                >
+                  {filled ? <Check className="h-5 w-5" strokeWidth={3} /> : discount ? `-${discount}%` : session}
+                </span>
+                <span className="text-[10px] font-medium leading-none text-zinc-400">{isNext ? "urm." : session}</span>
+              </li>
+            );
+          })}
+        </ol>
+      ) : (
+        <div className="mt-3">
+          <div className="h-2.5 overflow-hidden rounded-full bg-zinc-100">
+            <div className="h-full rounded-full bg-[var(--mitmed-teal)]" style={{ width: `${Math.min(100, (stamps / cycle) * 100)}%` }} />
+          </div>
+          <p className="mt-2 text-xs text-zinc-500">
+            Reduceri la ședințele:{" "}
+            {card.tiers.map((t) => `${t.session_number} (-${Number(t.discount_percent)}%)`).join(", ")}
+          </p>
+        </div>
+      )}
+
+      <p className="mt-3 text-xs leading-relaxed text-zinc-500">
+        Fiecare vizită plătită pentru una din terapiile cardului adaugă o ștampilă. După ședința {cycle}, cardul o ia de la
+        capăt.
+      </p>
     </div>
   );
 }

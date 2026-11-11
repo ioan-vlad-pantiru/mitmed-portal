@@ -59,7 +59,7 @@ export default function LoginPage() {
           </Link>
         </div>
 
-        {state?.message && <p className="text-sm text-red-600">{state.message}</p>}
+        {state?.message && <p role="alert" data-variant="danger" className="mm-alert">{state.message}</p>}
 
         <button
           type="submit"

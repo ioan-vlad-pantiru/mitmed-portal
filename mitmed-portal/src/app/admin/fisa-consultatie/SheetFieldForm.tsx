@@ -55,7 +55,11 @@ export function SheetFieldForm({
         <input type="checkbox" name="carryOver" defaultChecked={field?.carry_over ?? false} />
         Precompletează pe o fișă nouă din ultima fișă a pacientului (ex: antecedente)
       </label>
-      {state?.message && !state.success && <p className="text-sm text-red-600 sm:col-span-2">{state.message}</p>}
+      <label className="flex items-center gap-2 text-sm text-zinc-700 sm:col-span-2">
+        <input type="checkbox" name="visibleToClient" defaultChecked={field?.visible_to_client ?? false} />
+        Clientul vede ce se scrie aici, în portal la „Dosarul meu” (ex: recomandări, diagnostic)
+      </label>
+      {state?.message && !state.success && <p role="alert" data-variant="danger" className="mm-alert sm:col-span-2">{state.message}</p>}
       <div className="flex gap-2 sm:col-span-2">
         <Button type="submit" disabled={pending}>
           {pending ? "Se salvează…" : field ? "Salvează modificările" : "Adaugă câmpul"}

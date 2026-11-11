@@ -121,14 +121,39 @@ export async function changePassword(
     return { message: "Parolele noi nu coincid." };
   }
 
+  let signedOut = 0;
   try {
-    await apiPost("/auth/change-password", { current_password: currentPassword, new_password: newPassword });
+    const result = await apiPost<{ other_devices_signed_out?: number }>("/auth/change-password", {
+      current_password: currentPassword,
+      new_password: newPassword,
+    });
+    signedOut = result.other_devices_signed_out ?? 0;
   } catch (err) {
     if (err instanceof ApiError) return { message: err.message };
     throw err;
   }
 
-  return { success: true, message: "Parola a fost schimbată." };
+  return {
+    success: true,
+    message: signedOut
+      ? `Parola a fost schimbată. Am deconectat și ${signedOut === 1 ? "celălalt dispozitiv" : `celelalte ${signedOut} dispozitive`}.`
+      : "Parola a fost schimbată.",
+  };
+}
+
+export type MySessions = { active: number; current_since: string | null };
+
+/** How many devices are signed in to the current account. */
+export async function getMySessions(): Promise<MySessions> {
+  await verifySession();
+  return apiGet<MySessions>("/auth/sessions");
+}
+
+/** Signs the current account out on every other device. */
+export async function signOutOtherDevices(): Promise<{ signedOut: number }> {
+  await verifySession();
+  const result = await apiPost<{ signed_out: number }>("/auth/sessions/sign-out-others", {});
+  return { signedOut: result.signed_out };
 }
 
 /** „Ai uitat parola?” — backend-ul răspunde la fel dacă emailul există sau

@@ -15,7 +15,7 @@ export function CardTypeForm({ therapies }: { therapies: { id: string; name: str
   return (
     <form action={action} className="mt-3 grid max-w-2xl grid-cols-2 gap-3 mm-card p-4">
       <CardTypeEditor therapies={therapies} />
-      {state?.message && <p className="col-span-2 text-sm text-red-600">{state.message}</p>}
+      {state?.message && <p role="alert" data-variant="danger" className="mm-alert col-span-2">{state.message}</p>}
       <div className="col-span-2">
         <Button type="submit" disabled={pending}>
           {pending ? "Se salvează…" : "Adaugă tip de card"}

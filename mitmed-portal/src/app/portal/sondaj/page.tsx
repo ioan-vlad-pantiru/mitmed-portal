@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { getOwnSurvey } from "@/actions/surveys";
 import { CLINIC_TIME_ZONE } from "@/lib/clinic";
 import { SurveyForm, SurveyThanks } from "./SurveyForm";
+import { PortalPageHeader } from "../_components/PortalPageHeader";
 
 export default async function SurveyPage() {
   const survey = await getOwnSurvey();
@@ -11,11 +12,7 @@ export default async function SurveyPage() {
 
   return (
     <div className="portal-subpage">
-      <header>
-        <p>Părerea ta</p>
-        <h1>Cum ți s-a părut experiența la MitMed?</h1>
-        <span>Durează un minut. Ne ajută să facem fiecare vizită mai bună.</span>
-      </header>
+      <PortalPageHeader title="Părerea ta" description="Durează un minut. Ne ajută să facem fiecare vizită mai bună." />
       <section className="portal-feature-panel">
         <div className="portal-panel-title">
           <MessageSquareText />

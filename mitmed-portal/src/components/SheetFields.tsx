@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
+import { ClientVisibility } from "@/components/ClientVisibility";
 import Link from "next/link";
 import { Plus, Settings2 } from "lucide-react";
 import { createSheetField, deleteSheetField, type ConsultationSheetField } from "@/actions/consultationSheets";
@@ -82,10 +83,11 @@ function FieldInput({
   };
   return (
     <div>
-      <div className="flex items-center">
+      <div className="flex items-center gap-2">
         <label htmlFor={id} className="block text-xs font-medium text-zinc-700">
           {field.archived ? `${field.label} (câmp șters)` : field.label}
         </label>
+        {field.visible_to_client && <ClientVisibility visible />}
         {editable && !field.archived && <RemoveFieldButton field={field} />}
       </div>
       {field.field_type === "text" ? <Input {...common} /> : <Textarea {...common} rows={field.section ? 2 : 3} />}

@@ -220,18 +220,18 @@ def test_outstanding_insight_reports_remaining_not_full_price(client, make_admin
     assert float(row["remaining"]) == 140.0
 
 
-def test_overall_insight_revenue_includes_partial_amounts(client, make_admin_user, make_client_user, make_therapy):
+def test_report_revenue_includes_partial_amounts(client, make_admin_user, make_client_user, make_therapy):
     make_admin_user(email="admin@example.com", password="parola123", role="ADMIN")
     _, profile = make_client_user(email="c@example.com", password="parola123")
     therapy = make_therapy(price=200)
     _login(client)
     client.post("/payments", json={"client_id": profile.id, "therapy_id": therapy.id, "amount_paid": 60})
 
-    resp = client.get("/insights/overall")
+    resp = client.get("/insights/report", params={"scope": "month"})
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert float(body["revenue_this_month"]) >= 60.0
-    assert float(body["outstanding"]) >= 140.0
+    assert body["current"]["revenue"] >= 60.0
+    assert body["attention"]["outstanding_total"] >= 140.0
 
 
 def _create_mixed_package(client, profile_id, therapy_a, therapy_b, amount_paid=None):

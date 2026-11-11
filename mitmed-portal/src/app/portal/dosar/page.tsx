@@ -1,8 +1,123 @@
-import { ClipboardPlus, Download, FileText, HeartPulse } from "lucide-react";
+import { ClipboardPlus, Download, FileText, HeartPulse, Lightbulb } from "lucide-react";
 import { getOwnClientData } from "@/actions/clients";
+import { formatDate } from "@/lib/clinicTime";
 import { MedicalHistoryForm } from "../MedicalHistoryForm";
+import { PortalPageHeader } from "../_components/PortalPageHeader";
+import { medicalFileEntries, type ClientRecord, type ClientSheet, type SharedNote } from "../portalData";
+
+type Client = {
+  medical_history: { allergies?: string; conditions?: string; medications?: string; previous_injuries?: string; notes?: string } | null;
+  medical_records: ClientRecord[];
+  consultation_sheets: ClientSheet[];
+};
+
+const isRecommendation = (note: SharedNote) => /recomand/i.test(note.label);
 
 export default async function MedicalFilePage() {
-  const raw = await getOwnClientData(); const client = raw as { medical_history: { allergies?: string; conditions?: string; medications?: string; previous_injuries?: string; notes?: string } | null; medical_records: { id: string; session_date: string; diagnosis: string | null; notes: string; treatment_plan: string | null; therapy: { name: string } | null }[]; consultation_sheets: { id: string; sheet_date: string; sheet_number: string | null; template_name: string }[] };
-  return <div className="portal-subpage"><header><p>Dosarul meu</p><h1>Parcursul tău de recuperare, păstrat în siguranță.</h1><span>Consultă recomandările primite și actualizează informațiile care pot ajuta terapeutul înaintea următoarei ședințe.</span></header><section className="portal-feature-panel"><div className="portal-panel-title"><HeartPulse /><div><h2>Istoric și recomandări</h2><span className="portal-panel-caption">{client.medical_records.length ? `${client.medical_records.length} înregistrări în dosar` : "Recomandările vor apărea aici după prima ședință"}</span></div></div>{client.medical_records.length ? <ol className="portal-timeline">{client.medical_records.map((record) => <li key={record.id}><time>{new Date(record.session_date).toLocaleDateString("ro-RO", { day: "numeric", month: "long", year: "numeric" })}</time><div><h3>{record.diagnosis ?? record.therapy?.name ?? "Ședință MitMed"}</h3><p>{record.notes}</p>{record.treatment_plan && <div className="portal-treatment-plan"><strong>Recomandare</strong>{record.treatment_plan}</div>}</div></li>)}</ol> : <p className="portal-quiet">Nu ai încă înregistrări medicale.</p>}</section><section className="portal-feature-panel"><div className="portal-panel-title"><FileText /><div><h2>Fișele mele medicale</h2><span className="portal-panel-caption">Descarcă-le în PDF — de exemplu pentru dosarul de pensionare sau o comisie.</span></div></div>{client.consultation_sheets.length ? <ul className="divide-y divide-zinc-100">{client.consultation_sheets.map((sheet) => <li key={sheet.id} className="flex flex-wrap items-center justify-between gap-3 py-3"><div><p className="font-medium text-zinc-900">{sheet.template_name}</p><p className="text-sm text-zinc-500">{new Date(sheet.sheet_date).toLocaleDateString("ro-RO", { day: "numeric", month: "long", year: "numeric" })}{sheet.sheet_number ? ` · Nr. ${sheet.sheet_number}` : ""}</p></div><a href={`/portal/dosar/fise/${sheet.id}`} className="mm-btn" data-variant="secondary"><Download size={15} className="mr-1.5" />Descarcă PDF</a></li>)}</ul> : <p className="portal-quiet">Fișele completate de terapeut vor apărea aici.</p>}</section><section className="portal-feature-panel"><div className="portal-panel-title"><ClipboardPlus /><div><h2>Informații pentru echipa ta</h2><span className="portal-panel-caption">Completează doar ce este relevant pentru tratamentul tău.</span></div></div><MedicalHistoryForm initial={client.medical_history} /></section></div>;
+  const client = (await getOwnClientData()) as Client;
+  const entries = medicalFileEntries(client.medical_records, client.consultation_sheets);
+
+  return (
+    <div className="portal-subpage">
+      <PortalPageHeader title="Dosarul meu" description="Tot ce ți-a transmis terapeutul, de la cea mai recentă vizită." />
+
+      <section className="portal-feature-panel">
+        <div className="portal-panel-title">
+          <HeartPulse />
+          <h2>Vizitele și fișele tale</h2>
+        </div>
+        {entries.length ? (
+          <ol className="portal-record-list">
+            {entries.map((entry, index) => {
+              const latest = index === 0 ? <span>cea mai recentă</span> : null;
+              if (entry.kind === "sheet") {
+                const { sheet } = entry;
+                const advice = sheet.shared.filter(isRecommendation);
+                const other = sheet.shared.filter((n) => !isRecommendation(n));
+                return (
+                  <li key={`s-${sheet.id}`} className={index === 0 ? "is-latest" : ""}>
+                    <p className="portal-record-date">
+                      {formatDate(sheet.sheet_date)} · {sheet.template_name}
+                      {latest}
+                    </p>
+                    {advice.map((note) => (
+                      <Advice key={note.label} title={note.label} text={note.value} />
+                    ))}
+                    {other.map((note) => (
+                      <Note key={note.label} label={note.label} text={note.value} />
+                    ))}
+                    <a href={`/portal/dosar/fise/${sheet.id}`} className="portal-secondary-btn portal-btn-sm mt-3">
+                      <Download size={16} /> Descarcă fișa (PDF)
+                    </a>
+                  </li>
+                );
+              }
+              const { record } = entry;
+              return (
+                <li key={`r-${record.id}`} className={index === 0 ? "is-latest" : ""}>
+                  <p className="portal-record-date">
+                    {formatDate(record.session_date)}
+                    {record.therapy && ` · ${record.therapy.name}`}
+                    {latest}
+                  </p>
+                  {record.treatment_plan && <Advice title="Ce ai de făcut" text={record.treatment_plan} />}
+                  {record.shared.filter(isRecommendation).map((note) => (
+                    <Advice key={note.label} title={note.label} text={note.value} />
+                  ))}
+                  {record.diagnosis && <Note label="Diagnostic" text={record.diagnosis} />}
+                  {record.shared
+                    .filter((n) => !isRecommendation(n))
+                    .map((note) => (
+                      <Note key={note.label} label={note.label} text={note.value} />
+                    ))}
+                  {record.notes && (
+                    <details className="portal-record-notes" open={!record.treatment_plan}>
+                      <summary>Ce am lucrat în ședință</summary>
+                      <p>{record.notes}</p>
+                    </details>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        ) : (
+          <p className="portal-quiet">După prima vizită, aici vei vedea ce ți-a recomandat terapeutul.</p>
+        )}
+      </section>
+
+      <section className="portal-feature-panel">
+        <div className="portal-panel-title">
+          <ClipboardPlus />
+          <div>
+            <h2>Ce trebuie să știe terapeutul</h2>
+            <span className="portal-panel-caption">Alergii, boli, medicamente. Completează doar ce e relevant.</span>
+          </div>
+        </div>
+        <MedicalHistoryForm initial={client.medical_history} />
+      </section>
+    </div>
+  );
+}
+
+function Advice({ title, text }: { title: string; text: string }) {
+  return (
+    <div className="portal-record-advice">
+      <Lightbulb size={20} />
+      <div>
+        <strong>{title}</strong>
+        <p>{text}</p>
+      </div>
+    </div>
+  );
+}
+
+function Note({ label, text }: { label: string; text: string }) {
+  return (
+    <div className="portal-record-note">
+      <FileText size={16} />
+      <p>
+        <strong>{label}:</strong> {text}
+      </p>
+    </div>
+  );
 }

@@ -46,7 +46,7 @@ export function TemplateForm({ template }: { template?: SheetTemplate }) {
         </label>
       )}
       {template?.kind === "tratament" && <input type="hidden" name="visibleToClient" value="" />}
-      {state?.message && !state.success && <p className="text-sm text-red-600 sm:col-span-2">{state.message}</p>}
+      {state?.message && !state.success && <p role="alert" data-variant="danger" className="mm-alert sm:col-span-2">{state.message}</p>}
       <div className="flex flex-wrap gap-2 sm:col-span-2">
         <Button type="submit" disabled={pending}>
           {pending ? "Se salvează…" : template ? "Salvează" : "Creează fișa"}

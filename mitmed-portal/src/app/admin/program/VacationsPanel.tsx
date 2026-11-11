@@ -75,7 +75,7 @@ export function VacationsPanel({ vacations }: { vacations: Vacation[] }) {
           <label className="block text-xs font-medium text-zinc-700">Motiv (opțional)</label>
           <Input name="label" placeholder="ex: Concediu de odihnă" className="mt-1" />
         </div>
-        {state?.message && <p className="col-span-full text-sm text-red-600">{state.message}</p>}
+        {state?.message && <p role="alert" data-variant="danger" className="mm-alert col-span-full">{state.message}</p>}
         <div className="col-span-full">
           <Button type="submit" variant="secondary" disabled={pending}>
             {pending ? "Se adaugă…" : "Adaugă vacanță"}

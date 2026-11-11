@@ -98,7 +98,7 @@ export function TherapyRow({ therapy }: { therapy: Therapy }) {
           <td colSpan={5} className="bg-zinc-50/60 px-4 py-4">
             <form action={action} className="grid max-w-2xl grid-cols-2 gap-3">
               <TherapyFields defaults={{ ...therapy, isConsultation: therapy.isConsultation }} />
-              {state?.message && <p className="col-span-2 text-sm text-red-600">{state.message}</p>}
+              {state?.message && <p role="alert" data-variant="danger" className="mm-alert col-span-2">{state.message}</p>}
               <div className="col-span-2 flex gap-2">
                 <Button type="submit" disabled={saving}>
                   {saving ? "Se salvează…" : "Salvează modificările"}

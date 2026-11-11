@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useMemo, useState } from "react";
+import { Check, PenLine } from "lucide-react";
 import { signConsent, type ConsentType } from "@/actions/consents";
 import { SignaturePad } from "@/components/SignaturePad";
 import { Dialog } from "@/components/ui/Dialog";
@@ -37,10 +38,10 @@ export function ConsentForm({
 
   if (state?.success) {
     return (
-      <div className="mx-auto max-w-2xl overflow-hidden rounded-xl border border-emerald-200 bg-white shadow-sm">
+      <div className="mm-card mx-auto max-w-2xl overflow-hidden">
         <div className="flex items-center gap-3 bg-emerald-50 px-6 py-4">
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white">
-            ✓
+            <Check size={16} aria-hidden />
           </span>
           <div>
             <p className="text-sm font-semibold text-emerald-900">{title}</p>
@@ -52,7 +53,7 @@ export function ConsentForm({
   }
 
   return (
-    <div className="mx-auto max-w-2xl overflow-hidden rounded-xl border border-zinc-200/70 bg-white shadow-[0_1px_2px_rgba(16,24,24,0.04),0_12px_32px_-16px_rgba(0,63,64,0.2)]">
+    <div className="mx-auto max-w-2xl mm-card overflow-hidden">
       {/* Antet — ca pe un document tipărit */}
       <div className="border-b border-zinc-100 bg-gradient-to-b from-zinc-50 to-white px-6 py-5 sm:px-8 sm:py-6">
         <div className="flex items-center justify-between">
@@ -84,8 +85,8 @@ export function ConsentForm({
               // eslint-disable-next-line @next/next/no-img-element -- data URL locală, nu imagine optimizabilă
               <img src={signature} alt="Semnătura ta" className="h-full w-full object-contain p-2" />
             ) : (
-              <span className="text-sm font-medium text-[var(--mitmed-teal)] group-hover:underline">
-                Apasă aici pentru a semna ✍️
+              <span className="inline-flex items-center gap-1.5 text-sm font-medium text-[var(--mitmed-teal)] group-hover:underline">
+                <PenLine size={15} aria-hidden /> Apasă aici pentru a semna
               </span>
             )}
           </button>

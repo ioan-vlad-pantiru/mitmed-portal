@@ -119,7 +119,7 @@ export function CouponRow({ coupon, allTherapies }: { coupon: Coupon; allTherapi
                   selectedTherapyIds: coupon.therapies.map((t) => t.id),
                 }}
               />
-              {state?.message && <p className="col-span-2 text-sm text-red-600">{state.message}</p>}
+              {state?.message && <p role="alert" data-variant="danger" className="mm-alert col-span-2">{state.message}</p>}
               <div className="col-span-2 flex gap-2">
                 <Button type="submit" disabled={saving}>
                   {saving ? "Se salvează…" : "Salvează modificările"}

@@ -9,7 +9,7 @@ export function ResetPasswordButton({ userId }: { userId: string }) {
 
   if (newPassword) {
     return (
-      <div className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900">
+      <div data-variant="warning" className="mm-alert block text-xs">
         Parolă nouă (comunic-o clientului acum, nu se mai poate revedea):{" "}
         <strong className="font-mono">{newPassword}</strong>
       </div>

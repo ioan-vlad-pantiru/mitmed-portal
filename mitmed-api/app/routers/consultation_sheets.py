@@ -13,7 +13,6 @@ from app.database import get_db
 from app.deps import require_roles, require_user
 from app.models import (
     TEMPLATE_CONSULTATIE,
-    Appointment,
     TEMPLATE_TRATAMENT,
     ClientProfile,
     ConsultationSheet,
@@ -23,7 +22,7 @@ from app.models import (
     SheetTemplate,
     User,
 )
-from app.services.sessions import complete_appointment
+from app.services.sessions import complete_appointment, lock_appointment_for_client, sheets_for_appointment
 from app.services.sheet_pdf import render_sheet_pdf, render_treatment_pdf
 
 router = APIRouter(prefix="/consultation-sheets", tags=["consultation-sheets"])
@@ -140,6 +139,7 @@ class SheetFieldPayload(BaseModel):
     section: str | None = Field(default=None, max_length=120)
     placeholder: str | None = Field(default=None, max_length=120)
     carry_over: bool = False
+    visible_to_client: bool = False
 
 
 class SheetFieldCreate(SheetFieldPayload):
@@ -159,6 +159,7 @@ def serialize_field(f: ConsultationSheetField) -> dict:
         "section": f.section,
         "placeholder": f.placeholder,
         "carry_over": f.carry_over,
+        "visible_to_client": f.visible_to_client,
         "position": f.position,
         "archived": f.archived,
     }
@@ -173,6 +174,7 @@ def _apply_field_payload(field: ConsultationSheetField, payload: SheetFieldPaylo
     field.section = (payload.section or "").strip() or None
     field.placeholder = (payload.placeholder or "").strip() or None
     field.carry_over = payload.carry_over
+    field.visible_to_client = payload.visible_to_client
 
 
 def _get_field(db: DBSession, field_id: str) -> ConsultationSheetField:
@@ -318,6 +320,12 @@ def merge_field_values(current: dict | None, updates: dict[str, str | None]) -> 
     return merged
 
 
+def _apply_sheet_fields(db: DBSession, sheet: ConsultationSheet, payload: ConsultationSheetFields) -> None:
+    sheet.sheet_date = payload.sheet_date or sheet.sheet_date
+    sheet.sheet_number = (payload.sheet_number or "").strip() or None
+    sheet.field_values = merge_field_values(sheet.field_values, clean_field_values(db, sheet.template_id, payload.values))
+
+
 def _get_sheet(db: DBSession, sheet_id: str) -> ConsultationSheet:
     sheet = db.get(ConsultationSheet, sheet_id)
     if not sheet:
@@ -339,9 +347,24 @@ def create_consultation_sheet(
         raise HTTPException(status_code=422, detail="Fișa de tratament se completează din ședințe.")
     appointment = None
     if payload.appointment_id:
-        appointment = db.get(Appointment, payload.appointment_id)
-        if not appointment or appointment.client_id != payload.client_id:
-            raise HTTPException(status_code=422, detail="Programarea nu aparține acestui client.")
+        appointment = lock_appointment_for_client(db, payload.appointment_id, payload.client_id)
+        # An appointment has at most one sheet per template: a reopened Consult
+        # updates the saved sheet, so the appointment and the patient file match.
+        existing = sheets_for_appointment(db, appointment.id).get(template.id)
+        if existing:
+            if actor.role != Role.ADMIN:
+                raise HTTPException(status_code=403, detail="Fișa e deja salvată; doar adminul o poate modifica.")
+            _apply_sheet_fields(db, existing, payload)
+            db.commit()
+            log_audit(
+                db,
+                actor_id=actor.id,
+                action="consultation_sheet.update",
+                target_type="ConsultationSheet",
+                target_id=existing.id,
+                metadata={"client_id": existing.client_id, "appointment_id": appointment.id},
+            )
+            return {"ok": True, "id": existing.id, "updated": True}
     sheet = ConsultationSheet(
         client_id=payload.client_id,
         template_id=template.id,
@@ -376,9 +399,7 @@ def update_consultation_sheet(
     """Doar adminul modifică o fișă deja salvată (ex. pacientul revine după o
     lună cu o corectură necesară la comisie)."""
     sheet = _get_sheet(db, sheet_id)
-    sheet.sheet_date = payload.sheet_date or sheet.sheet_date
-    sheet.sheet_number = (payload.sheet_number or "").strip() or None
-    sheet.field_values = merge_field_values(sheet.field_values, clean_field_values(db, sheet.template_id, payload.values))
+    _apply_sheet_fields(db, sheet, payload)
     db.commit()
     log_audit(
         db,

@@ -124,10 +124,9 @@ export function AdminListPageSkeleton({ cols = 4, formFields = 4 }: { cols?: num
 
 export function PortalHeaderSkeleton() {
   return (
-    <header className="space-y-3">
-      <Skeleton className="h-3.5 w-24" />
-      <Skeleton className="h-8 w-full max-w-lg" />
-      <Skeleton className="h-4 w-full max-w-md" />
+    <header className="space-y-2">
+      <Skeleton className="h-8 w-48" />
+      <Skeleton className="h-4 w-full max-w-sm" />
     </header>
   );
 }

@@ -1,12 +1,11 @@
 from datetime import date, datetime, timezone
 from decimal import Decimal
-from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session as DBSession
 
 from app.models import Appointment, ClientFidelityCard, Payment
+from app.clinic_time import CLINIC_TIMEZONE
 
-CLINIC_TIMEZONE = ZoneInfo("Europe/Bucharest")
 
 
 # Cardul numără ȘEDINȚE (vizite), nu terapii: toate terapiile plătite pe

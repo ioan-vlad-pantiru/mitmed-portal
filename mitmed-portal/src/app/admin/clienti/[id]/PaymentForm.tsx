@@ -407,7 +407,7 @@ export function PaymentForm({
             )}
           </div>
           {methodAndAmount}
-          {packageState?.message && <p className="text-sm text-red-600">{packageState.message}</p>}
+          {packageState?.message && <p role="alert" data-variant="danger" className="mm-alert">{packageState.message}</p>}
           <Button type="submit" disabled={packagePending || Boolean(packagePreviewError)}>
             {packagePending ? "Se salvează…" : "Înregistrează plata pachetului"}
           </Button>

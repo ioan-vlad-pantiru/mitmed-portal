@@ -78,7 +78,7 @@ export function AppointmentForm({
   }
 
   return (
-    <form action={formAction} className="mt-3 grid gap-4 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm md:grid-cols-2">
+    <form action={formAction} className="mt-3 grid gap-4 mm-card p-4 md:grid-cols-2">
       <input type="hidden" name="startsAt" value={appointmentValue} />
       <div className="md:col-span-2"><div className="flex items-center gap-2"><span className="grid h-8 w-8 place-items-center rounded-full bg-[var(--mitmed-sky)]/15 text-[var(--mitmed-teal)]"><CalendarPlus size={17} /></span><div><h3 className="text-sm font-semibold text-zinc-900">Programare nouă</h3><p className="text-xs text-zinc-500">Alege serviciul, apoi stabilește exact ziua și ora.</p></div></div></div>
       <div>
@@ -109,7 +109,7 @@ export function AppointmentForm({
         </label>
       </div>
 
-      {state?.message && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700 md:col-span-2">{state.message}</p>}
+      {state?.message && <p data-variant="danger" className="mm-alert md:col-span-2">{state.message}</p>}
 
       <div className="flex items-center justify-between gap-3 border-t border-zinc-100 pt-3 md:col-span-2">
         <p className={`text-xs ${!date || (isOpenDay && withinHours && outsideBreak) ? "text-zinc-400" : "font-medium text-red-600"}`}>{hint}</p>

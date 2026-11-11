@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { CLINIC_EMAIL, CLINIC_PHONE, LEGAL_ADDRESS, LEGAL_CIF, LEGAL_NAME } from "@/lib/clinic";
 
 export const metadata: Metadata = {
@@ -12,8 +13,8 @@ export const metadata: Metadata = {
 export default function PrivacyPolicyPage() {
   return (
     <main className="mx-auto max-w-3xl px-6 py-14 text-[var(--mitmed-ink)]">
-      <Link href="/login" className="text-sm font-medium text-[var(--mitmed-teal)] hover:underline">
-        ← Înapoi
+      <Link href="/login" className="inline-flex items-center gap-1 text-sm font-medium text-[var(--mitmed-teal)] hover:underline">
+        <ArrowLeft size={14} aria-hidden /> Înapoi
       </Link>
 
       <h1 className="mt-6 font-serif text-3xl font-semibold text-[var(--mitmed-teal-deep)]">

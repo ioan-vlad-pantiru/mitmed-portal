@@ -7,13 +7,14 @@ import { MarkPaidControl } from "@/components/MarkPaidControl";
 import { CorrectPaymentControl } from "@/components/CorrectPaymentControl";
 import { Dialog } from "@/components/ui/Dialog";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 
 const STATUS_LABEL: Record<OutstandingPayment["status"], string> = {
   NEPLATIT: "Neachitat",
   PARTIAL: "Parțial achitat",
 };
 
-export function OutstandingTrigger({ totalLabel }: { totalLabel: string }) {
+export function OutstandingTrigger({ totalLabel, compact = false }: { totalLabel: string; compact?: boolean }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [payments, setPayments] = useState<OutstandingPayment[] | null>(null);
@@ -32,6 +33,11 @@ export function OutstandingTrigger({ totalLabel }: { totalLabel: string }) {
 
   return (
     <>
+      {compact ? (
+        <Button variant="secondary" onClick={handleOpen} className="text-xs">
+          Încasează plăți
+        </Button>
+      ) : (
       <button
         type="button"
         onClick={handleOpen}
@@ -43,6 +49,7 @@ export function OutstandingTrigger({ totalLabel }: { totalLabel: string }) {
         <div className="mm-numeric mt-3 text-3xl font-bold tracking-tight text-orange-700">{totalLabel}</div>
         <div className="text-sm text-zinc-500">Sume neîncasate — apasă pentru detalii</div>
       </button>
+      )}
 
       <Dialog
         open={open}
@@ -53,7 +60,7 @@ export function OutstandingTrigger({ totalLabel }: { totalLabel: string }) {
       >
         {loading && <p className="py-6 text-center text-sm text-zinc-400">Se încarcă…</p>}
         {!loading && payments?.length === 0 && (
-          <p className="py-6 text-center text-sm text-zinc-400">Nicio sumă neîncasată. 🎉</p>
+          <p className="py-6 text-center text-sm text-zinc-400">Nicio sumă neîncasată.</p>
         )}
         {!loading && payments && payments.length > 0 && (
           <div className="max-h-[60vh] overflow-auto">

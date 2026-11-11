@@ -348,9 +348,39 @@ def change_password(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Parola curentă este incorectă.")
 
     user.password_hash = hash_password(payload.new_password)
+    # A new password should lock out anyone else still signed in with the old one.
+    signed_out = _delete_other_sessions(db, user, request.cookies.get(settings.session_cookie_name))
     db.commit()
     log_audit(db, actor_id=user.id, action="user.change_password", target_type="User", target_id=user.id)
-    return {"ok": True}
+    return {"ok": True, "other_devices_signed_out": signed_out}
+
+
+def _delete_other_sessions(db: DBSession, user: User, current_token: str | None) -> int:
+    query = db.query(UserSession).filter(UserSession.user_id == user.id)
+    if current_token:
+        query = query.filter(UserSession.id != current_token)
+    return query.delete(synchronize_session=False)
+
+
+@router.get("/sessions")
+def my_sessions(request: Request, user: User = Depends(require_user), db: DBSession = Depends(get_db)) -> dict:
+    """How many devices are signed in to this account right now."""
+    active = (
+        db.query(UserSession)
+        .filter(UserSession.user_id == user.id, UserSession.expires_at > datetime.now(timezone.utc))
+        .count()
+    )
+    current = db.get(UserSession, request.cookies.get(settings.session_cookie_name) or "")
+    return {"active": active, "current_since": current.created_at if current else None}
+
+
+@router.post("/sessions/sign-out-others")
+def sign_out_other_devices(request: Request, user: User = Depends(require_user), db: DBSession = Depends(get_db)) -> dict:
+    """Signs this account out everywhere except the device making the request."""
+    signed_out = _delete_other_sessions(db, user, request.cookies.get(settings.session_cookie_name))
+    db.commit()
+    log_audit(db, actor_id=user.id, action="user.sign_out_other_devices", target_type="User", target_id=user.id)
+    return {"signed_out": signed_out}
 
 
 @router.get("/me")

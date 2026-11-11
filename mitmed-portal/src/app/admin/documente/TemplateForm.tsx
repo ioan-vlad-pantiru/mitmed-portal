@@ -103,7 +103,7 @@ export function TemplateForm({
 
       {/* Preview live — exact cum va arăta documentul pe care îl semnează clientul
           (vezi antetul + fontul editorial din ConsentForm.tsx, portalul clientului). */}
-      <div className="overflow-hidden rounded-xl border border-zinc-200/70 bg-white shadow-[0_1px_2px_rgba(16,24,24,0.04),0_12px_32px_-16px_rgba(0,63,64,0.2)]">
+      <div className="mm-card overflow-hidden">
         <div className="border-b border-zinc-100 bg-gradient-to-b from-zinc-50 to-white px-6 py-5">
           <div className="flex items-center justify-between">
             <span className="text-sm font-bold tracking-tight text-[var(--mitmed-teal)]">

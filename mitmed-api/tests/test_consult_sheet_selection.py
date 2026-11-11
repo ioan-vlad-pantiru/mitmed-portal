@@ -109,3 +109,168 @@ def test_session_with_several_therapies_consumes_each_package(client, db_session
     assert resp.json()["archived"] is True
     assert "Masaj" not in [t["name"] for t in client.get("/therapies").json()]
     assert client.get(f"/clients/{profile.id}").json()["medical_records"][0]["therapy"]["name"] == "Masaj"
+
+
+def test_reopened_consult_updates_the_same_session_record(client, db_session, make_admin_user, make_client_user, make_therapy):
+    """The appointment's treatment record and the patient file's are the same:
+    a reopened Consult loads and updates it, with no duplicate and no extra
+    package charge."""
+    profile, therapy, package, appointment = _setup(db_session, make_admin_user, make_client_user, make_therapy)
+    masaj = make_therapy(name="Masaj")
+    _login(client)
+    field = client.post(
+        "/consultation-sheets/fields", json={"label": "Recomandări", "template_id": "tratament"}
+    ).json()["id"]
+
+    first = client.post(
+        "/medical-records",
+        json={
+            "client_id": profile.id, "appointment_id": appointment.id, "therapy_ids": [therapy.id],
+            "notes": "Mobilizare", "body_map": [{"x": 0.5, "y": 0.5}], "field_values": {field: "Gheață"},
+        },
+    )
+    assert first.status_code == 200, first.text
+
+    data = client.get(f"/appointments/{appointment.id}/consult").json()
+    saved = data["session_record"]
+    assert saved["id"] == first.json()["id"]
+    assert saved["notes"] == "Mobilizare"
+    assert saved["field_values"] == {field: "Gheață"}
+    assert [t["id"] for t in saved["therapies"]] == [therapy.id]
+
+    second = client.post(
+        "/medical-records",
+        json={
+            "client_id": profile.id, "appointment_id": appointment.id, "therapy_ids": [therapy.id, masaj.id],
+            "notes": "Mobilizare + masaj", "treatment_plan": "Exerciții acasă", "body_map": [],
+            "field_values": {field: None},
+        },
+    )
+    assert second.status_code == 200, second.text
+    assert second.json() == {"ok": True, "id": saved["id"], "updated": True}
+
+    records = client.get(f"/clients/{profile.id}").json()["medical_records"]
+    assert len(records) == 1
+    assert records[0]["notes"] == "Mobilizare + masaj"
+    assert records[0]["treatment_plan"] == "Exerciții acasă"
+    assert records[0]["body_map"] is None
+    assert records[0]["field_values"] == {}
+    assert {t["name"] for t in records[0]["therapies"]} == {therapy.name, "Masaj"}
+    db_session.refresh(package)
+    assert package.sessions_used == 1
+
+
+def test_only_admin_can_change_a_documented_session_from_consult(client, db_session, make_admin_user, make_client_user, make_therapy):
+    profile, therapy, _, appointment = _setup(db_session, make_admin_user, make_client_user, make_therapy)
+    make_admin_user(email="receptie@example.com", role="RECEPTIE")
+    resp = client.post("/auth/login", json={"identifier": "receptie@example.com", "password": "parola123"})
+    assert resp.status_code == 200, resp.text
+
+    body = {"client_id": profile.id, "appointment_id": appointment.id, "therapy_id": therapy.id, "notes": "Prima"}
+    assert client.post("/medical-records", json=body).status_code == 200
+    resp = client.post("/medical-records", json={**body, "notes": "A doua"})
+    assert resp.status_code == 403
+    assert client.post("/consultation-sheets", json={"client_id": profile.id, "appointment_id": appointment.id}).status_code == 200
+    assert client.post("/consultation-sheets", json={"client_id": profile.id, "appointment_id": appointment.id}).status_code == 403
+
+
+def test_reopened_consult_updates_the_same_consultation_sheet(client, db_session, make_admin_user, make_client_user, make_therapy):
+    profile, _, _, appointment = _setup(db_session, make_admin_user, make_client_user, make_therapy)
+    _login(client)
+    field = client.post("/consultation-sheets/fields", json={"label": "Anamneză"}).json()["id"]
+
+    first = client.post(
+        "/consultation-sheets",
+        json={"client_id": profile.id, "appointment_id": appointment.id, "values": {field: "Lombalgie"}},
+    ).json()
+    sheets = client.get(f"/appointments/{appointment.id}/consult").json()["appointment_sheets"]
+    assert sheets["consultatie"]["id"] == first["id"]
+    assert sheets["consultatie"]["values"] == {field: "Lombalgie"}
+
+    second = client.post(
+        "/consultation-sheets",
+        json={"client_id": profile.id, "appointment_id": appointment.id, "sheet_number": "12", "values": {field: "Lombalgie cronică"}},
+    ).json()
+    assert second == {"ok": True, "id": first["id"], "updated": True}
+    saved = client.get(f"/clients/{profile.id}").json()["consultation_sheets"]
+    assert len(saved) == 1
+    assert saved[0]["values"] == {field: "Lombalgie cronică"}
+    assert saved[0]["sheet_number"] == "12"
+
+
+def test_session_record_rejects_other_clients_appointment(client, db_session, make_admin_user, make_client_user, make_therapy):
+    _, therapy, _, appointment = _setup(db_session, make_admin_user, make_client_user, make_therapy)
+    _, other = make_client_user(email="altul@example.com")
+    _login(client)
+    resp = client.post(
+        "/medical-records",
+        json={"client_id": other.id, "appointment_id": appointment.id, "therapy_id": therapy.id, "notes": "x"},
+    )
+    assert resp.status_code == 422
+
+
+def _package(db_session, profile, therapy):
+    package = Payment(
+        client_id=profile.id, therapy_id=therapy.id, base_price=500, discount_amount=0, final_price=500,
+        package_total_sessions=5, sessions_used=0,
+    )
+    db_session.add(package)
+    db_session.commit()
+    return package
+
+
+def test_packages_follow_the_therapies_ticked_in_consult(client, db_session, make_admin_user, make_client_user, make_therapy):
+    """An unticked scheduled therapy (another one was done) is not charged."""
+    profile, therapy, package, appointment = _setup(db_session, make_admin_user, make_client_user, make_therapy)
+    masaj = make_therapy(name="Masaj")
+    masaj_package = _package(db_session, profile, masaj)
+    _login(client)
+
+    resp = client.post(
+        "/medical-records",
+        json={"client_id": profile.id, "appointment_id": appointment.id, "therapy_ids": [masaj.id], "notes": "Doar masaj"},
+    )
+    assert resp.status_code == 200, resp.text
+    db_session.refresh(appointment)
+    db_session.refresh(package)
+    db_session.refresh(masaj_package)
+    assert appointment.status == AppointmentStatus.FINALIZATA
+    assert package.sessions_used == 0
+    assert masaj_package.sessions_used == 1
+
+
+def test_notes_after_a_sheet_charge_only_the_extra_therapies(client, db_session, make_admin_user, make_client_user, make_therapy):
+    """A consultation sheet already completed the appointment (charging the
+    scheduled therapy); notes added afterwards charge only the extra therapies."""
+    profile, therapy, package, appointment = _setup(db_session, make_admin_user, make_client_user, make_therapy)
+    masaj = make_therapy(name="Masaj")
+    masaj_package = _package(db_session, profile, masaj)
+    _login(client)
+
+    client.post("/consultation-sheets", json={"client_id": profile.id, "appointment_id": appointment.id})
+    resp = client.post(
+        "/medical-records",
+        json={
+            "client_id": profile.id, "appointment_id": appointment.id,
+            "therapy_ids": [therapy.id, masaj.id], "notes": "Ambele",
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    db_session.refresh(package)
+    db_session.refresh(masaj_package)
+    assert package.sessions_used == 1
+    assert masaj_package.sessions_used == 1
+
+
+def test_cancelled_appointment_cannot_be_documented(client, db_session, make_admin_user, make_client_user, make_therapy):
+    profile, therapy, _, appointment = _setup(db_session, make_admin_user, make_client_user, make_therapy)
+    appointment.status = AppointmentStatus.ANULATA
+    db_session.commit()
+    _login(client)
+    resp = client.post(
+        "/medical-records",
+        json={"client_id": profile.id, "appointment_id": appointment.id, "therapy_id": therapy.id, "notes": "x"},
+    )
+    assert resp.status_code == 422
+    resp = client.post("/consultation-sheets", json={"client_id": profile.id, "appointment_id": appointment.id})
+    assert resp.status_code == 422

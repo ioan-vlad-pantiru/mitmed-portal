@@ -7,15 +7,14 @@ acoperă doar Latin-1.
 
 from datetime import date, datetime
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 from fpdf import FPDF
 
 from app.config import settings
 from app.models import ClientProfile, ConsultationSheet, ConsultationSheetField, MedicalRecord, SheetTemplate
+from app.clinic_time import CLINIC_TIMEZONE
 
 FONTS_DIR = Path(__file__).resolve().parent.parent / "assets" / "fonts"
-CLINIC_TIMEZONE = ZoneInfo("Europe/Bucharest")
 CLINIC_NAME = "Centrul Medical MitMed"
 
 TEAL = (14, 94, 104)

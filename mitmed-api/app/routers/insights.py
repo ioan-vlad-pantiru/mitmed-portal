@@ -1,152 +1,15 @@
-from datetime import datetime, timezone
 from collections import Counter
+from datetime import date as _date, datetime, timezone
 
-from fastapi import APIRouter, Depends
-from sqlalchemy import func
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session as DBSession, joinedload
 
 from app.database import get_db
 from app.deps import require_roles
-from app.models import (
-    AccountStatus,
-    Appointment,
-    AppointmentStatus,
-    ClientProfile,
-    Payment,
-    PaymentStatus,
-    Role,
-    Therapy,
-    User,
-)
+from app.models import ClientProfile, Payment, PaymentStatus, Role, User
+from app.services import insights_report
 
 router = APIRouter(prefix="/insights", tags=["insights"])
-
-
-@router.get("/therapies")
-def get_therapy_insights(
-    db: DBSession = Depends(get_db), _user: User = Depends(require_roles(Role.ADMIN, Role.RECEPTIE))
-) -> list[dict]:
-    therapies = db.query(Therapy).order_by(Therapy.name.asc()).all()
-
-    # Venitul e ce s-a încasat efectiv (amount_paid), nu doar liniile ajunse
-    # deja PLATIT — o plată parțială a adus deja bani reali, care nu trebuie
-    # să lipsească din raport doar pentru că nu s-a achitat integral încă.
-    revenue_rows = (
-        db.query(Payment.therapy_id, func.sum(Payment.amount_paid))
-        .filter(Payment.amount_paid > 0)
-        .group_by(Payment.therapy_id)
-        .all()
-    )
-    revenue_map = {therapy_id: str(total) for therapy_id, total in revenue_rows}
-
-    sessions_rows = (
-        db.query(Appointment.therapy_id, func.count(Appointment.id))
-        .filter(Appointment.status == AppointmentStatus.FINALIZATA)
-        .group_by(Appointment.therapy_id)
-        .all()
-    )
-    sessions_map = dict(sessions_rows)
-
-    clients_rows = (
-        db.query(Payment.therapy_id, Payment.client_id)
-        .filter(Payment.amount_paid > 0)
-        .distinct()
-        .all()
-    )
-    clients_count: dict[str, int] = {}
-    for therapy_id, _client_id in clients_rows:
-        clients_count[therapy_id] = clients_count.get(therapy_id, 0) + 1
-
-    results = [
-        {
-            "id": t.id,
-            "name": t.name,
-            "active": t.active,
-            "sessions_completed": sessions_map.get(t.id, 0),
-            "distinct_clients": clients_count.get(t.id, 0),
-            "revenue": revenue_map.get(t.id, "0"),
-        }
-        for t in therapies
-    ]
-    results.sort(key=lambda r: float(r["revenue"]), reverse=True)
-    return results
-
-
-@router.get("/overall")
-def get_overall_insights(
-    db: DBSession = Depends(get_db), _user: User = Depends(require_roles(Role.ADMIN, Role.RECEPTIE))
-) -> dict:
-    now = datetime.now(timezone.utc)
-    month_start = datetime(now.year, now.month, 1)
-    month_keys: list[tuple[int, int]] = []
-    year, month = now.year, now.month
-    for _ in range(6):
-        month_keys.append((year, month))
-        month -= 1
-        if month == 0:
-            year -= 1
-            month = 12
-    month_keys.reverse()
-    first_year, first_month = month_keys[0]
-    six_months_start = datetime(first_year, first_month, 1, tzinfo=timezone.utc)
-
-    revenue_this_month = (
-        db.query(func.coalesce(func.sum(Payment.amount_paid), 0))
-        .filter(Payment.amount_paid > 0, Payment.paid_at >= month_start)
-        .scalar()
-    )
-    # Ce mai e de încasat — restul, nu prețul integral, pentru liniile deja
-    # parțial achitate.
-    outstanding = (
-        db.query(func.coalesce(func.sum(Payment.final_price - Payment.amount_paid), 0))
-        .filter(Payment.status.in_([PaymentStatus.NEPLATIT, PaymentStatus.PARTIAL]))
-        .scalar()
-    )
-    new_clients_this_month = (
-        db.query(ClientProfile).filter(ClientProfile.created_at >= month_start).count()
-    )
-    completed_this_month = (
-        db.query(Appointment)
-        .filter(Appointment.status == AppointmentStatus.FINALIZATA, Appointment.starts_at >= month_start)
-        .count()
-    )
-    cancelled_this_month = (
-        db.query(Appointment)
-        .filter(Appointment.status == AppointmentStatus.ANULATA, Appointment.starts_at >= month_start)
-        .count()
-    )
-    completed_client_rows = (
-        db.query(Appointment.client_id, func.count(Appointment.id))
-        .filter(Appointment.status == AppointmentStatus.FINALIZATA)
-        .group_by(Appointment.client_id)
-        .all()
-    )
-    returning_clients = sum(1 for _client_id, visits in completed_client_rows if visits >= 2)
-    monthly_revenue_map = {f"{year}-{month:02d}": 0.0 for year, month in month_keys}
-    paid_rows = (
-        db.query(Payment.paid_at, Payment.amount_paid)
-        .filter(Payment.amount_paid > 0, Payment.paid_at >= six_months_start)
-        .all()
-    )
-    for paid_at, amount_paid in paid_rows:
-        if paid_at:
-            key = f"{paid_at.year}-{paid_at.month:02d}"
-            if key in monthly_revenue_map:
-                monthly_revenue_map[key] += float(amount_paid)
-
-    return {
-        "revenue_this_month": str(revenue_this_month),
-        "outstanding": str(outstanding),
-        "new_clients_this_month": new_clients_this_month,
-        "completed_sessions_this_month": completed_this_month,
-        "cancelled_sessions_this_month": cancelled_this_month,
-        "returning_clients": returning_clients,
-        "clients_with_completed_sessions": len(completed_client_rows),
-        "monthly_revenue": [
-            {"month": key, "revenue": str(monthly_revenue_map[key])}
-            for key in monthly_revenue_map
-        ],
-    }
 
 
 @router.get("/outstanding")
@@ -227,3 +90,60 @@ def get_client_insights(
             [str(data.get("occupation_category", "")) for data in profile_data]
         ),
     }
+
+
+# --- Period report (Zi / Lună / An / Tot) -------------------------------------------
+
+
+def _parse_anchor(value: str | None) -> _date | None:
+    if not value:
+        return None
+    try:
+        return _date.fromisoformat(value[:10])
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Dată invalidă.") from exc
+
+
+@router.get("/report")
+def get_report(
+    scope: str = Query("month"),
+    date: str | None = Query(None),
+    db: DBSession = Depends(get_db),
+    _user: User = Depends(require_roles(Role.ADMIN, Role.RECEPTIE)),
+) -> dict:
+    """Everything the insights page shows for one period, plus the same
+    numbers for the period before it so the page can say what got better."""
+    return insights_report.build_report(db, scope, _parse_anchor(date))
+
+
+@router.get("/drilldown")
+def get_drilldown(
+    metric: str,
+    scope: str = Query("month"),
+    date: str | None = Query(None),
+    start: str | None = Query(None),
+    end: str | None = Query(None),
+    therapy_id: str | None = None,
+    weekday: int | None = None,
+    hour: int | None = None,
+    method: str | None = None,
+    coupon_id: str | None = None,
+    db: DBSession = Depends(get_db),
+    _user: User = Depends(require_roles(Role.ADMIN, Role.RECEPTIE)),
+) -> list[dict]:
+    """The individual rows behind any number on the insights page."""
+    if start and end:
+        try:
+            range_start, range_end = datetime.fromisoformat(start), datetime.fromisoformat(end)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Interval invalid.") from exc
+    else:
+        period = insights_report.resolve_period(db, scope, _parse_anchor(date))
+        range_start, range_end = period.start, period.end
+    try:
+        return insights_report.drilldown(
+            db, metric, range_start, range_end, therapy_id=therapy_id, weekday=weekday, hour=hour,
+            method=method, coupon_id=coupon_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Indicator necunoscut.") from exc

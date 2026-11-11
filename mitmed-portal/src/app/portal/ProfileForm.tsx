@@ -27,14 +27,14 @@ export function ProfileForm({ initial, birthDate }: { initial: ClientProfileData
   const [state, action, pending] = useActionState(updateOwnProfileData, undefined);
 
   return (
-    <form action={action} className="mt-3 space-y-5 mm-card p-4">
-      <p className="max-w-3xl text-xs leading-5 text-zinc-500">
+    <form action={action} className="mt-4 space-y-6">
+      <p className="max-w-3xl text-sm leading-6 text-zinc-600">
         Toate câmpurile sunt opționale. Folosim răspunsurile doar pentru a adapta comunicarea și pentru statistici
         agregate; datele tale individuale nu apar în rapoarte.
       </p>
 
       <fieldset>
-        <legend className="text-sm font-semibold text-zinc-800">Despre tine</legend>
+        <legend className="text-base font-semibold text-zinc-900">Despre tine</legend>
         <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <Field label="Data nașterii">
             <Input name="birthDate" type="date" defaultValue={birthDate ?? undefined} />
@@ -73,7 +73,7 @@ export function ProfileForm({ initial, birthDate }: { initial: ClientProfileData
       </fieldset>
 
       <fieldset>
-        <legend className="text-sm font-semibold text-zinc-800">Contact și localitate</legend>
+        <legend className="text-base font-semibold text-zinc-900">Contact și localitate</legend>
         <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <Field label="Oraș"><Input name="city" defaultValue={initial?.city} /></Field>
           <Field label="Județ"><Input name="county" defaultValue={initial?.county} /></Field>
@@ -93,7 +93,7 @@ export function ProfileForm({ initial, birthDate }: { initial: ClientProfileData
       </fieldset>
 
       <fieldset>
-        <legend className="text-sm font-semibold text-zinc-800">Cum ai ajuns la noi și ce urmărești</legend>
+        <legend className="text-base font-semibold text-zinc-900">Cum ai ajuns la noi și ce urmărești</legend>
         <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <Field label="Cum ai aflat de noi">
             <Select name="referralSource" defaultValue={initial?.referral_source ?? ""}>

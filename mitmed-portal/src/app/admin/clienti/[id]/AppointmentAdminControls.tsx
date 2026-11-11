@@ -134,7 +134,7 @@ function RescheduleForm({
           <Input type="time" required step="300" value={time} onChange={(e) => setTime(e.target.value)} className="mt-1" />
         </label>
       </div>
-      {state?.message && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{state.message}</p>}
+      {state?.message && <p data-variant="danger" className="mm-alert">{state.message}</p>}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="ghost" onClick={onDone}>Renunță</Button>
         <Button type="submit" disabled={pending || !date || !time}>{pending ? "Se salvează…" : "Mută programarea"}</Button>

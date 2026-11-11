@@ -11,9 +11,9 @@ textul lor e fixat acolo, aici trimitem doar valorile variabilelor, în ordinea
 
 import logging
 from datetime import datetime
-from zoneinfo import ZoneInfo
 
 from app.config import settings
+from app.clinic_time import CLINIC_TIMEZONE
 
 logger = logging.getLogger("mitmed.notifications")
 
@@ -92,7 +92,6 @@ def send_otp(to_phone: str, code: str) -> bool:
     )
 
 
-CLINIC_TIMEZONE = ZoneInfo("Europe/Bucharest")
 
 
 def format_local(starts_at: datetime) -> str:

@@ -35,6 +35,7 @@ export function SheetFieldRow({ field, isFirst, isLast }: { field: ConsultationS
             <Badge variant="neutral">{field.field_type === "text" ? "Text scurt" : "Text lung"}</Badge>
             {field.section && <Badge variant="neutral">Secțiune: {field.section}</Badge>}
             {field.carry_over && <Badge variant="success">Precompletat</Badge>}
+            {field.visible_to_client && <Badge variant="info">Vede și clientul</Badge>}
           </div>
         </div>
         <div className="flex items-center gap-1">

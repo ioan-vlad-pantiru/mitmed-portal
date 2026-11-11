@@ -349,6 +349,9 @@ class ConsultationSheetField(Base):
     placeholder: Mapped[str | None] = mapped_column(String(120))
     # Precompletat pe o fișă nouă din ultima fișă a pacientului (ex: antecedente).
     carry_over: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Shown to the client in the portal ("Dosarul meu"), e.g. recommendations;
+    # everything else on the sheet stays internal to the clinic.
+    visible_to_client: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

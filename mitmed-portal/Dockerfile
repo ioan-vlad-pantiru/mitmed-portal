@@ -3,6 +3,10 @@
 FROM node:22-alpine AS base
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
+# Server components format dates with the process time zone (calendar grid,
+# consult header, day boundaries). Without this the container runs on UTC and
+# every appointment shows 2-3 hours early.
+ENV TZ=Europe/Bucharest
 
 FROM base AS dependencies
 COPY package.json package-lock.json ./

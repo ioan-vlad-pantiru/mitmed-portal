@@ -58,7 +58,7 @@ export function SurveySettingsForm({ settings }: { settings: SurveySettings }) {
           Îl găsești în Google Business Profile → „Cere recenzii”. Apare tuturor clienților după ce trimit sondajul. Gol = nu se arată.
         </p>
       </div>
-      {state?.message && !state.success && <p className="text-sm text-red-600">{state.message}</p>}
+      {state?.message && !state.success && <p role="alert" data-variant="danger" className="mm-alert">{state.message}</p>}
       <Button type="submit" disabled={pending}>{pending ? "Se salvează…" : "Salvează"}</Button>
     </form>
   );
@@ -174,7 +174,7 @@ function QuestionForm({ question, onDone }: { question?: SurveyQuestion; onDone:
           <Textarea id={`q-options-${question?.id ?? "new"}`} name="options" rows={4} defaultValue={question?.options.join("\n")} placeholder={"Da\nPoate\nNu"} className="mt-1" />
         </div>
       )}
-      {state?.message && !state.success && <p className="text-sm text-red-600">{state.message}</p>}
+      {state?.message && !state.success && <p role="alert" data-variant="danger" className="mm-alert">{state.message}</p>}
       <div className="flex gap-2">
         <Button type="submit" disabled={pending}>{pending ? "Se salvează…" : question ? "Salvează" : "Adaugă întrebarea"}</Button>
         <Button type="button" variant="ghost" onClick={onDone}>Renunță</Button>

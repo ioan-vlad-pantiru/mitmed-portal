@@ -71,7 +71,7 @@ export function AnnouncementForm({ announcement }: { announcement: SiteAnnouncem
         )}
       </div>
 
-      {state?.message && !state.success && <p className="text-sm text-red-600">{state.message}</p>}
+      {state?.message && !state.success && <p role="alert" data-variant="danger" className="mm-alert">{state.message}</p>}
       <Button type="submit" disabled={pending}>{pending ? "Se salvează…" : "Salvează"}</Button>
     </form>
   );

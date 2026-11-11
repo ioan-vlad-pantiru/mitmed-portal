@@ -201,7 +201,7 @@ function EditRecordForm({
         {area("assessment", "A · Evaluare clinică", record.assessment)}
         <SheetFieldInputs fields={shownExtra} values={values} editable />
         {area("treatmentPlan", "P · Plan următoare", record.treatment_plan)}
-        {state?.message && <p className="text-sm text-red-600">{state.message}</p>}
+        {state?.message && <p role="alert" data-variant="danger" className="mm-alert">{state.message}</p>}
         <div className="flex gap-2">
           <Button type="submit" disabled={pending}>{pending ? "Se salvează…" : "Salvează ședința"}</Button>
           <Button type="button" variant="ghost" onClick={onDone}>Renunță</Button>

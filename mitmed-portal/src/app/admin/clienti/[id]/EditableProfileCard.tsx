@@ -222,7 +222,7 @@ export function EditableProfileCard({
             <Button type="button" variant="secondary" disabled={pending} onClick={() => setEditing(false)}>
               Renunță
             </Button>
-            {state?.message && !state.success && <p className="text-sm text-red-600">{state.message}</p>}
+            {state?.message && !state.success && <p role="alert" data-variant="danger" className="mm-alert">{state.message}</p>}
           </div>
         </form>
       )}

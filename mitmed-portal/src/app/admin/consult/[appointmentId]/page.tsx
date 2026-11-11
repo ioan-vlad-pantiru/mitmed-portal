@@ -1,8 +1,11 @@
 import { notFound } from "next/navigation";
+import { formatDay, formatTime } from "@/lib/clinicTime";
 import Link from "next/link";
+import { ArrowLeft, ArrowRight, Check, Minus } from "lucide-react";
 import { getAppointmentForConsult, listAppointmentsInRange } from "@/actions/appointments";
 import { listActiveConsentTemplates } from "@/actions/consents";
 import { listConsultationSheetFields, listSheetTemplates } from "@/actions/consultationSheets";
+import { listTherapies } from "@/actions/therapies";
 import { TEMPLATE_CONSULTATIE, TEMPLATE_TRATAMENT } from "@/lib/sheetTemplates";
 import { getCurrentUser } from "@/lib/authSession";
 import { ConsultWorkspace } from "./ConsultWorkspace";
@@ -10,16 +13,35 @@ import { IconClose } from "@/components/icons";
 
 export default async function ConsultPage({ params }: { params: Promise<{ appointmentId: string }> }) {
   const { appointmentId } = await params;
-  const [data, consentTemplates, sheetFields, sheetTemplates, user] = await Promise.all([
+  const [data, consentTemplates, sheetFields, sheetTemplates, therapiesRaw, user] = await Promise.all([
     getAppointmentForConsult(appointmentId),
     listActiveConsentTemplates(),
     listConsultationSheetFields(false),
     listSheetTemplates(),
+    listTherapies(),
     getCurrentUser(),
   ]);
   if (!data) notFound();
 
-  const { appointment, client, recent_records, consents, active_package } = data;
+  const { appointment, client, recent_records, consents, active_package, session_record, appointment_sheets } = data;
+
+  // Therapies that can be ticked: the active ones, plus any already on the record
+  // or scheduled, even if they were deactivated since.
+  const therapies = therapiesRaw.filter((t) => t.active).map((t) => ({ id: t.id, name: t.name }));
+  for (const t of [appointment.therapy, ...(session_record?.therapies ?? [])]) {
+    if (!therapies.some((x) => x.id === t.id)) therapies.push({ id: t.id, name: t.name });
+  }
+
+  // A reopened Consult shows the sheet already filled in for the appointment;
+  // otherwise a consultation appointment opens the consultation sheet directly.
+  const preferredTemplateId = appointment.therapy.is_consultation ? TEMPLATE_CONSULTATIE : TEMPLATE_TRATAMENT;
+  const isSaved = (templateId: string) =>
+    templateId === TEMPLATE_TRATAMENT ? session_record !== null : templateId in appointment_sheets;
+  const defaultTemplateId = isSaved(preferredTemplateId)
+    ? preferredTemplateId
+    : session_record
+      ? TEMPLATE_TRATAMENT
+      : (Object.keys(appointment_sheets)[0] ?? preferredTemplateId);
 
   // Programările neefectuate ale zilei, în ordine — permite trecerea la
   // "următorul pacient" din interiorul consultului, fără a reveni la bord.
@@ -46,7 +68,7 @@ export default async function ConsultPage({ params }: { params: Promise<{ appoin
       {/* Header fix — informația de context nu ar trebui să ceară niciun scroll. */}
       <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-zinc-200/70 bg-white px-4 py-3 sm:px-6">
         <div className="flex items-center gap-3">
-          {dayAppointments.length > 1 && (
+          {currentIdx >= 0 && dayAppointments.length > 1 && (
             <span className="mm-numeric shrink-0 text-xs text-zinc-400">
               {currentIdx + 1}/{dayAppointments.length} azi
             </span>
@@ -56,7 +78,7 @@ export default async function ConsultPage({ params }: { params: Promise<{ appoin
               {client.full_name} {age !== null && <span className="font-normal text-zinc-400">· {age} ani</span>}
             </h1>
             <p className="text-sm text-zinc-500">
-              {appointment.therapy.name} · {new Date(appointment.starts_at).toLocaleString("ro-RO")}
+              {appointment.therapy.name} · {formatDay(appointment.starts_at)}, {formatTime(appointment.starts_at)}
             </p>
           </div>
         </div>
@@ -69,7 +91,7 @@ export default async function ConsultPage({ params }: { params: Promise<{ appoin
               className="mm-btn"
               data-variant="ghost"
             >
-              ← Anterior
+              <ArrowLeft size={15} aria-hidden /> Anterior
             </Link>
           )}
           {nextAppointmentId && (
@@ -80,7 +102,7 @@ export default async function ConsultPage({ params }: { params: Promise<{ appoin
               className="mm-btn"
               data-variant="ghost"
             >
-              Următor →
+              Următor <ArrowRight size={15} aria-hidden />
             </Link>
           )}
           <Link href={`/admin/clienti/${client.id}`} className="mm-btn" data-variant="secondary">
@@ -142,7 +164,7 @@ export default async function ConsultPage({ params }: { params: Promise<{ appoin
                 const signed = consents.some((c) => c.type === t.type);
                 return (
                   <span key={t.type} data-variant={signed ? "success" : "neutral"} className="mm-badge">
-                    {signed ? "✓" : "—"} {t.label}
+                    {signed ? <Check size={13} aria-hidden /> : <Minus size={13} aria-hidden />} {t.label}
                   </span>
                 );
               })}
@@ -185,11 +207,13 @@ export default async function ConsultPage({ params }: { params: Promise<{ appoin
           templates={sheetTemplates}
           fields={sheetFields}
           latestValues={data.latest_sheet_values}
-          // O programare de consultație deschide direct fișa de consultație.
-          defaultTemplateId={appointment.therapy.is_consultation ? TEMPLATE_CONSULTATIE : TEMPLATE_TRATAMENT}
+          savedSheets={appointment_sheets}
+          defaultTemplateId={defaultTemplateId}
           clientId={client.id}
           appointmentId={appointment.id}
-          therapyId={appointment.therapy.id}
+          therapies={therapies}
+          defaultTherapyIds={[appointment.therapy.id]}
+          savedRecord={session_record}
           prevAppointmentId={prevAppointmentId}
           nextAppointmentId={nextAppointmentId}
           extraFields={sheetFields.filter((f) => f.template_id === TEMPLATE_TRATAMENT)}

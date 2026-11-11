@@ -23,6 +23,7 @@ import { AppointmentForm } from "./AppointmentForm";
 import { CancelAppointmentButton } from "./CancelAppointmentButton";
 import { AppointmentAdminControls } from "./AppointmentAdminControls";
 import { ResetPasswordButton } from "./ResetPasswordButton";
+import { ClientHeader } from "./ClientHeader";
 import { EditableProfileCard } from "./EditableProfileCard";
 import { Badge } from "@/components/ui/Badge";
 import { MarkPaidControl } from "@/components/MarkPaidControl";
@@ -30,7 +31,8 @@ import { CorrectPaymentControl } from "@/components/CorrectPaymentControl";
 import { DeletePaymentControl } from "@/components/DeletePaymentControl";
 import { getCurrentUser } from "@/lib/authSession";
 import { formatBooking } from "@/lib/clinic";
-import { PackageCheck } from "lucide-react";
+import { formatDay, formatTime } from "@/lib/clinicTime";
+import { Check, Minus, PackageCheck } from "lucide-react";
 
 type PaymentStatus = "NEPLATIT" | "PARTIAL" | "PLATIT";
 const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = { PLATIT: "Achitat", PARTIAL: "Parțial achitat", NEPLATIT: "Neachitat" };
@@ -38,6 +40,17 @@ const PAYMENT_STATUS_VARIANT: Record<PaymentStatus, "success" | "warning" | "dan
 function PaymentStatusBadge({ status }: { status: string }) {
   const known = status as PaymentStatus;
   return <Badge variant={PAYMENT_STATUS_VARIANT[known] ?? "neutral"}>{PAYMENT_STATUS_LABEL[known] ?? status}</Badge>;
+}
+
+const APPOINTMENT_STATUS: Record<string, { label: string; variant: "success" | "warning" | "danger" | "info" }> = {
+  FINALIZATA: { label: "Efectuată", variant: "success" },
+  ANULATA: { label: "Anulată", variant: "danger" },
+  PROGRAMATA: { label: "Nefinalizată", variant: "warning" },
+  CONFIRMATA: { label: "Nefinalizată", variant: "warning" },
+};
+function AppointmentStatusBadge({ status }: { status: string }) {
+  const s = APPOINTMENT_STATUS[status];
+  return s ? <Badge variant={s.variant}>{s.label}</Badge> : <Badge>{status}</Badge>;
 }
 
 type ClientDetail = {
@@ -147,18 +160,18 @@ export default async function ClientDetailPage({ params, searchParams }: { param
   const consents = await getClientConsents(client.id);
   const signedTypes = new Set(consents.map((c) => c.type));
 
-  const activeAppointmentsCount = client.appointments.filter((a) => a.status === "PROGRAMATA").length;
+  const now = new Date().getTime();
+  const upcomingAppointments = client.appointments
+    .filter((a) => (a.status === "PROGRAMATA" || a.status === "CONFIRMATA") && new Date(a.starts_at).getTime() >= now - 2 * 3600_000)
+    .sort((a, b) => +new Date(a.starts_at) - +new Date(b.starts_at));
+  const pastAppointments = client.appointments.filter((a) => !upcomingAppointments.includes(a));
+  const amountOwed = client.payments
+    .filter((p) => p.status !== "PLATIT")
+    .reduce((sum, p) => sum + Number(p.final_price) - Number(p.amount_paid), 0);
   // Statistici rapide pentru un overview la o privire, în capul tab-ului
   // Profil — nu duplicat de date, doar agregate din ce oricum se încarcă mai
   // jos pentru tab-urile Dosar/Plăți/Programări.
   const lastVisit = client.medical_records[0]?.session_date ?? null; // deja sortate desc
-  const totalPaid = client.payments
-    .filter((p) => p.status === "PLATIT")
-    .reduce((sum, p) => sum + Number(p.final_price), 0);
-  const unpaidCount = client.payments.filter((p) => p.status !== "PLATIT").length;
-  const clientActivePackagesCount = client.payments.filter(
-    (p) => p.package_total_sessions && p.sessions_used < p.package_total_sessions
-  ).length;
   const unlockedTherapyNames = therapiesRaw
     .filter((t) => client.unlocked_therapy_ids.includes(t.id))
     .map((t) => t.name);
@@ -245,18 +258,27 @@ export default async function ClientDetailPage({ params, searchParams }: { param
   }));
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
+      <ClientHeader
+        clientId={client.id}
+        fullName={client.full_name}
+        birthDate={client.birth_date}
+        createdAt={client.created_at}
+        phone={client.phone}
+        email={client.user.email}
+        medicalHistory={client.medical_history}
+        appointments={client.appointments}
+        amountOwed={amountOwed}
+        unsignedDocuments={consentTemplates.filter((t) => !signedTypes.has(t.type)).length}
+        lastVisit={lastVisit}
+        sessionsDone={client.appointments.filter((a) => a.status === "FINALIZATA").length}
+      />
       <nav className="flex overflow-x-auto border-b border-zinc-200" aria-label="Secțiuni client">{tabs.map((item) => <Link key={item.id} href={`/admin/clienti/${client.id}?tab=${item.id}`} className={`shrink-0 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === item.id ? "border-[var(--mitmed-teal)] text-[var(--mitmed-teal-deep)]" : "border-transparent text-zinc-500 hover:text-zinc-900"}`}>{item.label}</Link>)}</nav>
 
       {activeTab === "profil" && <>
       <EditableProfileCard
         client={{ ...client, email: client.user.email }}
-        header={
-          <div>
-            <h1 className="text-lg font-semibold text-zinc-900">{client.full_name}</h1>
-            <p className="mt-0.5 text-xs text-zinc-400">Client din {new Date(client.created_at).toLocaleDateString("ro-RO", { day: "numeric", month: "long", year: "numeric" })}</p>
-          </div>
-        }
+        header={<h2 className="text-base font-semibold text-zinc-900">Date personale</h2>}
         actions={<ResetPasswordButton userId={client.user.id} />}
       >
 
@@ -297,32 +319,6 @@ export default async function ClientDetailPage({ params, searchParams }: { param
           </div>
         </dl>
 
-        {/* Overview la o privire — agregate din tab-urile Dosar/Plăți/Programări,
-            ca personalul să nu trebuiască să le deschidă pe fiecare doar ca
-            să-și facă o idee generală despre client. */}
-        <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-zinc-100 pt-3 sm:grid-cols-5">
-          <div className="rounded-lg bg-zinc-50 px-3 py-2">
-            <dt className="text-xs text-zinc-400">Ședințe active</dt>
-            <dd className="text-base font-semibold text-sky-700">{activeAppointmentsCount}</dd>
-          </div>
-          <div className="rounded-lg bg-zinc-50 px-3 py-2">
-            <dt className="text-xs text-zinc-400">Ultima vizită</dt>
-            <dd className="text-base font-semibold text-zinc-800">{lastVisit ? new Date(lastVisit).toLocaleDateString("ro-RO") : "—"}</dd>
-          </div>
-          <div className="rounded-lg bg-zinc-50 px-3 py-2">
-            <dt className="text-xs text-zinc-400">Total încasat</dt>
-            <dd className="text-base font-semibold text-emerald-700">{totalPaid.toFixed(2)} RON</dd>
-          </div>
-          <div className="rounded-lg bg-zinc-50 px-3 py-2">
-            <dt className="text-xs text-zinc-400">Plăți restante</dt>
-            <dd className={`text-base font-semibold ${unpaidCount ? "text-amber-600" : "text-zinc-800"}`}>{unpaidCount}</dd>
-          </div>
-          <div className="rounded-lg bg-zinc-50 px-3 py-2">
-            <dt className="text-xs text-zinc-400">Pachete active</dt>
-            <dd className="text-base font-semibold text-zinc-800">{clientActivePackagesCount}</dd>
-          </div>
-        </dl>
-
         {unlockedTherapyNames.length > 0 && (
           <div className="mt-4 border-t border-zinc-100 pt-3">
             <h2 className="text-xs font-medium uppercase tracking-wide text-zinc-400">Terapii deblocate</h2>
@@ -339,23 +335,23 @@ export default async function ClientDetailPage({ params, searchParams }: { param
             <h2 className="text-xs font-medium uppercase tracking-wide text-zinc-400">
               Chestionar medical (completat de client)
             </h2>
-            {!hasMedicalHistory && <Badge variant="neutral">Necompletat</Badge>}
+            {!hasMedicalHistory && <Badge variant="neutral">Necompletat de client</Badge>}
           </div>
-          <dl className="mt-1.5 grid grid-cols-2 gap-x-6 gap-y-1 break-words text-sm text-zinc-600 sm:grid-cols-4">
+          {hasMedicalHistory && <dl className="mt-1.5 grid grid-cols-2 gap-x-6 gap-y-1 break-words text-sm text-zinc-600 sm:grid-cols-4">
             <ProfileDetail label="Alergii" value={client.medical_history?.allergies} />
             <ProfileDetail label="Afecțiuni" value={client.medical_history?.conditions} />
             <ProfileDetail label="Medicamente" value={client.medical_history?.medications} />
             <ProfileDetail label="Leziuni anterioare" value={client.medical_history?.previous_injuries} />
             <ProfileDetail label="Alte note" value={client.medical_history?.notes} className="col-span-2 sm:col-span-4" />
-          </dl>
+          </dl>}
         </div>
 
         <div className="mt-4 border-t border-zinc-100 pt-3">
           <div className="flex items-center gap-2">
             <h2 className="text-xs font-medium uppercase tracking-wide text-zinc-400">Profil și preferințe</h2>
-            {!hasProfileData && <Badge variant="neutral">Necompletat</Badge>}
+            {!hasProfileData && <Badge variant="neutral">Necompletat de client</Badge>}
           </div>
-          <dl className="mt-1.5 grid grid-cols-2 gap-x-6 gap-y-1 break-words text-sm text-zinc-600 sm:grid-cols-4">
+          {hasProfileData && <dl className="mt-1.5 grid grid-cols-2 gap-x-6 gap-y-1 break-words text-sm text-zinc-600 sm:grid-cols-4">
             <ProfileDetail label="Gen" value={client.profile_data?.gender} />
             <ProfileDetail label="Localitate" value={[client.profile_data?.city, client.profile_data?.county].filter(Boolean).join(", ")} />
             <ProfileDetail label="Adresă" value={client.profile_data?.address} />
@@ -373,7 +369,7 @@ export default async function ClientDetailPage({ params, searchParams }: { param
               label="Acceptă comunicare marketing"
               value={client.profile_data?.communication_consent === undefined ? undefined : client.profile_data.communication_consent ? "Da" : "Nu"}
             />
-          </dl>
+          </dl>}
         </div>
       </EditableProfileCard>
 
@@ -386,7 +382,7 @@ export default async function ClientDetailPage({ params, searchParams }: { param
             const signed = signedTypes.has(t.type);
             return (
               <Badge key={t.type} variant={signed ? "success" : "neutral"}>
-                {signed ? "✓" : "—"} {t.label}
+                {signed ? <Check size={13} aria-hidden /> : <Minus size={13} aria-hidden />} {t.label}
               </Badge>
             );
           })}
@@ -394,8 +390,42 @@ export default async function ClientDetailPage({ params, searchParams }: { param
       </section>
       </>}
 
-      {activeTab === "dosar" && <section className="space-y-10">
-        <PatientDetailsForm clientId={client.id} client={client} />
+      {activeTab === "dosar" && <section className="space-y-8">
+
+        <div>
+          <h2 className="text-base font-semibold text-zinc-900">{treatmentTemplate?.name ?? "Fișa de tratament"}</h2>
+          <p className="text-sm text-zinc-500">
+            Fiecare ședință, cea mai recentă prima. Ședința de azi se completează din{" "}
+            {upcomingAppointments[0] ? (
+              <Link href={`/admin/consult/${upcomingAppointments[0].id}`} className="font-medium text-[var(--mitmed-teal)] hover:underline">
+                Consult
+              </Link>
+            ) : (
+              "Consult"
+            )}
+            .
+          </p>
+          <div className="mt-3 mm-card p-4">
+            <MedicalRecordsPanel
+              clientId={client.id}
+              records={client.medical_records}
+              extraFields={treatmentFields}
+              therapies={therapies}
+              isAdmin={isAdmin}
+            />
+          </div>
+          <details className="group mt-3">
+            <summary className="cursor-pointer text-sm font-medium text-[var(--mitmed-teal)] hover:underline">
+              Adaugă o ședință fără programare (ex. completare ulterioară)
+            </summary>
+            <MedicalRecordForm
+              clientId={client.id}
+              therapies={therapies}
+              extraFields={treatmentFields.filter((f) => !f.archived)}
+              isAdmin={isAdmin}
+            />
+          </details>
+        </div>
 
         {/* Cele două fișe principale stau separat: consultația (prima vizită /
             reconsult) și tratamentul (fiecare ședință). */}
@@ -414,26 +444,6 @@ export default async function ClientDetailPage({ params, searchParams }: { param
               />
             )}
           </div>
-        </div>
-
-        <div>
-          <h2 className="text-base font-semibold text-zinc-900">{treatmentTemplate?.name ?? "Fișa de tratament"}</h2>
-          <p className="text-sm text-zinc-500">Completată la fiecare ședință: procedurile efectuate, cum a decurs ședința, semnele și simptomele întâlnite.</p>
-          <div className="mt-3 mm-card p-4">
-            <MedicalRecordsPanel
-              clientId={client.id}
-              records={client.medical_records}
-              extraFields={treatmentFields}
-              therapies={therapies}
-              isAdmin={isAdmin}
-            />
-          </div>
-          <MedicalRecordForm
-            clientId={client.id}
-            therapies={therapies}
-            extraFields={treatmentFields.filter((f) => !f.archived)}
-            isAdmin={isAdmin}
-          />
         </div>
 
         <div>
@@ -472,6 +482,15 @@ export default async function ClientDetailPage({ params, searchParams }: { param
           <h2 className="text-base font-semibold text-zinc-900">Documente</h2>
           <PatientDocumentsPanel clientId={client.id} documents={documents} />
         </div>
+        <details className="mm-card p-4">
+          <summary className="cursor-pointer text-sm font-semibold text-zinc-900">
+            Date pacient pentru fișe (CNP, adresă, ocupație)
+            <span className="ml-2 font-normal text-zinc-500">— apar în antetul fișelor PDF</span>
+          </summary>
+          <div className="mt-3">
+            <PatientDetailsForm clientId={client.id} client={client} />
+          </div>
+        </details>
       </section>}
 
       {activeTab === "plati" && <section>
@@ -626,6 +645,7 @@ export default async function ClientDetailPage({ params, searchParams }: { param
             </table>
           </div>
         </div>
+        <div id="incaseaza" className="scroll-mt-24">
         <PaymentForm
           clientId={client.id}
           therapies={therapies}
@@ -633,58 +653,93 @@ export default async function ClientDetailPage({ params, searchParams }: { param
           packages={activePackages}
           bookings={payableBookings}
         />
+        </div>
       </section>}
 
-      {activeTab === "programari" && <section>
-        <div className="flex items-baseline justify-between">
-          <h2 className="text-base font-semibold text-zinc-900">Programări</h2>
-          <span className="text-sm text-zinc-500">
-            <strong className="text-sky-700">{activeAppointmentsCount}</strong> ședințe active
-          </span>
+      {activeTab === "programari" && <section className="space-y-6">
+        <div>
+          <h2 className="text-base font-semibold text-zinc-900">Urmează ({upcomingAppointments.length})</h2>
+          <ul className="mt-3 space-y-2">
+            {upcomingAppointments.map((a) => (
+              <li key={a.id} className="mm-card flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="font-semibold text-zinc-900">
+                    {formatDay(a.starts_at)}, {formatTime(a.starts_at)}
+                    <span className="font-normal text-zinc-600"> · {a.therapy.name}</span>
+                  </p>
+                  <p className="text-xs text-zinc-500">Programată {formatBooking(a.booked_at, a.booked_by_client)}</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <Link href={`/admin/consult/${a.id}`} className="mm-btn" data-variant="primary">
+                    Deschide consultul
+                  </Link>
+                  {isAdmin && (
+                    <AppointmentAdminControls
+                      appointmentId={a.id}
+                      clientId={client.id}
+                      startsAt={a.starts_at}
+                      therapyId={a.therapy_id}
+                      therapies={therapies}
+                    />
+                  )}
+                  <CancelAppointmentButton appointmentId={a.id} clientId={client.id} startsAt={a.starts_at} isAdmin={isAdmin} />
+                </div>
+              </li>
+            ))}
+            {upcomingAppointments.length === 0 && <p className="text-sm text-zinc-500">Nicio programare viitoare.</p>}
+          </ul>
         </div>
-        <div className="mt-3 space-y-2">
-          {client.appointments.map((a) => (
-            <div key={a.id} className="mm-card px-4 py-2 text-sm">
-              <div className="flex items-center justify-between">
-                <span>
-                  {new Date(a.starts_at).toLocaleString("ro-RO")} · {a.therapy.name} · {a.status}
-                  <span className="block text-xs text-zinc-400">Programată pe {formatBooking(a.booked_at, a.booked_by_client)}</span>
-                </span>
-                {(a.status === "PROGRAMATA" || a.status === "CONFIRMATA") && (
-                  <span className="flex flex-wrap items-center justify-end gap-3">
-                    <Link href={`/admin/consult/${a.id}`} className="text-sm text-sky-600 hover:underline">
-                      Deschide consult
-                    </Link>
-                    {isAdmin && (
-                      <AppointmentAdminControls
-                        appointmentId={a.id}
-                        clientId={client.id}
-                        startsAt={a.starts_at}
-                        therapyId={a.therapy_id}
-                        therapies={therapies}
-                      />
-                    )}
-                    <CancelAppointmentButton appointmentId={a.id} clientId={client.id} startsAt={a.starts_at} isAdmin={isAdmin} />
-                  </span>
-                )}
-              </div>
-            </div>
-          ))}
-          {client.appointments.length === 0 && <p className="text-sm text-zinc-400">Nicio programare încă.</p>}
-        </div>
+
+        <div id="programare-noua" className="scroll-mt-24">
         <AppointmentForm clientId={client.id} therapies={therapies} hours={hours} vacations={vacations} />
+        </div>
+
+        {pastAppointments.length > 0 && (
+          <div>
+            <h2 className="text-base font-semibold text-zinc-900">Istoric</h2>
+            <ul className="mt-3 divide-y divide-zinc-100 mm-card">
+              {pastAppointments.map((a) => {
+                const unfinished = a.status === "PROGRAMATA" || a.status === "CONFIRMATA";
+                return (
+                  <li key={a.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 text-sm">
+                    <span className="text-zinc-700">
+                      {formatDay(a.starts_at)}, {formatTime(a.starts_at)} · {a.therapy.name}
+                    </span>
+                    <span className="flex items-center gap-3">
+                      <AppointmentStatusBadge status={a.status} />
+                      {a.status === "FINALIZATA" && (
+                        <Link href={`/admin/consult/${a.id}`} className="text-sm font-medium text-[var(--mitmed-teal)] hover:underline">
+                          Fișa ședinței
+                        </Link>
+                      )}
+                      {unfinished && (
+                        <>
+                          <Link href={`/admin/consult/${a.id}`} className="mm-btn" data-variant="primary">
+                            Finalizează
+                          </Link>
+                          <CancelAppointmentButton appointmentId={a.id} clientId={client.id} startsAt={a.starts_at} isAdmin={isAdmin} />
+                        </>
+                      )}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
       </section>}
     </div>
   );
 }
 
-// Randează mereu (nu doar când e completat) — un admin trebuie să vadă
-// dintr-o privire și ce clientul N-A completat încă, nu doar ce a completat.
+// Only filled answers are listed; an empty section shows one "not filled in" badge
+// instead of a wall of dashes.
 function ProfileDetail({ label, value, className }: { label: string; value?: string; className?: string }) {
+  if (!value) return null;
   return (
     <div className={className}>
       <dt className="text-zinc-400">{label}</dt>
-      <dd>{value ? value.replaceAll("_", " ") : "—"}</dd>
+      <dd>{value.replaceAll("_", " ")}</dd>
     </div>
   );
 }

@@ -1,6 +1,5 @@
 import logging
 from datetime import date, datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
@@ -8,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DBSession, joinedload
 
 from app.audit import log_audit
+from app.clinic_time import CLINIC_TIMEZONE, to_clinic_time
 from app.database import get_db
 from app.deps import require_roles, require_user
 from app.models import (
@@ -28,6 +28,7 @@ from app.models import (
 )
 from app.services.google_calendar import sync_appointment_cancelled, sync_appointment_created
 from app.services.notifications import format_local, send_cancellation_notice
+from app.services.sessions import record_for_appointment, sheets_for_appointment
 
 logger = logging.getLogger("mitmed.appointments")
 
@@ -37,7 +38,6 @@ MIN_CANCEL_NOTICE = timedelta(hours=48)
 # Doar pentru auto-programarea din portal — recepția poate în continuare să
 # programeze manual same-day (ex: urgențe, apel telefonic de ultim moment).
 MIN_BOOKING_NOTICE = timedelta(hours=24)
-CLINIC_TIMEZONE = ZoneInfo("Europe/Bucharest")
 # Pauză obligatorie după fiecare ședință (pregătirea cabinetului) — între
 # sfârșitul unei programări și începutul următoarei rămân minim 15 minute.
 # Fix — spre deosebire de orele de deschidere/pauza de prânz, nu e editabilă
@@ -91,11 +91,6 @@ class RescheduleIn(BaseModel):
     therapy_id: str | None = None
 
 
-def _to_clinic_time(value: datetime) -> datetime:
-    """Datele vechi pot fi naive; le interpretăm consecvent în fusul clinicii."""
-    if value.tzinfo is None:
-        return value.replace(tzinfo=CLINIC_TIMEZONE)
-    return value.astimezone(CLINIC_TIMEZONE)
 
 
 def _weekday_hours(db: DBSession, weekday: int) -> WeekdayHours | None:
@@ -153,7 +148,7 @@ def _available_slot_starts(db: DBSession, *, day: date, therapy: Therapy) -> lis
 
     occupied: list[tuple[datetime, datetime]] = []
     for appointment in appointments:
-        starts_at = _to_clinic_time(appointment.starts_at)
+        starts_at = to_clinic_time(appointment.starts_at)
         ends_at = starts_at + timedelta(minutes=appointment.therapy.duration_minutes)
         if ends_at > day_start and starts_at < day_end:
             occupied.append((starts_at - APPOINTMENT_BUFFER, ends_at + APPOINTMENT_BUFFER))
@@ -188,7 +183,7 @@ def _ensure_within_business_hours(db: DBSession, *, starts_at: datetime, therapy
     `_create_appointment`, indiferent dacă vine din portalul clientului sau e
     creată manual de recepție — altfel recepția ar putea bloca un slot în
     afara programului."""
-    local_start = _to_clinic_time(starts_at)
+    local_start = to_clinic_time(starts_at)
     hours = _weekday_hours(db, local_start.weekday())
     if not hours or not hours.opens_at or not hours.closes_at:
         raise HTTPException(status_code=422, detail="Cabinetul este închis în această zi.")
@@ -223,7 +218,7 @@ def _ensure_within_business_hours(db: DBSession, *, starts_at: datetime, therapy
 
 
 def _ensure_own_slot_is_available(db: DBSession, *, starts_at: datetime, therapy: Therapy) -> None:
-    local_start = _to_clinic_time(starts_at)
+    local_start = to_clinic_time(starts_at)
     if local_start.astimezone(timezone.utc) < datetime.now(timezone.utc) + MIN_BOOKING_NOTICE:
         raise HTTPException(
             status_code=422,
@@ -246,6 +241,10 @@ def _create_appointment(
     created_by_id: str,
     enforce_live_availability: bool = False,
 ) -> Appointment:
+    # Forms send clinic wall-clock time without a zone ("2026-11-13T10:00").
+    # Validation already reads it as Bucharest time; storing it naive made
+    # Postgres read it as UTC, so the visit landed 2-3 hours later.
+    starts_at = to_clinic_time(starts_at)
     therapy = db.get(Therapy, therapy_id)
     if not therapy or not therapy.active:
         raise HTTPException(status_code=422, detail="Terapia selectată nu este disponibilă.")
@@ -439,7 +438,7 @@ def reschedule_appointment(
 
     old_event_id = appointment.google_calendar_event_id
     previous_start = appointment.starts_at
-    appointment.starts_at = payload.starts_at
+    appointment.starts_at = to_clinic_time(payload.starts_at)
     appointment.therapy_id = therapy.id
     # Reminderele se retrimit pentru noua oră.
     appointment.reminder_day_before_sent_at = None
@@ -625,16 +624,24 @@ def list_appointments_in_range(
         .order_by(Appointment.starts_at.asc())
         .all()
     )
+    # Payment status per visit, so the board can show who still has to pay.
+    payment_status = dict(
+        db.query(Payment.appointment_id, Payment.status)
+        .filter(Payment.appointment_id.in_([a.id for a in appointments]))
+        .all()
+    ) if appointments else {}
     return [
         {
             "id": a.id,
             "client_id": a.client_id,
             "client_name": a.client.full_name,
+            "client_phone": a.client.phone,
             "therapy_id": a.therapy_id,
             "therapy_name": a.therapy.name,
             "starts_at": a.starts_at,
             "duration_minutes": a.therapy.duration_minutes,
             "status": a.status,
+            "payment_status": payment_status.get(a.id),
             "booked_at": a.created_at,
             "booked_by_client": a.booked_by_client,
         }
@@ -681,6 +688,19 @@ def get_appointment_for_consult(
     ):
         latest_sheet_values.setdefault(sheet.template_id, sheet.field_values or {})
 
+    # What is already saved for this appointment: a reopened Consult starts from
+    # the existing sheets and updates them instead of creating new ones.
+    session_record = record_for_appointment(db, appointment.id)
+    appointment_sheets = {
+        template_id: {
+            "id": sheet.id,
+            "sheet_date": sheet.sheet_date,
+            "sheet_number": sheet.sheet_number,
+            "values": sheet.field_values or {},
+        }
+        for template_id, sheet in sheets_for_appointment(db, appointment.id).items()
+    }
+
     consents = (
         db.query(Consent)
         .filter(Consent.client_id == client.id)
@@ -714,6 +734,23 @@ def get_appointment_for_consult(
             },
         },
         "latest_sheet_values": latest_sheet_values,
+        "session_record": (
+            {
+                "id": session_record.id,
+                "diagnosis": session_record.diagnosis,
+                "subjective": session_record.subjective,
+                "objective": session_record.objective,
+                "assessment": session_record.assessment,
+                "notes": session_record.notes,
+                "treatment_plan": session_record.treatment_plan,
+                "body_map": session_record.body_map or [],
+                "field_values": session_record.field_values or {},
+                "therapies": [{"id": t.id, "name": t.name} for t in session_record.therapy_list],
+            }
+            if session_record
+            else None
+        ),
+        "appointment_sheets": appointment_sheets,
         "client": {
             "id": client.id,
             "full_name": client.full_name,

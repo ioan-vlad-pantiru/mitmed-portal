@@ -31,6 +31,8 @@ export type ConsultationSheetField = {
   section: string | null;
   placeholder: string | null;
   carry_over: boolean;
+  /** Shown to the client in the portal. */
+  visible_to_client: boolean;
   position: number;
   archived: boolean;
 };
@@ -203,6 +205,7 @@ function fieldPayload(formData: FormData) {
     section: String(formData.get("section") ?? "").trim() || null,
     placeholder: String(formData.get("placeholder") ?? "").trim() || null,
     carry_over: formData.get("carryOver") === "on",
+    visible_to_client: formData.get("visibleToClient") === "on",
   };
 }
 

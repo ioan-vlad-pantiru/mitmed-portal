@@ -1,99 +1,109 @@
-import { CalendarDays, Stethoscope } from "lucide-react";
+import Link from "next/link";
+import { connection } from "next/server";
+import { CalendarDays, History, RotateCcw, Stethoscope } from "lucide-react";
 import { getOwnClientData } from "@/actions/clients";
 import { listTherapies } from "@/actions/therapies";
 import { listWeekdayHours, listVacations } from "@/actions/clinic";
+import { PayOnlineButton } from "@/components/PayOnlineButton";
+import { ClinicLocationCard } from "@/components/ClinicLocationCard";
 import { BookingForm } from "../BookingForm";
 import { CancelOwnAppointmentButton } from "../CancelOwnAppointmentButton";
-import { ClinicLocationCard } from "@/components/ClinicLocationCard";
-import { PayOnlineButton } from "@/components/PayOnlineButton";
+import { AddToCalendarButton } from "../_components/AddToCalendarButton";
+import { PortalPageHeader } from "../_components/PortalPageHeader";
+import { clinicLocalStamp, formatDate, formatTime, relativeDay } from "@/lib/clinicTime";
+import { upcomingAppointments } from "../portalData";
 
+type Appointment = { id: string; starts_at: string; status: string; therapy_id: string; therapy: { name: string } };
 type Payment = { id: string; status: string; appointment_id: string | null };
 
-export default async function AppointmentsPage() {
-  const [raw, therapies, hours, vacations] = await Promise.all([
+const PAST_LABEL: Record<string, { text: string; tone: string }> = {
+  FINALIZATA: { text: "Efectuată", tone: "paid" },
+  ANULATA: { text: "Anulată", tone: "unpaid" },
+};
+
+export default async function AppointmentsPage({ searchParams }: { searchParams: Promise<{ terapie?: string }> }) {
+  const [{ terapie }, raw, therapies, hours, vacations] = await Promise.all([
+    searchParams,
     getOwnClientData(),
     listTherapies(),
     listWeekdayHours(),
     listVacations(),
   ]);
-  const client = raw as {
-    appointments: { id: string; starts_at: string; status: string; therapy: { name: string } }[];
-    payments: Payment[];
-  };
-  const upcoming = client.appointments
-    .filter((item) => ["PROGRAMATA", "CONFIRMATA"].includes(item.status) && new Date(item.starts_at) >= new Date())
-    .sort((a, b) => +new Date(a.starts_at) - +new Date(b.starts_at));
+  await connection();
+  const client = raw as { appointments: Appointment[]; payments: Payment[] };
+  const now = new Date().getTime();
+  const upcoming = upcomingAppointments(client.appointments, now);
+  const past = client.appointments
+    .filter((a) => new Date(a.starts_at).getTime() < now)
+    .sort((a, b) => +new Date(b.starts_at) - +new Date(a.starts_at))
+    .slice(0, 12);
   const unpaidByAppointment = new Map(
     client.payments.filter((p) => p.appointment_id && p.status !== "PLATIT").map((p) => [p.appointment_id as string, p.id])
   );
-  const bookableTherapies = therapies.filter((item) => item.active);
-  // La fel ca pe pagina principală a portalului — dacă tot ce poate rezerva
-  // clientul e marcat `is_consultation`, n-are încă nimic deblocat de medic.
-  const isConsultationOnly = bookableTherapies.length > 0 && bookableTherapies.every((t) => t.is_consultation);
+  const bookable = therapies.filter((t) => t.active);
+  const bookableIds = new Set(bookable.map((t) => t.id));
+  const durationOf = (id: string) => therapies.find((t) => t.id === id)?.duration_minutes ?? 60;
+  const isConsultationOnly = bookable.length > 0 && bookable.every((t) => t.is_consultation);
 
   return (
     <div className="portal-subpage">
-      <header>
-        <p>Programări</p>
-        <h1>Alege timpul potrivit pentru tine.</h1>
-        <span>Gestionează ședințele tale și rezervă o nouă vizită.</span>
-      </header>
+      <PortalPageHeader title="Programări" />
 
       <section className="portal-feature-panel">
         <div className="portal-panel-title">
           <CalendarDays />
-          <h2>Programări viitoare</h2>
+          <h2>Programările tale</h2>
         </div>
         {upcoming.length ? (
-          <div className="portal-appointment-list">
+          <ul className="portal-visit-list">
             {upcoming.map((item) => {
               const unpaidPaymentId = unpaidByAppointment.get(item.id);
               return (
-                <div key={item.id}>
-                  <div>
+                <li key={item.id}>
+                  <div className="portal-visit-main">
                     <strong>
-                      {new Date(item.starts_at).toLocaleDateString("ro-RO", {
-                        weekday: "long",
-                        day: "numeric",
-                        month: "long",
-                      })}
+                      {relativeDay(item.starts_at)}, ora {formatTime(item.starts_at)}
                     </strong>
                     <span>
-                      {new Date(item.starts_at).toLocaleTimeString("ro-RO", { hour: "2-digit", minute: "2-digit" })} ·{" "}
-                      {item.therapy.name}
+                      {item.therapy.name} · {formatDate(item.starts_at)}
                     </span>
                   </div>
-                  <div className="portal-appointment-actions">
-                    {unpaidPaymentId && <PayOnlineButton paymentId={unpaidPaymentId} className="portal-pay-btn" />}
+                  <div className="portal-visit-actions">
+                    {unpaidPaymentId && <PayOnlineButton paymentId={unpaidPaymentId} className="portal-primary-btn portal-btn-sm" />}
+                    <AddToCalendarButton
+                      title={item.therapy.name}
+                      localStart={clinicLocalStamp(item.starts_at)}
+                      durationMinutes={durationOf(item.therapy_id)}
+                      className="portal-secondary-btn portal-btn-sm"
+                    />
                     <CancelOwnAppointmentButton appointmentId={item.id} startsAt={item.starts_at} variant="default" />
                   </div>
-                </div>
+                </li>
               );
             })}
-          </div>
+          </ul>
         ) : (
-          <p className="portal-quiet">Nu ai nicio programare viitoare.</p>
+          <p className="portal-quiet">Nu ai nicio programare viitoare.{bookable.length ? " Fă una mai jos." : ""}</p>
         )}
       </section>
 
-      <ClinicLocationCard />
-
-      <section className="portal-feature-panel">
+      <section className="portal-feature-panel scroll-mt-24" id="programeaza">
         <div className="portal-panel-title">
           <CalendarDays />
-          <h2>Programează o ședință</h2>
+          <h2>Programare nouă</h2>
         </div>
         {isConsultationOnly && (
-          <div className="mb-4 flex items-start gap-2.5 rounded-lg bg-[var(--mitmed-sky)]/12 px-3.5 py-3 text-sm text-[var(--mitmed-teal-deep)]">
-            <Stethoscope size={18} className="mt-0.5 shrink-0" />
+          <div className="portal-info-note">
+            <Stethoscope size={20} />
             <p>
-              <strong>Prima programare trebuie să fie o consultație.</strong> Restul terapiilor se deblochează abia
-              după ce medicul te vede — de-asta apare doar consultația mai jos.
+              <strong>Prima programare este o consultație.</strong> După ce te vede medicul, îți deblochează terapiile
+              potrivite pentru tine.
             </p>
           </div>
         )}
         <BookingForm
-          therapies={bookableTherapies.map((item) => ({
+          key={terapie ?? "new"}
+          therapies={bookable.map((item) => ({
             id: item.id,
             name: item.name,
             price: item.price,
@@ -101,8 +111,48 @@ export default async function AppointmentsPage() {
           }))}
           hours={hours}
           vacations={vacations}
+          initialTherapyId={terapie}
         />
       </section>
+
+      {past.length > 0 && (
+        <section className="portal-feature-panel">
+          <div className="portal-panel-title">
+            <History />
+            <h2>Vizite anterioare</h2>
+          </div>
+          <ul className="portal-visit-list">
+            {past.map((item) => {
+              // A past visit not yet closed by the clinic gets no badge — "Programată" would confuse.
+              const label = PAST_LABEL[item.status];
+              return (
+                <li key={item.id}>
+                  <div className="portal-visit-main">
+                    <strong>{item.therapy.name}</strong>
+                    <span>
+                      {formatDate(item.starts_at)}, ora {formatTime(item.starts_at)}
+                    </span>
+                  </div>
+                  <div className="portal-visit-actions">
+                    {label && (
+                      <span className="portal-status-badge" data-variant={label.tone}>
+                        {label.text}
+                      </span>
+                    )}
+                    {bookableIds.has(item.therapy_id) && (
+                      <Link href={`/portal/programari?terapie=${item.therapy_id}#programeaza`} className="portal-secondary-btn portal-btn-sm">
+                        <RotateCcw size={15} /> Programează din nou
+                      </Link>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+
+      <ClinicLocationCard />
     </div>
   );
 }

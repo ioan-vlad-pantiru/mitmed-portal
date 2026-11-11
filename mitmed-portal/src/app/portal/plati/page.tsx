@@ -3,6 +3,9 @@ import { getOwnClientData } from "@/actions/clients";
 import { listOwnFidelityCards } from "@/actions/fidelity";
 import { FidelityCardProgress } from "@/components/FidelityProgress";
 import { PayOnlineButton } from "@/components/PayOnlineButton";
+import { PortalPageHeader } from "../_components/PortalPageHeader";
+import { formatRon } from "@/lib/format";
+import { amountDue, unpaidPayments } from "../portalData";
 
 type PaymentStatus = "NEPLATIT" | "PARTIAL" | "PLATIT";
 type Payment = {
@@ -26,15 +29,43 @@ export default async function PaymentsPage() {
   const [raw, fidelityCards] = await Promise.all([getOwnClientData(), listOwnFidelityCards()]);
   const client = raw as { payments: Payment[] };
   const packages = client.payments.filter((item) => item.package_total_sessions);
+  const unpaid = unpaidPayments(client.payments);
+  const unpaidTotal = unpaid.reduce((sum, item) => sum + amountDue(item), 0);
 
   return (
     <div className="portal-subpage">
-      <header>
-        <p>Plăți și pachete</p>
-        <h1>O imagine clară a ședințelor tale.</h1>
-        <span>Urmărește pachetele active și istoricul plăților.</span>
-      </header>
+      <PortalPageHeader title="Plăți și pachete" />
 
+      {unpaid.length > 0 ? (
+        <section className="portal-due-panel" aria-labelledby="due-title">
+          <p id="due-title" className="portal-due-label">De plată</p>
+          <p className="portal-due-total">{formatRon(unpaidTotal)}</p>
+          <p className="portal-due-hint">Poți plăti online acum, sau la recepție când vii.</p>
+          <ul className="portal-due-list">
+            {unpaid.map((item) => (
+              <li key={item.id}>
+                <span>
+                  <strong>{item.package_name ?? item.therapy.name}</strong>
+                  <small>
+                    {new Date(item.created_at).toLocaleDateString("ro-RO", { day: "numeric", month: "long" })}
+                    {item.status === "PARTIAL" ? ` · ai plătit deja ${item.amount_paid} RON` : ""}
+                  </small>
+                </span>
+                <b>{formatRon(amountDue(item))}</b>
+                <PayOnlineButton paymentId={item.id} className="portal-primary-btn portal-btn-sm" />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : (
+        <section className="portal-due-panel is-clear">
+          <p className="portal-due-label">De plată</p>
+          <p className="portal-due-total">0 RON</p>
+          <p className="portal-due-hint">Totul este achitat. Mulțumim!</p>
+        </section>
+      )}
+
+      {packages.length > 0 && (
       <section className="portal-feature-panel">
         <div className="portal-panel-title">
           <PackageCheck />
@@ -73,6 +104,7 @@ export default async function PaymentsPage() {
           <p className="portal-quiet">Nu ai pachete active în acest moment.</p>
         )}
       </section>
+      )}
 
       {fidelityCards.length > 0 && (
         <section className="portal-feature-panel">
@@ -104,7 +136,7 @@ export default async function PaymentsPage() {
       <section className="portal-feature-panel">
         <div className="portal-panel-title">
           <CreditCard />
-          <h2>Istoric tranzacții</h2>
+          <h2>Istoricul plăților</h2>
         </div>
         <div className="portal-payment-history">
           {client.payments.map((item) => (
@@ -123,12 +155,11 @@ export default async function PaymentsPage() {
                 <span className="portal-status-badge" data-variant={STATUS_VARIANT[item.status]}>
                   {STATUS_LABEL[item.status]}
                 </span>
-                {item.status !== "PLATIT" && <PayOnlineButton paymentId={item.id} className="portal-pay-btn" />}
               </span>
               <b>
                 {item.status === "PARTIAL" ? (
                   <>
-                    {(Number(item.final_price) - Number(item.amount_paid)).toFixed(2)} RON rest
+                    {formatRon(amountDue(item))} rest
                     <span className="mm-numeric block text-xs font-normal text-zinc-400">
                       din {item.final_price} RON, {item.amount_paid} încasați
                     </span>

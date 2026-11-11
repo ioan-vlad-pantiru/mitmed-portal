@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import { ClientVisibility } from "@/components/ClientVisibility";
 import { createMedicalRecord } from "@/actions/medicalRecords";
 import type { ConsultationSheetField } from "@/actions/consultationSheets";
 import { TEMPLATE_TRATAMENT } from "@/lib/sheetTemplates";
@@ -36,30 +37,30 @@ export function MedicalRecordForm({
 
       <TherapyCheckboxes therapies={therapies} />
       <div className="sm:max-w-sm">
-        <label className="block text-xs font-medium text-zinc-700">Diagnostic</label>
+        <label className="flex items-center gap-2 text-xs font-medium text-zinc-700">Diagnostic <ClientVisibility visible /></label>
         <Input name="diagnosis" className="mt-1" />
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-zinc-700">Proceduri efectuate și desfășurarea ședinței</label>
+        <label className="flex items-center gap-2 text-xs font-medium text-zinc-700">Proceduri efectuate și desfășurarea ședinței <ClientVisibility visible /></label>
         <Textarea name="notes" required rows={3} className="mt-1" />
       </div>
 
       <SheetFieldInputs fields={extraFields} values={{}} editable={isAdmin} />
 
       <div>
-        <label className="block text-xs font-medium text-zinc-700">Plan de tratament (opțional)</label>
+        <label className="flex items-center gap-2 text-xs font-medium text-zinc-700">Plan de tratament / recomandări (opțional) <ClientVisibility visible /></label>
         <Textarea name="treatmentPlan" rows={2} className="mt-1" />
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-zinc-700">Zonă tratată/dureroasă (opțional)</label>
+        <label className="flex items-center gap-2 text-xs font-medium text-zinc-700">Zonă tratată/dureroasă (opțional) <ClientVisibility visible={false} /></label>
         <div className="mt-1 rounded-md border border-zinc-200 p-3">
           <BodyMapPicker value={bodyMap} onChange={setBodyMap} />
         </div>
       </div>
 
-      {state?.message && <p className="text-sm text-red-600">{state.message}</p>}
+      {state?.message && <p role="alert" data-variant="danger" className="mm-alert">{state.message}</p>}
 
       <Button type="submit" disabled={pending}>
         {pending ? "Se salvează…" : "Adaugă ședința"}

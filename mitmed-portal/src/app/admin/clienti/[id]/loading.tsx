@@ -1,54 +1,33 @@
-import { LoadingPage, Skeleton } from "@/components/ui/Skeleton";
+import { CardSkeleton, LoadingPage, Skeleton } from "@/components/ui/Skeleton";
 
-/** Fișa clientului: tab-urile și cardul de profil (tab-ul implicit). */
+/** Client file: the header card (name, alerts, actions), the tabs, then the tab content. */
 export default function Loading() {
   return (
-    <LoadingPage className="space-y-8">
-      <div className="flex gap-6 border-b border-zinc-200 px-4 pb-3">
-        {Array.from({ length: 4 }, (_, i) => (
-          <Skeleton key={i} className="h-4 w-20" />
-        ))}
-      </div>
-      <section className="mm-card p-4">
-        <div className="flex items-start justify-between">
+    <LoadingPage className="space-y-6">
+      <div className="mm-card space-y-3 p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="space-y-2">
             <Skeleton className="h-6 w-48" />
-            <Skeleton className="h-3 w-36" />
+            <Skeleton className="h-4 w-80 max-w-full" />
           </div>
-          <Skeleton className="h-4 w-28" />
+          <div className="flex gap-2">
+            <Skeleton className="h-10 w-36" />
+            <Skeleton className="h-10 w-36" />
+          </div>
         </div>
-        <DetailGrid count={8} />
-        <div className="mt-4 grid grid-cols-2 gap-3 border-t border-zinc-100 pt-3 sm:grid-cols-5">
-          {Array.from({ length: 5 }, (_, i) => (
-            <Skeleton key={i} className="h-14 rounded-lg" />
-          ))}
+        <Skeleton className="h-4 w-72 max-w-full" />
+        <div className="flex gap-2">
+          <Skeleton className="h-6 w-32 rounded-full" />
+          <Skeleton className="h-6 w-40 rounded-full" />
         </div>
-        <div className="mt-4 border-t border-zinc-100 pt-3">
-          <Skeleton className="h-3 w-56" />
-          <DetailGrid count={5} />
-        </div>
-        <div className="mt-4 border-t border-zinc-100 pt-3">
-          <Skeleton className="h-3 w-40" />
-          <DetailGrid count={12} />
-        </div>
-      </section>
-      <div className="mm-card space-y-3 p-4">
-        <Skeleton className="h-3 w-28" />
-        <Skeleton className="h-20 w-full" />
       </div>
+      <div className="flex gap-2 border-b border-zinc-200 pb-2">
+        {Array.from({ length: 4 }, (_, i) => (
+          <Skeleton key={i} className="h-5 w-24" />
+        ))}
+      </div>
+      <CardSkeleton lines={5} />
+      <CardSkeleton lines={3} />
     </LoadingPage>
-  );
-}
-
-function DetailGrid({ count }: { count: number }) {
-  return (
-    <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
-      {Array.from({ length: count }, (_, i) => (
-        <div key={i} className="space-y-1.5">
-          <Skeleton className="h-3 w-20" />
-          <Skeleton className="h-4 w-28" />
-        </div>
-      ))}
-    </div>
   );
 }

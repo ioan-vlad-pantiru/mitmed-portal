@@ -12,9 +12,11 @@ from app.audit import log_audit
 from app.database import get_db
 from app.deps import require_roles, require_user
 from app.models import (
+    TEMPLATE_TRATAMENT,
     AccountStatus,
     ClientProfile,
     ConsultationSheet,
+    ConsultationSheetField,
     DataRequestStatus,
     DataRequestType,
     DataSubjectRequest,
@@ -255,10 +257,37 @@ def get_own_client_data(db: DBSession = Depends(get_db), user: User = Depends(re
 
     log_audit(db, actor_id=user.id, action="medical_record.read_own", target_type="ClientProfile", target_id=client.id)
     result = _serialize_client_detail(client)
-    # Pacientul vede (și descarcă în PDF) doar tipurile de fișe marcate vizibile
-    # pentru el; conținutul complet e în PDF, aici doar lista.
+    shared_fields = (
+        db.query(ConsultationSheetField)
+        .filter(ConsultationSheetField.visible_to_client.is_(True))
+        .order_by(ConsultationSheetField.position, ConsultationSheetField.created_at)
+        .all()
+    )
+
+    def shared(values: dict | None, template_id: str) -> list[dict]:
+        """Only the fields the clinic marked "client sees" — the rest stays internal."""
+        values = values or {}
+        return [
+            {"label": f.label, "value": str(values[f.id]).strip()}
+            for f in shared_fields
+            if f.template_id == template_id and str(values.get(f.id) or "").strip()
+        ]
+
+    by_id = {r.id: r for r in client.medical_records}
+    for record in result["medical_records"]:
+        record["shared"] = shared(by_id[record["id"]].field_values, TEMPLATE_TRATAMENT)
+        # Clinical S/O/A notes and the body map are for the clinic only.
+        for key in ("subjective", "objective", "assessment", "body_map", "field_values", "author"):
+            record.pop(key, None)
+    # The client sees (and downloads as PDF) only sheet types marked visible to them.
     result["consultation_sheets"] = [
-        {"id": cs.id, "sheet_date": cs.sheet_date, "sheet_number": cs.sheet_number, "template_name": cs.template.name}
+        {
+            "id": cs.id,
+            "sheet_date": cs.sheet_date,
+            "sheet_number": cs.sheet_number,
+            "template_name": cs.template.name,
+            "shared": shared(cs.field_values, cs.template_id),
+        }
         for cs in sorted(client.consultation_sheets, key=lambda cs: cs.sheet_date, reverse=True)
         if cs.template.visible_to_client and not cs.template.archived
     ]

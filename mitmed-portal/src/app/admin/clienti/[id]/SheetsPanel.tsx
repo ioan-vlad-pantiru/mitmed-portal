@@ -118,7 +118,7 @@ function SheetForm({
         ) : (
           <div className="flex flex-wrap items-center gap-3">
             <Button type="submit" disabled={pending}>{pending ? "Se salvează…" : "Salvează fișa"}</Button>
-            {state?.message && !state.success && <p className="text-sm text-red-600">{state.message}</p>}
+            {state?.message && !state.success && <p role="alert" data-variant="danger" className="mm-alert">{state.message}</p>}
           </div>
         )}
       </form>

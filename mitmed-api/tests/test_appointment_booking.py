@@ -338,3 +338,20 @@ def test_appointment_on_day_marked_closed_is_rejected(db_session, make_client_us
         assert False, "programarea într-o zi închisă ar fi trebuit respinsă"
     except HTTPException as exc:
         assert exc.status_code == 422
+
+
+def test_time_without_zone_is_saved_as_clinic_time(db_session, make_client_user, make_therapy):
+    """Booking forms send "YYYY-MM-DDTHH:MM" with no zone. It must be stored as
+    that hour in Bucharest — not as that hour in UTC, which shows 2-3 hours late."""
+    _, client = make_client_user()
+    therapy = make_therapy()
+    local = _far_weekday_at_local(11)
+    naive = local.replace(tzinfo=None)
+
+    appointment = _create_appointment(
+        db_session, client_id=client.id, therapy_id=therapy.id, starts_at=naive, created_by_id=client.user_id
+    )
+    db_session.refresh(appointment)
+
+    assert appointment.starts_at.astimezone(CLINIC_TIMEZONE).hour == 11
+    assert appointment.starts_at.astimezone(timezone.utc) == local.astimezone(timezone.utc)

@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session as DBSession, joinedload
 
 from app.audit import log_audit
+from app.clinic_time import to_clinic_time
 from app.database import get_db
 from app.deps import require_roles
 from app.models import BookingRequestStatus, PackageItem, PublicBookingRequest, Role, Therapy, TherapyPackage, User
@@ -137,7 +138,8 @@ def create_booking_request(request: Request, payload: BookingRequestIn, db: DBSe
         phone=payload.phone,
         email=payload.email,
         therapy_id=payload.therapy_id,
-        preferred_starts_at=payload.preferred_starts_at,
+        # Same rule as appointments: a time without a zone is clinic time.
+        preferred_starts_at=to_clinic_time(payload.preferred_starts_at) if payload.preferred_starts_at else None,
         message=payload.message,
     )
     db.add(request)

@@ -30,7 +30,7 @@ export function ChipGroup({
   onChange: (next: string) => void;
 }) {
   return (
-    <div className="mt-2 flex flex-wrap gap-1.5">
+    <div className="mt-3 flex flex-wrap gap-1.5">
       {options.map((label) => {
         const active = hasLine(value, label);
         return (
@@ -85,8 +85,8 @@ export function PainScalePicker({
 }) {
   const current = getPainValue(value);
   return (
-    <div className="mt-2">
-      <p className="text-xs text-zinc-500">Scor durere (EVA)</p>
+    <div className="mt-3">
+      <p className="text-xs font-medium text-zinc-600">Scor durere (EVA)</p>
       <div className="mt-1.5 flex flex-wrap gap-1">
         {Array.from({ length: 11 }, (_, n) => n).map((n) => (
           <button

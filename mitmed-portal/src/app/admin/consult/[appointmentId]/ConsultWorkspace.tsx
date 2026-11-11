@@ -1,13 +1,16 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { ClipboardList, Save } from "lucide-react";
+import { Check, ClipboardList, FileText, Save } from "lucide-react";
 import { createConsultationSheet, type ConsultationSheetField, type SheetTemplate } from "@/actions/consultationSheets";
+import type { ConsultSavedSheet } from "@/actions/appointments";
 import { TEMPLATE_TRATAMENT } from "@/lib/sheetTemplates";
 import { AddSheetFieldInline, SheetFieldInputs } from "@/components/SheetFields";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { ConsultForm } from "./ConsultForm";
+import { SavedSessionNotice } from "./SavedSessionNotice";
+import { ConsultActionBar, ConsultSection } from "./ConsultSection";
 
 type ConsultFormProps = Parameters<typeof ConsultForm>[0];
 
@@ -18,6 +21,7 @@ export function ConsultWorkspace({
   templates,
   fields,
   latestValues,
+  savedSheets,
   defaultTemplateId,
   ...consultProps
 }: ConsultFormProps & {
@@ -25,6 +29,8 @@ export function ConsultWorkspace({
   /** Câmpurile active ale tuturor tipurilor de fișe. */
   fields: ConsultationSheetField[];
   latestValues: Record<string, Record<string, string>>;
+  /** Sheets already saved for this appointment, keyed by template. */
+  savedSheets: Record<string, ConsultSavedSheet>;
   defaultTemplateId: string;
 }) {
   const [selected, setSelected] = useState(defaultTemplateId);
@@ -32,9 +38,9 @@ export function ConsultWorkspace({
 
   return (
     <div className="flex flex-col gap-4 sm:overflow-y-auto sm:pb-2 sm:pr-1">
-      <div className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
+      <div className="mm-card p-3 sm:px-4">
         <p className="flex items-center gap-1.5 text-xs font-medium text-zinc-500">
-          <ClipboardList size={14} /> Ce fișă completezi?
+          <ClipboardList size={14} aria-hidden /> Ce fișă completezi?
         </p>
         <div className="mt-2 flex flex-wrap gap-2" role="radiogroup" aria-label="Fișa completată în consult">
           {templates.map((t) => (
@@ -44,13 +50,20 @@ export function ConsultWorkspace({
               role="radio"
               aria-checked={selected === t.id}
               onClick={() => setSelected(t.id)}
-              className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
+              className={`inline-flex min-h-9 items-center rounded-full border px-3.5 py-1.5 text-sm transition-colors ${
                 selected === t.id
-                  ? "border-[var(--mitmed-teal)] bg-[var(--mm-info-bg)] font-medium text-[var(--mitmed-teal-deep)]"
-                  : "border-zinc-200 text-zinc-600 hover:border-zinc-300"
+                  ? "border-[var(--mitmed-teal)] bg-[var(--mitmed-teal)] font-medium text-white"
+                  : "border-[var(--mm-border-strong)] bg-white text-zinc-600 hover:bg-[var(--mm-surface-muted)]"
               }`}
             >
               {t.kind === "tratament" ? `${t.name} (notițe ședință)` : t.name}
+              {(t.kind === "tratament" ? consultProps.savedRecord : savedSheets[t.id]) && (
+                <Check
+                  size={14}
+                  className={`ml-1.5 ${selected === t.id ? "text-white" : "text-[var(--mm-success)]"}`}
+                  aria-label="salvată"
+                />
+              )}
             </button>
           ))}
         </div>
@@ -64,6 +77,7 @@ export function ConsultWorkspace({
           template={template}
           fields={fields.filter((f) => f.template_id === template.id)}
           lastValues={latestValues[template.id] ?? {}}
+          saved={savedSheets[template.id] ?? null}
           clientId={consultProps.clientId}
           appointmentId={consultProps.appointmentId}
           isAdmin={consultProps.isAdmin}
@@ -77,6 +91,7 @@ function ConsultSheetForm({
   template,
   fields,
   lastValues,
+  saved,
   clientId,
   appointmentId,
   isAdmin,
@@ -84,51 +99,67 @@ function ConsultSheetForm({
   template: SheetTemplate;
   fields: ConsultationSheetField[];
   lastValues: Record<string, string>;
+  saved: ConsultSavedSheet | null;
   clientId: string;
   appointmentId: string;
   isAdmin: boolean;
 }) {
   const [state, action, pending] = useActionState(createConsultationSheet.bind(null, clientId, template.id), undefined);
-  // Câmpurile „precompletate” (ex. antecedente) pornesc de la ultima fișă de acest tip.
-  const defaults = Object.fromEntries(fields.filter((f) => f.carry_over && lastValues[f.id]).map((f) => [f.id, lastValues[f.id]]));
-  const today = new Date().toISOString().slice(0, 10);
+  // A sheet already saved for the appointment reopens as is; otherwise carry-over
+  // fields (e.g. medical history) start from the patient's last sheet of this type.
+  const values = saved
+    ? saved.values
+    : Object.fromEntries(fields.filter((f) => f.carry_over && lastValues[f.id]).map((f) => [f.id, lastValues[f.id]]));
+  const readOnly = saved !== null && !isAdmin;
+  const sheetDate = (saved ? new Date(saved.sheet_date) : new Date()).toISOString().slice(0, 10);
 
   return (
     <>
+      {saved && <SavedSessionNotice readOnly={readOnly} />}
       <form action={action} className="flex flex-col gap-4">
-        <input type="hidden" name="appointmentId" value={appointmentId} />
-        <input type="hidden" name="fromConsult" value="1" />
-        <section className="space-y-4 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
-          <div>
-            <h2 className="text-sm font-semibold text-zinc-900">{template.name}</h2>
-            {template.description && <p className="text-xs text-zinc-500">{template.description}</p>}
-          </div>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <label className="block text-xs font-medium text-zinc-700">
-              Data
-              <Input name="sheetDate" type="date" defaultValue={today} className="mt-1" />
-            </label>
-            <label className="block text-xs font-medium text-zinc-700">
-              Nr. fișă
-              <Input name="sheetNumber" className="mt-1" />
-            </label>
-          </div>
-          <SheetFieldInputs fields={fields} values={defaults} editable={isAdmin} />
-          {fields.length === 0 && (
-            <p className="rounded-lg bg-zinc-50 p-3 text-sm text-zinc-500">
-              Fișa nu are încă nicio căsuță{isAdmin ? " — adaugă una mai jos." : "."}
-            </p>
-          )}
-        </section>
+        <fieldset disabled={readOnly} className="contents">
+          <input type="hidden" name="appointmentId" value={appointmentId} />
+          <input type="hidden" name="fromConsult" value="1" />
+          <ConsultSection icon={FileText} title={template.name} hint={template.description ?? undefined}>
+            <div className="mt-4 space-y-4">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <label className="block text-xs font-medium text-zinc-700">
+                  Data
+                  <Input name="sheetDate" type="date" defaultValue={sheetDate} className="mt-1" />
+                </label>
+                <label className="block text-xs font-medium text-zinc-700">
+                  Nr. fișă
+                  <Input name="sheetNumber" defaultValue={saved?.sheet_number ?? ""} className="mt-1" />
+                </label>
+              </div>
+              <SheetFieldInputs fields={fields} values={values} editable={isAdmin} />
+              {fields.length === 0 && (
+                <p className="mm-inset p-3 text-sm text-zinc-500">
+                  Fișa nu are încă nicio căsuță
+                  {isAdmin ? " — adaugă una mai jos." : "."}
+                </p>
+              )}
+            </div>
+          </ConsultSection>
+        </fieldset>
         {state?.message && !state.success && (
-          <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700" role="alert">{state.message}</p>
+          <p data-variant="danger" className="mm-alert" role="alert">
+            {state.message}
+          </p>
         )}
-        <div className="sticky bottom-0 flex items-center justify-between gap-3 border-t border-zinc-200 bg-white/95 py-3 backdrop-blur">
-          <span className="text-xs text-zinc-400">Fișa se salvează în dosarul pacientului.</span>
-          <Button type="submit" disabled={pending}>
-            {pending ? "Se salvează…" : <><Save size={16} /> Salvează fișa și finalizează ședința</>}
-          </Button>
-        </div>
+        <ConsultActionBar hint="Fișa se salvează în dosarul pacientului.">
+          {!readOnly && (
+            <Button type="submit" disabled={pending}>
+              {pending ? (
+                "Se salvează…"
+              ) : (
+                <>
+                  <Save size={16} /> {saved ? "Salvează modificările" : "Salvează fișa și finalizează ședința"}
+                </>
+              )}
+            </Button>
+          )}
+        </ConsultActionBar>
       </form>
       {isAdmin && <AddSheetFieldInline templateId={template.id} />}
     </>

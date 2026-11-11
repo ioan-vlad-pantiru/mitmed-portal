@@ -34,7 +34,7 @@ export function StaffForm() {
         Minimum 8 caractere. Comunică parola persoanei și roag-o să o schimbe din „Contul meu” la prima autentificare.
       </p>
 
-      {state?.message && <p className="col-span-2 text-sm text-red-600">{state.message}</p>}
+      {state?.message && <p role="alert" data-variant="danger" className="mm-alert col-span-2">{state.message}</p>}
       {state?.created && (
         <p className="col-span-2 text-sm text-emerald-700">Cont creat pentru {state.created}. Se poate autentifica acum.</p>
       )}

@@ -138,11 +138,14 @@ export type CalendarAppointmentApi = {
   id: string;
   client_id: string;
   client_name: string;
+  client_phone: string | null;
   therapy_id: string;
   therapy_name: string;
   starts_at: string;
   duration_minutes: number;
   status: string;
+  /** Status of the visit's payment line, if one exists. */
+  payment_status: "NEPLATIT" | "PARTIAL" | "PLATIT" | null;
   /** Momentul rezervării (nu al ședinței). */
   booked_at: string;
   booked_by_client: boolean;
@@ -157,6 +160,26 @@ export async function listAppointmentsInRange(start: Date, end: Date): Promise<C
   });
 }
 
+export type ConsultSessionRecord = {
+  id: string;
+  diagnosis: string | null;
+  subjective: string | null;
+  objective: string | null;
+  assessment: string | null;
+  notes: string;
+  treatment_plan: string | null;
+  body_map: { x: number; y: number; label?: string }[];
+  field_values: Record<string, string>;
+  therapies: { id: string; name: string }[];
+};
+
+export type ConsultSavedSheet = {
+  id: string;
+  sheet_date: string;
+  sheet_number: string | null;
+  values: Record<string, string>;
+};
+
 export type ConsultData = {
   appointment: {
     id: string;
@@ -166,6 +189,10 @@ export type ConsultData = {
   };
   /** Valorile ultimei fișe a pacientului, pe tip de fișă (pentru precompletare). */
   latest_sheet_values: Record<string, Record<string, string>>;
+  /** Treatment record already saved for this appointment (reopened Consult). */
+  session_record: ConsultSessionRecord | null;
+  /** Sheets already saved for this appointment, keyed by template. */
+  appointment_sheets: Record<string, ConsultSavedSheet>;
   client: {
     id: string;
     full_name: string;

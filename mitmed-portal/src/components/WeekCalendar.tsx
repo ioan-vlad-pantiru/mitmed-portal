@@ -168,6 +168,8 @@ export function WeekCalendar({
               );
             });
 
+            const lanes = overlapLanes(dayAppointments);
+
             return (
               <div
                 key={day.toISOString()}
@@ -194,18 +196,22 @@ export function WeekCalendar({
                   const endsAt = new Date(start.getTime() + a.durationMinutes * 60_000);
                   const color = colorForTherapy(a.therapyId);
                   const cancelled = a.status === "ANULATA";
-                  const finalized = a.status === "FINALIZATA";
-                  // Programările încă neefectuate duc direct la Consult — cel mai
-                  // rapid drum de la calendar la notițe, în timpul unei ședințe.
-                  // Cele deja finalizate/anulate duc la fișa completă, ca dosar.
-                  const href =
-                    !cancelled && !finalized ? `/admin/consult/${a.id}` : `/admin/clienti/${a.clientId}`;
+                  // Appointments open the Consult, finalized ones too, where the
+                  // session record reopens for completion. Cancelled ones open
+                  // the client's full file.
+                  const href = cancelled ? `/admin/clienti/${a.clientId}` : `/admin/consult/${a.id}`;
+                  const { lane, laneCount } = lanes.get(a.id) ?? { lane: 0, laneCount: 1 };
 
                   return (
                     <div
                       key={a.id}
-                      className={`group absolute left-1 right-1 overflow-hidden rounded-lg border-l-[3px] shadow-sm transition-all hover:z-10 hover:shadow-md ${color.bg} ${color.border} ${cancelled ? "opacity-40 line-through" : ""}`}
-                      style={{ top, height }}
+                      className={`group absolute overflow-hidden rounded-lg border-l-[3px] shadow-sm transition-all hover:z-10 hover:shadow-md ${color.bg} ${color.border} ${cancelled ? "opacity-40 line-through" : ""}`}
+                      style={{
+                        top,
+                        height,
+                        left: `calc(${(lane / laneCount) * 100}% + 4px)`,
+                        width: `calc(${100 / laneCount}% - ${laneCount > 1 ? 6 : 8}px)`,
+                      }}
                     >
                       <Link
                         href={href}
@@ -216,7 +222,7 @@ export function WeekCalendar({
                         <div className="truncate font-semibold">{a.clientName}</div>
                         <div className="truncate opacity-80">{a.therapyName}</div>
                       </Link>
-                      {!cancelled && !finalized && (
+                      {!cancelled && (
                         <Link
                           href={`/admin/clienti/${a.clientId}`}
                           className="absolute right-1 top-1 hidden rounded bg-white/70 px-1 text-[10px] font-medium text-zinc-600 opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 sm:block"
@@ -232,6 +238,54 @@ export function WeekCalendar({
           })}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Appointments that overlap in time (e.g. two therapies at the same hour) split
+ * the day column into side-by-side lanes instead of being drawn on top of each
+ * other. Each overlapping group gets as many lanes as it needs. */
+function overlapLanes(appointments: CalendarAppointment[]): Map<string, { lane: number; laneCount: number }> {
+  const span = (a: CalendarAppointment) => {
+    const start = new Date(a.startsAt).getTime();
+    return { start, end: start + a.durationMinutes * 60_000 };
+  };
+  const sorted = [...appointments].sort((a, b) => span(a).start - span(b).start || span(b).end - span(a).end);
+  const result = new Map<string, { lane: number; laneCount: number }>();
+
+  let group: { id: string; lane: number }[] = [];
+  let laneEnds: number[] = [];
+  let groupEnd = -Infinity;
+  const closeGroup = () => {
+    for (const g of group) result.set(g.id, { lane: g.lane, laneCount: laneEnds.length });
+    group = [];
+    laneEnds = [];
+  };
+
+  for (const a of sorted) {
+    const { start, end } = span(a);
+    if (start >= groupEnd) closeGroup();
+    let lane = laneEnds.findIndex((laneEnd) => laneEnd <= start);
+    if (lane === -1) lane = laneEnds.length;
+    laneEnds[lane] = end;
+    group.push({ id: a.id, lane });
+    groupEnd = Math.max(groupEnd === -Infinity ? end : groupEnd, end);
+  }
+  closeGroup();
+  return result;
+}
+
+/** Colour key for the calendar: the same palette, one dot per therapy shown this week. */
+export function TherapyLegend({ therapies, therapyOrder }: { therapies: { id: string; name: string }[]; therapyOrder: string[] }) {
+  if (!therapies.length) return null;
+  return (
+    <div className="flex flex-wrap gap-3 text-xs text-zinc-500">
+      {therapies.map((t) => (
+        <span key={t.id} className="flex items-center gap-1.5">
+          <span className={`h-2.5 w-2.5 rounded-full border-[5px] ${THERAPY_PALETTE[therapyOrder.indexOf(t.id) % THERAPY_PALETTE.length].border}`} />
+          {t.name}
+        </span>
+      ))}
     </div>
   );
 }

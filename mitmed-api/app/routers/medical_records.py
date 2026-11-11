@@ -7,10 +7,10 @@ from sqlalchemy.orm import Session as DBSession
 from app.audit import log_audit
 from app.database import get_db
 from app.deps import require_roles
-from app.models import TEMPLATE_TRATAMENT, Appointment, MedicalRecord, Role, Therapy, User
+from app.models import TEMPLATE_TRATAMENT, MedicalRecord, Role, Therapy, User
 from app.routers.consultation_sheets import clean_field_values, merge_field_values
 from app.services.packages import consume_package_session
-from app.services.sessions import complete_appointment
+from app.services.sessions import complete_appointment, lock_appointment_for_client, record_for_appointment
 
 router = APIRouter(prefix="/medical-records", tags=["medical-records"])
 
@@ -61,14 +61,59 @@ def _resolve_therapies(db: DBSession, therapy_ids: list[str]) -> list[Therapy]:
     return [by_id[tid] for tid in unique]
 
 
+def _apply_update(db: DBSession, record: MedicalRecord, payload: MedicalRecordIn | MedicalRecordUpdate) -> None:
+    """Correct an already documented session, from the patient file or by
+    reopening the appointment's Consult. Therapies added during a correction
+    don't consume package sessions (that happens once, on the first save)."""
+    if payload.therapy_ids is not None:
+        therapies = _resolve_therapies(db, payload.therapy_ids)
+        record.therapies = therapies
+        record.therapy_id = therapies[0].id if therapies else None
+    record.diagnosis = payload.diagnosis
+    record.subjective = payload.subjective
+    record.objective = payload.objective
+    record.assessment = payload.assessment
+    record.notes = payload.notes
+    record.treatment_plan = payload.treatment_plan
+    if payload.body_map is not None:
+        record.body_map = [p.model_dump() for p in payload.body_map] or None
+    record.field_values = (
+        merge_field_values(record.field_values, clean_field_values(db, TEMPLATE_TRATAMENT, payload.field_values)) or None
+    )
+
+
 @router.post("")
 def create_medical_record(
     payload: MedicalRecordIn,
     db: DBSession = Depends(get_db),
     actor: User = Depends(require_roles(Role.ADMIN, Role.RECEPTIE)),
 ) -> dict:
+    """Document a session. An appointment has a single treatment record: if one
+    already exists (the Consult was reopened) it is updated, so the record seen
+    from the appointment and from the patient file is always the same."""
     if not payload.notes.strip():
         raise HTTPException(status_code=422, detail="Notele nu pot fi goale.")
+
+    appointment = (
+        lock_appointment_for_client(db, payload.appointment_id, payload.client_id) if payload.appointment_id else None
+    )
+
+    existing = record_for_appointment(db, appointment.id) if appointment else None
+    if existing:
+        # Correcting a documented session stays an admin-only right.
+        if actor.role != Role.ADMIN:
+            raise HTTPException(status_code=403, detail="Ședința e deja documentată; doar adminul o poate modifica.")
+        _apply_update(db, existing, payload)
+        db.commit()
+        log_audit(
+            db,
+            actor_id=actor.id,
+            action="medical_record.update",
+            target_type="MedicalRecord",
+            target_id=existing.id,
+            metadata={"client_id": existing.client_id, "appointment_id": appointment.id},
+        )
+        return {"ok": True, "id": existing.id, "updated": True}
 
     therapies = _resolve_therapies(
         db, payload.therapy_ids if payload.therapy_ids is not None else [payload.therapy_id or ""]
@@ -92,21 +137,15 @@ def create_medical_record(
     db.add(record)
     db.flush()
 
-    # Notițele pentru o programare o consideră "ținută" (iese din ședințele
-    # active) și scad ședința din pachet — o singură dată per programare, chiar
-    # dacă în aceeași vizită s-a completat și o fișă (vezi services/sessions.py).
-    # Fiecare terapie făcută în plus față de cea programată scade și ea câte o
-    # ședință din pachetul ei.
-    appointment = db.get(Appointment, payload.appointment_id) if payload.appointment_id else None
-    if appointment:
-        if complete_appointment(db, appointment):
-            for therapy in therapies:
-                if therapy.id != appointment.therapy_id:
-                    consume_package_session(db, client_id=payload.client_id, therapy_id=therapy.id)
-    else:
-        # Ședință notată direct din dosar, fără programare.
-        for therapy in therapies:
-            consume_package_session(db, client_id=payload.client_id, therapy_id=therapy.id)
+    # Packages are charged for the therapies actually ticked in the session, one
+    # session each. The notes complete the appointment; if a sheet from the same
+    # visit already completed it, the scheduled therapy was charged then, so only
+    # the extra therapies remain to be charged.
+    to_consume = therapies
+    if appointment and not complete_appointment(db, appointment, consume_scheduled=False):
+        to_consume = [t for t in therapies if t.id != appointment.therapy_id]
+    for therapy in to_consume:
+        consume_package_session(db, client_id=payload.client_id, therapy_id=therapy.id)
 
     db.commit()
 
@@ -135,21 +174,7 @@ def update_medical_record(
     if not payload.notes.strip():
         raise HTTPException(status_code=422, detail="Notele nu pot fi goale.")
 
-    if payload.therapy_ids is not None:
-        therapies = _resolve_therapies(db, payload.therapy_ids)
-        record.therapies = therapies
-        record.therapy_id = therapies[0].id if therapies else None
-    record.diagnosis = payload.diagnosis
-    record.subjective = payload.subjective
-    record.objective = payload.objective
-    record.assessment = payload.assessment
-    record.notes = payload.notes
-    record.treatment_plan = payload.treatment_plan
-    if payload.body_map is not None:
-        record.body_map = [p.model_dump() for p in payload.body_map]
-    record.field_values = (
-        merge_field_values(record.field_values, clean_field_values(db, TEMPLATE_TRATAMENT, payload.field_values)) or None
-    )
+    _apply_update(db, record, payload)
     db.commit()
 
     log_audit(
