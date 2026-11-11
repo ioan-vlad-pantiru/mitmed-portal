@@ -228,8 +228,8 @@ export function FidelityCardsPanel({
       <h3 className="text-xs font-medium uppercase tracking-wide text-zinc-400">Carduri de fidelitate</h3>
       <p className="mt-1 text-xs text-zinc-500">
         Cardurile se aplică doar clienților cărora adminul le-a atribuit unul. Ședințele plătite din oricare terapie a
-        cardului se adună pe același contor, iar reducerea se aplică automat la plată când se atinge un prag. Ședințele
-        din pachete nu se numără.
+        cardului se adună pe același contor (terapiile din aceeași zi sunt o singură ședință), iar reducerea se aplică
+        automat la plată când se atinge un prag. Ședințele din pachete nu se numără.
       </p>
 
       {cards.length > 0 && (

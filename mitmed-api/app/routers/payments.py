@@ -27,7 +27,14 @@ from app.models import (
     gen_id,
 )
 from app.services import payu
-from app.services.fidelity import find_active_card, next_session_discount_percent, register_paid_session, unregister_paid_session
+from app.services.fidelity import (
+    clinic_today,
+    find_active_card,
+    register_paid_session,
+    session_day,
+    session_discount_percent,
+    unregister_paid_session,
+)
 from app.services.pricing import CouponError, calculate_package_price, calculate_price, round_money
 
 router = APIRouter(prefix="/payments", tags=["payments"])
@@ -264,7 +271,7 @@ def create_payment(
     # ciclu are o treaptă cu reducere (vezi services/fidelity.py). Un cupon
     # ales explicit de personal are prioritate — cele două nu se cumulează.
     fidelity_card = None if coupon else find_active_card(db, client_id=payload.client_id, therapy_id=payload.therapy_id)
-    fidelity_discount = next_session_discount_percent(fidelity_card) if fidelity_card else None
+    fidelity_discount = session_discount_percent(db, fidelity_card, clinic_today()) if fidelity_card else None
 
     if fidelity_discount is not None:
         base_price = Decimal(therapy.price)
@@ -337,9 +344,9 @@ def _has_active_package(db: DBSession, *, client_id: str, therapy_id: str) -> bo
 def _price_lines(db: DBSession, payload: MultiPaymentIn) -> tuple[list[dict], Coupon | None]:
     """Prețul fiecărei linii dintr-o plată cu mai multe terapii, în ordine.
 
-    Reducerea de fidelitate se calculează ca și cum liniile ar fi ședințe
-    plătite una după alta: fiecare linie pe același card (din oricare terapie
-    a lui) e cu o poziție mai departe în ciclu. Un cupon se aplică liniilor pentru care e
+    Reducerea de fidelitate urmează ședințele (zilele), nu liniile: liniile
+    din aceeași zi pe același card (din oricare terapie a lui) au aceeași
+    poziție în ciclu, iar fiecare zi nouă e cu o poziție mai departe. Un cupon se aplică liniilor pentru care e
     valabil (fără să se cumuleze cu fidelitatea pe aceeași linie) și consumă
     câte o utilizare per linie."""
     client = db.get(ClientProfile, payload.client_id)
@@ -353,7 +360,7 @@ def _price_lines(db: DBSession, payload: MultiPaymentIn) -> tuple[list[dict], Co
     if len(appointment_ids) != len(set(appointment_ids)):
         raise HTTPException(status_code=422, detail="O programare apare de două ori în aceeași plată.")
 
-    ahead: dict[str, int] = {}
+    pending_days: dict[str, list] = {}
     coupon_uses = 0
     coupon_error: str | None = None
     priced: list[dict] = []
@@ -405,10 +412,15 @@ def _price_lines(db: DBSession, payload: MultiPaymentIn) -> tuple[list[dict], Co
         if not coupon_applied:
             fidelity_card = find_active_card(db, client_id=payload.client_id, therapy_id=therapy.id)
             if fidelity_card:
-                # Contorul e comun tuturor terapiilor cardului — orice linie
-                # anterioară pe același card împinge poziția mai departe.
-                fidelity_percent = next_session_discount_percent(fidelity_card, ahead=ahead.get(fidelity_card.id, 0))
-                ahead[fidelity_card.id] = ahead.get(fidelity_card.id, 0) + 1
+                # Contorul e comun tuturor terapiilor cardului și numără
+                # ședințe (zile): liniile din aceeași zi împart poziția în
+                # ciclu, iar fiecare zi nouă de dinainte o împinge mai departe.
+                fidelity_percent = session_discount_percent(
+                    db,
+                    fidelity_card,
+                    session_day(db, appointment=appointment),
+                    pending_days=pending_days.setdefault(fidelity_card.id, []),
+                )
                 if fidelity_percent is not None:
                     discount_amount = round_money(base_price * fidelity_percent / Decimal(100))
                 else:
@@ -940,7 +952,7 @@ def preview_price(
     # Aceeași regulă ca la crearea plății: reducerea de fidelitate e automată
     # și doar când nu s-a ales explicit un cupon — vezi create_payment.
     fidelity_card = None if coupon or not client_id else find_active_card(db, client_id=client_id, therapy_id=therapy_id)
-    fidelity_discount = next_session_discount_percent(fidelity_card) if fidelity_card else None
+    fidelity_discount = session_discount_percent(db, fidelity_card, clinic_today()) if fidelity_card else None
 
     if fidelity_discount is not None:
         base_price = Decimal(therapy.price)

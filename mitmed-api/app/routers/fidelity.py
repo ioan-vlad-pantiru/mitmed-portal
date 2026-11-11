@@ -20,7 +20,7 @@ from app.models import (
     Therapy,
     User,
 )
-from app.services.fidelity import next_session_discount_percent
+from app.services.fidelity import next_session_discount_percent, session_day
 
 router = APIRouter(tags=["fidelity"])
 
@@ -128,19 +128,23 @@ class IssuedFidelityCardOut(ClientFidelityCardOut):
 
 
 def _cycle_breakdown(db: DBSession, card: ClientFidelityCard) -> list[CycleSessionsOut]:
-    """Terapiile ultimelor `stamps` ședințe ștampilate pe card — adică cele
-    din ciclul curent."""
+    """Terapiile din ultimele `stamps` ședințe (zile) ștampilate pe card —
+    adică cele din ciclul curent. O ședință cu două terapii le numără pe
+    amândouă aici, deși e o singură ștampilă."""
     if card.stamps <= 0:
         return []
-    rows = (
-        db.query(Therapy.name)
-        .join(Payment, Payment.therapy_id == Therapy.id)
+    payments = (
+        db.query(Payment)
+        .options(joinedload(Payment.therapy))
         .filter(Payment.fidelity_stamped_card_id == card.id)
         .order_by(func.coalesce(Payment.paid_at, Payment.created_at).desc())
-        .limit(card.stamps)
         .all()
     )
-    counts = Counter(name for (name,) in rows)
+    by_day: dict = {}
+    for p in payments:
+        by_day.setdefault(session_day(db, payment=p), []).append(p.therapy.name)
+    recent_days = sorted(by_day, reverse=True)[: card.stamps]
+    counts = Counter(name for day in recent_days for name in by_day[day])
     return [CycleSessionsOut(therapy_name=name, sessions=n) for name, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))]
 
 

@@ -491,7 +491,7 @@ export default async function ClientDetailPage({ params, searchParams }: { param
               ))}
             </div>
             <p className="mt-3 text-xs text-zinc-400">
-              Reducerile de fidelitate se aplică automat în totalul de mai jos, în ordinea terapiilor din plată. Ședințele din pachete nu se numără.
+              Reducerile de fidelitate se aplică automat în totalul de mai jos, pe ședințe: terapiile din aceeași zi sunt o singură ședință și primesc aceeași reducere. Ședințele din pachete nu se numără.
             </p>
           </div>
         )}

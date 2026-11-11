@@ -3,7 +3,17 @@ terapii și un singur program de trepte (ex. a 5-a ședință plătită -25%, a
 10-a -50%). Ședințele plătite din oricare terapie a cardului se adună pe
 același contor — routers/fidelity.py. Reducerea se aplică automat la crearea
 unei plăți (routers/payments.py), iar contorul avansează la fiecare plată
-individuală devenită PLATIT (services/fidelity.py)."""
+individuală devenită PLATIT (services/fidelity.py) — o singură dată pe zi:
+cardul numără ședințe (vizite), nu terapii."""
+
+from sqlalchemy import text
+
+
+def _new_day(db_session):
+    """Mută plățile de până acum cu o zi în urmă — următoarea plată (fără
+    programare, deci din ziua de azi) e o ședință nouă pe card."""
+    db_session.execute(text("UPDATE payments SET created_at = created_at - interval '1 day'"))
+    db_session.commit()
 
 
 def _login(client, identifier="admin@example.com", password="parola123"):
@@ -187,7 +197,7 @@ def test_receptie_can_only_view_client_cards(client, make_admin_user, make_clien
     )
 
 
-def test_discount_applies_automatically_at_the_right_session(client, make_admin_user, make_client_user, make_therapy):
+def test_discount_applies_automatically_at_the_right_session(client, db_session, make_admin_user, make_client_user, make_therapy):
     """A 5-a ședință plătită -25%, a 6-a -50% — ședințele 1-4 la preț
     întreg, a 7-a reia ciclul (echivalentă cu a 1-a: preț întreg)."""
     make_admin_user(email="admin@example.com", password="parola123", role="ADMIN")
@@ -204,6 +214,7 @@ def test_discount_applies_automatically_at_the_right_session(client, make_admin_
 
     final_prices = []
     for _ in range(7):
+        _new_day(db_session)
         resp = client.post("/payments", json={"client_id": profile.id, "therapy_id": therapy.id, "amount_paid": 999999})
         assert resp.status_code == 200, resp.text
         payment_id = resp.json()["id"]
@@ -346,10 +357,11 @@ def _stamps(client, profile):
     return client.get(f"/clients/{profile.id}/fidelity-cards").json()[0]["stamps"]
 
 
-def test_deleting_a_paid_payment_rolls_back_the_stamp(client, make_admin_user, make_client_user, make_therapy):
+def test_deleting_a_paid_payment_rolls_back_the_stamp(client, db_session, make_admin_user, make_client_user, make_therapy):
     profile, therapy = _setup_paid_card(client, make_admin_user, make_client_user, make_therapy)
     ids = []
     for _ in range(2):
+        _new_day(db_session)
         pid = client.post("/payments", json={"client_id": profile.id, "therapy_id": therapy.id}).json()["id"]
         client.post(f"/payments/{pid}/mark-paid")
         ids.append(pid)
@@ -372,10 +384,11 @@ def test_deleting_an_unpaid_payment_leaves_stamps_alone(client, make_admin_user,
     assert _stamps(client, profile) == 1
 
 
-def test_rollback_wraps_back_across_the_cycle(client, make_admin_user, make_client_user, make_therapy):
+def test_rollback_wraps_back_across_the_cycle(client, db_session, make_admin_user, make_client_user, make_therapy):
     profile, therapy = _setup_paid_card(client, make_admin_user, make_client_user, make_therapy)
     ids = []
     for _ in range(3):
+        _new_day(db_session)
         pid = client.post("/payments", json={"client_id": profile.id, "therapy_id": therapy.id}).json()["id"]
         client.post(f"/payments/{pid}/mark-paid")
         ids.append(pid)
@@ -404,7 +417,7 @@ def _pay(client, profile, therapy):
     return float(next(p for p in detail["payments"] if p["id"] == resp.json()["id"])["final_price"])
 
 
-def test_sessions_of_all_card_therapies_add_up(client, make_admin_user, make_client_user, make_therapy):
+def test_sessions_of_all_card_therapies_add_up(client, db_session, make_admin_user, make_client_user, make_therapy):
     """Card Masaj + Kinetoterapie, -50% la a 3-a ședință: două masaje și un
     kineto ajung împreună la a 3-a ședință, oricare ar fi terapia ei."""
     make_admin_user(email="admin@example.com", password="parola123", role="ADMIN")
@@ -416,6 +429,7 @@ def test_sessions_of_all_card_therapies_add_up(client, make_admin_user, make_cli
     client.post(f"/clients/{profile.id}/fidelity-cards", json={"card_type_id": type_id})
 
     assert _pay(client, profile, masaj) == 100
+    _new_day(db_session)
     assert _pay(client, profile, kineto) == 200
     card = client.get(f"/clients/{profile.id}/fidelity-cards").json()[0]
     assert card["stamps"] == 2
@@ -423,7 +437,9 @@ def test_sessions_of_all_card_therapies_add_up(client, make_admin_user, make_cli
     assert card["next_reward"]["sessions_left"] == 0
     assert {b["therapy_name"]: b["sessions"] for b in card["cycle_breakdown"]} == {"Masaj": 1, "Kinetoterapie": 1}
 
+    _new_day(db_session)
     assert _pay(client, profile, kineto) == 100  # a 3-a ședință a cardului
+    _new_day(db_session)
     assert _pay(client, profile, masaj) == 100  # ciclul reluat
     card = client.get(f"/clients/{profile.id}/fidelity-cards").json()[0]
     assert card["stamps"] == 1
@@ -462,7 +478,7 @@ def test_admin_sees_progress_of_all_issued_cards(client, make_admin_user, make_c
     assert issued[0]["next_reward"]["sessions_left"] == 2
 
 
-def test_admin_picks_which_card_therapies_apply_to_the_client(client, make_admin_user, make_client_user, make_therapy):
+def test_admin_picks_which_card_therapies_apply_to_the_client(client, db_session, make_admin_user, make_client_user, make_therapy):
     make_admin_user(email="admin@example.com", password="parola123", role="ADMIN")
     _, profile = make_client_user(email="c@example.com", password="parola123")
     masaj = make_therapy(name="Masaj", price=100)
@@ -484,6 +500,7 @@ def test_admin_picks_which_card_therapies_apply_to_the_client(client, make_admin
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()["stamps"] == 1
+    _new_day(db_session)
     assert _pay(client, profile, kineto) == 50
 
 
@@ -499,3 +516,63 @@ def test_cannot_pick_a_therapy_outside_the_card_type(client, make_admin_user, ma
     assert resp.status_code == 422
     resp = client.post(f"/clients/{profile.id}/fidelity-cards", json={"card_type_id": type_id, "therapy_ids": []})
     assert resp.status_code == 422
+
+
+def test_therapies_paid_the_same_day_are_one_session(client, db_session, make_admin_user, make_client_user, make_therapy):
+    """Două terapii în aceeași vizită iau o singură ștampilă, chiar plătite
+    separat; iar când vizita cade pe o treaptă, reducerea e pe amândouă."""
+    make_admin_user(email="admin@example.com", password="parola123", role="ADMIN")
+    _, profile = make_client_user(email="c@example.com", password="parola123")
+    masaj = make_therapy(name="Masaj", price=100)
+    kineto = make_therapy(name="Kinetoterapie", price=200)
+    _login(client)
+    type_id = _make_type(client, [masaj.id, kineto.id], [{"session_number": 2, "discount_percent": 50}, {"session_number": 3, "discount_percent": 10}])
+    client.post(f"/clients/{profile.id}/fidelity-cards", json={"card_type_id": type_id})
+
+    assert _pay(client, profile, masaj) == 100
+    assert _pay(client, profile, kineto) == 200
+    card = client.get(f"/clients/{profile.id}/fidelity-cards").json()[0]
+    assert card["stamps"] == 1
+    assert {b["therapy_name"]: b["sessions"] for b in card["cycle_breakdown"]} == {"Masaj": 1, "Kinetoterapie": 1}
+
+    _new_day(db_session)
+    assert _pay(client, profile, masaj) == 50  # a 2-a ședință: -50%
+    assert _pay(client, profile, kineto) == 100  # aceeași ședință, aceeași reducere
+    card = client.get(f"/clients/{profile.id}/fidelity-cards").json()[0]
+    assert card["stamps"] == 2
+    assert card["discounted_sessions_used"] == 1
+    assert card["next_discount_percent"] == "10.00"
+
+
+def test_same_day_session_on_the_last_tier_keeps_its_discount(client, db_session, make_admin_user, make_client_user, make_therapy):
+    """Ședința care încheie ciclul resetează contorul la 0 — a doua terapie
+    din aceeași zi trebuie să primească tot reducerea ultimei trepte."""
+    make_admin_user(email="admin@example.com", password="parola123", role="ADMIN")
+    _, profile = make_client_user(email="c@example.com", password="parola123")
+    masaj = make_therapy(name="Masaj", price=100)
+    kineto = make_therapy(name="Kinetoterapie", price=200)
+    _login(client)
+    type_id = _make_type(client, [masaj.id, kineto.id], [{"session_number": 2, "discount_percent": 50}])
+    client.post(f"/clients/{profile.id}/fidelity-cards", json={"card_type_id": type_id})
+
+    assert _pay(client, profile, masaj) == 100
+    _new_day(db_session)
+    assert _pay(client, profile, masaj) == 50
+    assert _stamps(client, profile) == 0
+    assert _pay(client, profile, kineto) == 100
+    assert _stamps(client, profile) == 0
+
+
+def test_deleting_one_therapy_of_a_session_keeps_the_stamp(client, make_admin_user, make_client_user, make_therapy):
+    profile, therapy = _setup_paid_card(client, make_admin_user, make_client_user, make_therapy)
+    ids = []
+    for _ in range(2):
+        pid = client.post("/payments", json={"client_id": profile.id, "therapy_id": therapy.id}).json()["id"]
+        client.post(f"/payments/{pid}/mark-paid")
+        ids.append(pid)
+    assert _stamps(client, profile) == 1
+
+    assert client.delete(f"/payments/{ids[0]}").status_code == 200
+    assert _stamps(client, profile) == 1  # mai e o terapie plătită în ședința de azi
+    assert client.delete(f"/payments/{ids[1]}").status_code == 200
+    assert _stamps(client, profile) == 0

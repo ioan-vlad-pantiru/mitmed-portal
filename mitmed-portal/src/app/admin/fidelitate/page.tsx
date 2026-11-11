@@ -22,8 +22,8 @@ export default async function FidelityCardsPage() {
         <h1 className="text-lg font-semibold text-zinc-900">Carduri de fidelitate</h1>
         <p className="text-sm text-zinc-500">
           Un tip de card cuprinde una sau mai multe terapii: ședințele plătite din oricare dintre ele se adună pe același
-          contor, iar reducerea se aplică la pragurile cardului (ex. a 5-a ședință -25%, a 10-a -50%). Ședințele din
-          pachete nu se numără. Cardul se aplică doar după ce îl atribui unui client din fișa lui (tab Dosar medical),
+          contor, iar reducerea se aplică la pragurile cardului (ex. a 5-a ședință -25%, a 10-a -50%). Terapiile făcute în
+          aceeași zi sunt o singură ședință și primesc aceeași reducere. Ședințele din pachete nu se numără. Cardul se aplică doar după ce îl atribui unui client din fișa lui (tab Dosar medical),
           unde alegi și ce terapii de pe card i se aplică.
         </p>
       </div>

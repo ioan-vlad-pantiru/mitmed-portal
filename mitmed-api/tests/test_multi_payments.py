@@ -32,15 +32,36 @@ def _stamps(client, profile):
     return client.get(f"/clients/{profile.id}/fidelity-cards").json()[0]["stamps"]
 
 
-def test_total_accounts_for_fidelity_position_of_each_line(client, make_admin_user, make_client_user, make_therapy):
-    """Card doar pe masaj, -50% la a 2-a ședință. Două masaje + un kineto
-    într-o singură plată: al doilea masaj primește reducerea, chiar dacă
-    înainte de plată cardul era la prima ședință; kineto nu contează."""
-    _, _, profile, masaj, kineto = _setup(make_admin_user, make_client_user, make_therapy, client)
+def _appointment(db_session, profile, user, therapy, days):
+    appointment = Appointment(
+        client_id=profile.id,
+        therapy_id=therapy.id,
+        starts_at=datetime.now(timezone.utc) + timedelta(days=days),
+        created_by_id=user.id,
+    )
+    db_session.add(appointment)
+    db_session.commit()
+    return appointment
+
+
+def test_total_accounts_for_fidelity_position_of_each_line(
+    client, db_session, make_admin_user, make_client_user, make_therapy
+):
+    """Card doar pe masaj, -50% la a 2-a ședință. Masaje programate în două
+    zile diferite + un kineto, într-o singură plată: masajul din a doua zi
+    primește reducerea, chiar dacă înainte de plată cardul era la prima
+    ședință; kineto nu contează."""
+    _, user, profile, masaj, kineto = _setup(make_admin_user, make_client_user, make_therapy, client)
     _issue_card(client, profile, [masaj.id], [{"session_number": 2, "discount_percent": 50}])
+    first = _appointment(db_session, profile, user, masaj, 1)
+    second = _appointment(db_session, profile, user, masaj, 2)
     payload = {
         "client_id": profile.id,
-        "lines": [{"therapy_id": masaj.id}, {"therapy_id": kineto.id}, {"therapy_id": masaj.id}],
+        "lines": [
+            {"therapy_id": masaj.id, "appointment_id": first.id},
+            {"therapy_id": kineto.id},
+            {"therapy_id": masaj.id, "appointment_id": second.id},
+        ],
     }
 
     preview = client.post("/payments/multi/preview", json=payload)
@@ -175,18 +196,48 @@ def test_receptie_can_create_multi_payment_client_cannot(client, make_admin_user
     assert resp.status_code == 403
 
 
-def test_lines_of_different_card_therapies_share_the_counter(client, make_admin_user, make_client_user, make_therapy):
+def test_lines_of_different_card_therapies_share_the_counter(
+    client, db_session, make_admin_user, make_client_user, make_therapy
+):
     """Card masaj + kineto, -50% la a 2-a ședință: un masaj și un kineto în
-    aceeași plată — kineto e a 2-a ședință a cardului și primește reducerea."""
-    _, _, profile, masaj, kineto = _setup(make_admin_user, make_client_user, make_therapy, client)
+    zile diferite — kineto e a 2-a ședință a cardului și primește reducerea."""
+    _, user, profile, masaj, kineto = _setup(make_admin_user, make_client_user, make_therapy, client)
     _issue_card(client, profile, [masaj.id, kineto.id], [{"session_number": 2, "discount_percent": 50}])
+    first = _appointment(db_session, profile, user, masaj, 1)
+    second = _appointment(db_session, profile, user, kineto, 2)
 
     preview = client.post(
         "/payments/multi/preview",
-        json={"client_id": profile.id, "lines": [{"therapy_id": masaj.id}, {"therapy_id": kineto.id}]},
+        json={
+            "client_id": profile.id,
+            "lines": [
+                {"therapy_id": masaj.id, "appointment_id": first.id},
+                {"therapy_id": kineto.id, "appointment_id": second.id},
+            ],
+        },
     ).json()
     assert [float(line["final_price"]) for line in preview["lines"]] == [100, 100]
     assert float(preview["final_price"]) == 200
+
+
+def test_therapies_of_one_visit_are_one_session(client, db_session, make_admin_user, make_client_user, make_therapy):
+    """Două terapii programate în aceeași zi = o singură ședință: o singură
+    ștampilă, și dacă ședința cade pe o treaptă, reducerea e pe amândouă."""
+    _, user, profile, masaj, kineto = _setup(make_admin_user, make_client_user, make_therapy, client)
+    _issue_card(client, profile, [masaj.id, kineto.id], [{"session_number": 2, "discount_percent": 50}, {"session_number": 3, "discount_percent": 10}])
+    visit_1 = [_appointment(db_session, profile, user, masaj, 1), _appointment(db_session, profile, user, kineto, 1)]
+    visit_2 = [_appointment(db_session, profile, user, masaj, 2), _appointment(db_session, profile, user, kineto, 2)]
+    payload = {
+        "client_id": profile.id,
+        "lines": [{"therapy_id": a.therapy_id, "appointment_id": a.id} for a in visit_1 + visit_2],
+    }
+
+    preview = client.post("/payments/multi/preview", json=payload).json()
+    assert [float(line["final_price"]) for line in preview["lines"]] == [100, 200, 50, 100]
+
+    resp = client.post("/payments/multi", json={**payload, "amount_paid": 450})
+    assert resp.status_code == 200, resp.text
+    assert _stamps(client, profile) == 2
 
 
 def test_booking_covered_by_a_package_is_not_paid_or_counted(
