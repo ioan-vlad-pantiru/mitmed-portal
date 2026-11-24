@@ -4,7 +4,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from sqlalchemy import func
-from sqlalchemy.orm import Session as DBSession, joinedload
+from sqlalchemy.orm import Session as DBSession, joinedload, selectinload
 
 import secrets
 import string
@@ -299,11 +299,11 @@ def get_own_client_data(db: DBSession = Depends(get_db), user: User = Depends(re
     client = (
         db.query(ClientProfile)
         .options(
-            joinedload(ClientProfile.medical_records).joinedload(MedicalRecord.therapies),
-            joinedload(ClientProfile.medical_records).joinedload(MedicalRecord.therapy),
-            joinedload(ClientProfile.payments).joinedload(Payment.therapy),
-            joinedload(ClientProfile.appointments).joinedload(Appointment.therapy),
-            joinedload(ClientProfile.unlocked_therapies),
+            selectinload(ClientProfile.medical_records).selectinload(MedicalRecord.therapies),
+            selectinload(ClientProfile.medical_records).joinedload(MedicalRecord.therapy),
+            selectinload(ClientProfile.payments).joinedload(Payment.therapy),
+            selectinload(ClientProfile.appointments).joinedload(Appointment.therapy),
+            selectinload(ClientProfile.unlocked_therapies),
         )
         .filter(ClientProfile.id == user.client_profile.id)
         .first()
@@ -363,12 +363,12 @@ def export_own_data(db: DBSession = Depends(get_db), user: User = Depends(requir
     client = (
         db.query(ClientProfile)
         .options(
-            joinedload(ClientProfile.medical_records).joinedload(MedicalRecord.therapies),
-            joinedload(ClientProfile.medical_records).joinedload(MedicalRecord.therapy),
-            joinedload(ClientProfile.payments).joinedload(Payment.therapy),
-            joinedload(ClientProfile.appointments).joinedload(Appointment.therapy),
-            joinedload(ClientProfile.consents),
-            joinedload(ClientProfile.unlocked_therapies),
+            selectinload(ClientProfile.medical_records).selectinload(MedicalRecord.therapies),
+            selectinload(ClientProfile.medical_records).joinedload(MedicalRecord.therapy),
+            selectinload(ClientProfile.payments).joinedload(Payment.therapy),
+            selectinload(ClientProfile.appointments).joinedload(Appointment.therapy),
+            selectinload(ClientProfile.consents),
+            selectinload(ClientProfile.unlocked_therapies),
         )
         .filter(ClientProfile.id == user.client_profile.id)
         .first()
@@ -529,15 +529,15 @@ def get_client_detail(
         db.query(ClientProfile)
         .options(
             joinedload(ClientProfile.user),
-            joinedload(ClientProfile.medical_records).joinedload(MedicalRecord.therapies),
-            joinedload(ClientProfile.medical_records).joinedload(MedicalRecord.therapy),
-            joinedload(ClientProfile.medical_records).joinedload(MedicalRecord.author),
-            joinedload(ClientProfile.payments).joinedload(Payment.therapy),
-            joinedload(ClientProfile.payments).joinedload(Payment.coupon),
-            joinedload(ClientProfile.payments).joinedload(Payment.package),
-            joinedload(ClientProfile.appointments).joinedload(Appointment.therapy),
-            joinedload(ClientProfile.unlocked_therapies),
-            joinedload(ClientProfile.consultation_sheets).joinedload(ConsultationSheet.author),
+            selectinload(ClientProfile.medical_records).selectinload(MedicalRecord.therapies),
+            selectinload(ClientProfile.medical_records).joinedload(MedicalRecord.therapy),
+            selectinload(ClientProfile.medical_records).joinedload(MedicalRecord.author),
+            selectinload(ClientProfile.payments).joinedload(Payment.therapy),
+            selectinload(ClientProfile.payments).joinedload(Payment.coupon),
+            selectinload(ClientProfile.payments).joinedload(Payment.package),
+            selectinload(ClientProfile.appointments).joinedload(Appointment.therapy),
+            selectinload(ClientProfile.unlocked_therapies),
+            selectinload(ClientProfile.consultation_sheets).joinedload(ConsultationSheet.author),
         )
         .filter(ClientProfile.id == client_id)
         .first()

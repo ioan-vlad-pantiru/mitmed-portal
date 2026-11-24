@@ -1,20 +1,27 @@
+# Memory limits: the VPS has 4 GB. Without them, one runaway container
+# (2026-11-24: the API reached 2.7 GB) starves the whole host, SSH included,
+# instead of just getting OOM-killed and restarted by Docker.
 services:
   db:
     ports: !reset []
+    mem_limit: 768m
 
   api:
     environment:
       COOKIE_SECURE: "true"
     ports: !reset []
+    mem_limit: 1200m
 
   portal:
     restart: unless-stopped
     # No host port published — only reachable via Caddy on the docker network.
     ports: !reset []
+    mem_limit: 768m
 
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    mem_limit: 256m
     ports:
       - "80:80"
       - "443:443"
